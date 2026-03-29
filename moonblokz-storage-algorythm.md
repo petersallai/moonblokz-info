@@ -2,357 +2,501 @@
 
 ## Purpose of This Document
 
-This document provides a more formal, algorithm-oriented description of MoonBlokz onboard storage as described in **MoonBlokz series part VIII — Onboard Storage**.
+This document provides a formal, algorithm-oriented description of the current MoonBlokz storage behavior as implemented in `moonblokz-storage`, with the block and hash contract grounded explicitly in `moonblokz-chain-types`.
 
 Its purpose is to capture:
 
-- the formal storage problem the article is solving,
-- the persistent data categories that must be retained,
-- the storage-unit model built on flash erase regions,
-- the sizing rules for block storage units,
-- the integrity-check and acceptance rules for stored data,
-- the redundancy and fallback behavior for control data,
-- the crash-recovery behavior described by the article,
-- and the wear-lifetime estimation model used to justify the design.
+- the current public storage API contract,
+- the formal control-plane record model,
+- the canonical block and hash constraints that storage relies on,
+- the indexed block-storage rules,
+- the backend-specific geometry and integrity behavior,
+- the error outcomes that chain logic can rely on,
+- and the exact limits of what the current crate still does not define.
 
-This file is the **primary knowledge-base document for the formal storage model** described by the article.
+This file is the **primary knowledge-base document for the current formal storage model**.
 
-- Use [moonblokz-storage-concept.md](./moonblokz-storage-concept.md) for the higher-level explanation of why the storage layer exists and how it fits the broader MoonBlokz design.
-- Use [moonblokz-storage-implementation.md](./moonblokz-storage-implementation.md) for RP2040-specific engineering constraints, XIP implications, Embassy API consequences, and open implementation questions.
+- Use [moonblokz-storage-concept.md](./moonblokz-storage-concept.md) for the higher-level explanation of why the storage crate is shaped this way and how it differs from the earlier article framing.
+- Use [moonblokz-storage-implementation.md](./moonblokz-storage-implementation.md) for engineering consequences of the current crate structure, feature model, mock-flash strategy, and backend implementation details.
 
 ## Source Basis
 
-This document is based on:
+This document is grounded primarily in the current repositories, especially:
 
-- **MoonBlokz series part VIII — Onboard Storage** by Peter Sallai, published on Medium.
+- `moonblokz-storage/src/lib.rs`
+- `moonblokz-storage/src/error.rs`
+- `moonblokz-storage/src/types.rs`
+- `moonblokz-storage/src/backend_memory.rs`
+- `moonblokz-storage/src/backend_rp2040.rs`
+- `moonblokz-storage/src/conformance.rs`
+- `moonblokz-storage/README.md`
+- `moonblokz-storage/Cargo.toml`
+- `moonblokz-chain-types/src/lib.rs`
+- `moonblokz-chain-types/src/block.rs`
+- `moonblokz-chain-types/src/hash.rs`
+- `moonblokz-chain-types/src/error.rs`
+- `moonblokz-chain-types/docs/block-data-structure.md`
+- `moonblokz-chain-types/README.md`
+
+Where the earlier Part VIII article and the current code differ, this file treats the current code as authoritative.
 
 ## Scope and Limits
 
-This file captures the algorithmic structure explicitly stated or directly implied by the article, including:
+This file captures the algorithmic structure explicitly visible in the current crate, including:
 
-- flash page and sector granularity as inputs to the model,
-- the required persisted node data,
-- block-unit and control-unit separation,
-- stored-block integrity-check structure,
-- control-unit checksum and redundancy rules,
-- startup acceptance and fallback behavior after interruption,
-- and the lifetime-estimation logic used in the article.
+- compile-time backend selection rules,
+- control-plane serialization and validation behavior,
+- canonical block-size and hash constraints from `moonblokz-chain-types`,
+- deterministic capacity and index-boundary behavior,
+- the current memory-backend slot model,
+- the current RP2040 page/slot/hash model,
+- startup-time control-plane repair behavior,
+- and backend conformance expectations visible in tests.
 
-It does **not** define details the article leaves open, such as:
+It does **not** attempt to define:
 
-- the exact internal indexing structures for finding blocks in flash,
-- the full replacement algorithm for choosing which exact storage unit to rewrite next,
-- a complete repository API,
-- the exact scheduling policy for storage writes relative to radio work,
-- or any storage compaction or garbage-collection algorithm beyond what the article states.
+- chain-policy index assignment,
+- `snake_chain` retention policy,
+- flash wear-lifetime calculations beyond what is implicit in the current page-erase design,
+- a complete runtime scan algorithm for node boot reconstruction,
+- or any future backend behavior not implemented in the current repositories.
 
 ## Core Terminology Used in This Document
 
 To keep the three storage knowledge-base files aligned, this document uses the following terms consistently:
 
-- **Flash page** — the write/programming granularity described by the article.
-- **Flash sector** — the erase granularity described by the article.
-- **Storage unit** — one erase-sized persistent region, treated as the main MoonBlokz storage building block.
-- **Block storage unit** — a storage unit dedicated to blockchain blocks plus their stored hashes.
-- **Control storage unit** — a storage unit dedicated to node-local control data plus checksum.
-- **Stored block hash** — the extra 32-byte hash stored next to each serialized block for integrity checking.
-- **Primary control copy** — the control unit read first during normal operation.
-- **Backup control copy** — additional redundant control units used if the primary copy fails integrity validation.
+- **StorageTrait** — the synchronous public storage contract.
+- **storage_index** — the canonical external index used for block placement and retrieval.
+- **Control plane** — the replicated node-local metadata record.
+- **Control-plane replica** — one persisted copy of the control-plane record.
+- **Block plane** — the indexed area used for storing blockchain blocks.
+- **Slot** — one indexed block-storage location.
+- **Canonical block bytes** — the `serialized_bytes()` view exposed by `Block`.
+- **Canonical block hash contract** — the `calculate_hash(&[u8]) -> [u8; HASH_SIZE]` contract from `moonblokz-chain-types`.
+- **Page** — one RP2040 erase/write unit of 4096 bytes.
+- **Slot mapping** — the deterministic mapping from `storage_index` to page-local coordinates on RP2040.
 
 ## Algorithmic Problem Statement
 
-The storage model must satisfy all of the following constraints simultaneously:
+The current storage crate must solve the following combined problem:
 
-1. retain enough blockchain data to reconstruct working chain state,
-2. retain enough node-local control data for the node to recover its identity and startup context,
-3. operate on flash where erase granularity is larger than ordinary logical updates,
-4. tolerate interrupted writes and reboot without assuming full transactional storage machinery,
-5. keep wear distributed widely enough that flash endurance remains practical,
-6. and coexist with a bounded-chain blockchain model rather than unlimited historical retention.
+1. initialize a deterministic persistent storage region,
+2. preserve a replicated control-plane record with corruption and compatibility checks,
+3. persist blocks at externally chosen integer indexes,
+4. retrieve blocks from those indexes with explicit typed outcomes,
+5. preserve one stable public contract across multiple backend implementations,
+6. remain compatible with embedded `no_std` synchronous integration,
+7. and do all block persistence against the canonical block and hash rules defined in `moonblokz-chain-types`.
 
-## Section A — Flash Constraints Used by the Model
+## Section A — Canonical Chain-Types Constraints Used by Storage
 
-## A1. Flash asymmetry
+## A1. Canonical block constants
 
-The article’s storage model depends on three asymmetric flash properties:
+The current storage implementation relies on these chain-types constants:
 
-- reads are comparatively easy,
-- writes are slower,
-- erases are the most expensive operation.
+- `MAX_BLOCK_SIZE = 2016`
+- `HEADER_SIZE = 122`
+- `MAX_PAYLOAD_SIZE = MAX_BLOCK_SIZE - HEADER_SIZE = 1894`
+- `HASH_SIZE = 32`
 
-## A2. RP2040 granularity values used by the article
+These are not storage-local conventions. They are canonical upstream contracts.
 
-For the RP2040 target discussed by the article:
+## A2. Canonical block validity constraints
 
-- programming is performed in **256-byte pages**,
-- erasing is performed in **4 KB sectors**.
+`Block::from_bytes(bytes)` currently accepts input only if:
 
-The storage model uses the erase unit, not the page size, as the top-level layout unit.
+1. `bytes.len() >= HEADER_SIZE`,
+2. `bytes.len() <= MAX_BLOCK_SIZE`,
+3. the parsed block structure is valid,
+4. and specifically the version byte is non-zero.
 
-## A3. Shared-flash assumption
+The current `validate_structure()` implementation enforces:
 
-The article assumes the same external flash chip is used both for:
+- block length must be at least `HEADER_SIZE`,
+- block version must be non-zero.
 
-- firmware storage,
-- and persistent MoonBlokz application data.
+## A3. Empty-slot invariant inherited from chain-types
 
-Therefore, total available storage for blockchain data is the flash capacity minus the space reserved for the application binary and minus the space reserved for control storage units.
+The chain-types crate explicitly reserves `version == 0` for storage empty-slot markers.
 
-## Section B — Required Persisted Data
+Therefore storage may safely rely on the invariant:
 
-## B1. Required blockchain data
+- any valid MoonBlokz block has first byte `!= 0`.
 
-The node must persist the valid blocks it has received.
+This invariant directly underpins empty-slot detection in the memory backend.
 
-The article treats these stored blocks as the basis for reconstructing the chain.
+## A4. Canonical hash contract
 
-## B2. Required control data
+The chain-types crate defines:
 
-The node must also persist a control record containing:
+- `calculate_hash(input: &[u8]) -> [u8; HASH_SIZE]`
+- using SHA-256,
+- with fixed `HASH_SIZE = 32`.
 
-- the node’s private key,
-- the node’s own ID,
-- initialization parameters,
-- a copy of the configuration block,
-- and a `CRC32` checksum.
+Storage must treat this as the canonical hashing contract rather than defining a storage-local hash algorithm.
 
-## B3. Mutability assumptions
+## Section B — Compile-Time Structural Rules
 
-The article states or implies the following update behavior:
+## B1. Backend exclusivity rule
 
-- private key: written during initialization,
-- node ID: written during initialization,
-- initialization parameters: written during initialization,
-- configuration-block copy: written when the configuration block is received during the gathering phase and not modified afterward except by reconstructing it again from chain knowledge if needed.
+Exactly one backend feature must be enabled at compile time:
 
-The article does not describe frequent rewriting of this control record during ordinary steady-state operation.
+- `backend-memory`
+- `backend-rp2040`
 
-## Section C — Storage-Unit Layout Model
+Compilation fails if:
 
-## C1. Main layout rule
+- no backend feature is enabled,
+- or more than one backend feature is enabled.
 
-Each **4 KB erase region** is treated as one independent **storage unit**.
+## B2. Canonical backend alias rule
 
-This means the storage model is explicitly sector-aligned.
+`MoonblokzStorage<const STORAGE_SIZE: usize>` is a type alias to exactly one backend, chosen by the active backend feature:
 
-## C2. Storage-unit classes
+- memory backend when `backend-memory` is selected,
+- RP2040 backend when `backend-rp2040` is selected.
 
-There are two storage-unit classes.
+## B3. Public constant set
 
-### C2.1. Block storage units
+The current public constants include:
 
-A block storage unit stores multiple blockchain blocks.
+- `INIT_PARAMS_SIZE = 100`
+- `CONTROL_PLANE_COUNT = 3`
+- `CONTROL_PLANE_VERSION = 1`
 
-Each stored block consists of:
+These constants are part of the storage contract because the control-plane record and API behavior depend on them.
 
-- the serialized block bytes,
-- plus one additional 32-byte stored hash.
+## Section C — Public API Contract
 
-### C2.2. Control storage units
+## C1. `StorageTrait` operations
 
-A control storage unit stores:
+The current public contract exposes exactly these methods:
 
-- private key,
-- node ID,
-- initialization parameters,
-- configuration-block copy,
-- `CRC32` checksum.
+1. `init(private_key, own_node_id, init_params)`
+2. `save_block(storage_index, block)`
+3. `read_block(storage_index)`
+4. `capacity()`
+5. `set_chain_configuration(block)`
+6. `load_control_data()`
 
-## C3. Block storage-unit capacity formula
+## C2. Public return model
 
-The article defines the number of blocks per storage unit as:
+`load_control_data()` returns `ControlPlaneData` with:
 
-`N = FLOOR(STORAGE_UNIT_SIZE / (MAX_BLOCK_SIZE + BLOCK_HASH_SIZE))`
+- `private_key: [u8; PRIVATE_KEY_SIZE]`
+- `own_node_id: u32`
+- `init_params: [u8; INIT_PARAMS_SIZE]`
+- `chain_configuration: Option<Block>`
 
-Where:
+## C3. Public error categories
 
-- `STORAGE_UNIT_SIZE` is the erase-unit size,
-- `MAX_BLOCK_SIZE` is the configured maximum serialized block size,
-- `BLOCK_HASH_SIZE` is the size of the extra stored integrity hash.
+The current public error model is:
 
-## C4. Default-capacity example given by the article
+- `InvalidIndex`
+- `BlockAbsent`
+- `IntegrityFailure`
+- `ControlPlaneUninitialized`
+- `ChainConfigurationAlreadySet`
+- `ControlPlaneCorrupted`
+- `ControlPlaneIncompatible`
+- `InvalidConfiguration`
+- `BackendIo { code }`
 
-In the article’s default example:
+These are the main typed outcomes chain logic must reason about.
 
-- `MAX_BLOCK_SIZE = 2000` bytes,
-- `BLOCK_HASH_SIZE = 32` bytes,
-- `STORAGE_UNIT_SIZE = 4096` bytes,
-- therefore one storage unit stores **2 blocks** together with **2 × 32-byte hashes**.
+## Section D — Control-Plane Formal Model
 
-## Section D — Integrity Model
+## D1. Control-plane record fields
 
-## D1. Stored-block integrity rule
+Both current backends serialize a logically equivalent control-plane record containing:
 
-For each block stored in a block storage unit:
+1. control-plane version (`u8`)
+2. persisted private-key-size field (`u8`)
+3. private key bytes (`[u8; PRIVATE_KEY_SIZE]`)
+4. own node ID (`u32`, little-endian)
+5. persisted init-params-size field (`u8`)
+6. init parameter bytes (`[u8; INIT_PARAMS_SIZE]`)
+7. persisted `MAX_BLOCK_SIZE` field (`u16`, little-endian)
+8. reserved chain-configuration block space (`[u8; MAX_BLOCK_SIZE]`)
+9. CRC32 checksum (`u32`, little-endian)
 
-1. the serialized block bytes are stored,
-2. a 32-byte hash is stored alongside them,
-3. when the block is read back, the node recomputes the hash from the stored bytes,
-4. the recomputed hash is compared with the stored hash,
-5. if they differ, the block is treated as corrupted.
+## D2. Control-plane validity conditions
 
-## D2. Meaning of the stored-block hash
+A control-plane replica is accepted only if all of the following hold:
 
-The article gives two explicit reasons for this extra hash:
+1. the replica is not interpreted as uninitialized,
+2. the stored CRC32 matches the recomputed CRC32,
+3. the stored control-plane version equals `CONTROL_PLANE_VERSION`,
+4. the stored private-key-size field matches the current `PRIVATE_KEY_SIZE`,
+5. the stored init-params-size field matches the current `INIT_PARAMS_SIZE`,
+6. the stored `MAX_BLOCK_SIZE` matches the current runtime `MAX_BLOCK_SIZE`,
+7. if a chain-configuration block is present, it parses successfully as `Block`.
 
-- detect storage corruption or incomplete writes,
-- allow a much cheaper consistency check than full digital-signature verification on every read.
+## D3. Control-plane uninitialized conditions
 
-## D3. Authenticity boundary
+### Memory backend
 
-The article explicitly states that the stored hash does **not** replace the block signature.
+A replica is treated as uninitialized if all bytes in the serialized record are zero.
 
-Therefore:
+### RP2040 backend
 
-- stored hash protects storage consistency,
-- block signature protects authenticity.
+A replica is treated as uninitialized if the serialized record bytes are either:
 
-## D4. Control-data integrity rule
+- all zero,
+- or all `0xFF`.
 
-For each control storage unit:
+## D4. Control-plane load and repair algorithm
 
-1. the control record is stored,
-2. a `CRC32` checksum is stored with it,
-3. on read, the checksum is verified,
-4. if verification fails, that control copy is treated as invalid.
+The current load algorithm for both backends is conceptually:
 
-## Section E — Redundancy Model for Control Data
+1. iterate replicas in deterministic replica-index order,
+2. attempt to deserialize each replica,
+3. remember the first valid record,
+4. track invalid replica indexes,
+5. if no valid record exists:
+   - return `ControlPlaneUninitialized` if all replicas are uninitialized,
+   - otherwise prefer `ControlPlaneIncompatible` if any incompatible replica was seen,
+   - otherwise return `ControlPlaneCorrupted`,
+6. if a valid record exists:
+   - return that record,
+   - and rewrite invalid replicas from the first valid record as best-effort repair.
 
-## E1. Redundancy precondition
+## D5. Control-plane write behavior
 
-The article states that the control data fits into a single storage unit, roughly **2200 bytes** in the default configuration with a 2 KB maximum block size.
+### `init(...)`
 
-## E2. Default redundancy factor
+Both backends write a control-plane record with:
 
-Because the control record is small, the article stores multiple copies.
+- private key set,
+- own node ID set,
+- init params set,
+- `chain_configuration = None`.
 
-Default: **3 copies**.
+### `set_chain_configuration(block)`
 
-## E3. Normal read path
+1. load current valid control-plane record,
+2. if `chain_configuration` is already `Some`, return `ChainConfigurationAlreadySet`,
+3. otherwise reconstruct the input through canonical block bytes,
+4. store it as `Some(block)`,
+5. write the updated record to all replicas.
 
-During normal operation:
+## Section E — Memory Backend Formal Model
 
-1. read the primary control storage unit,
-2. verify its CRC,
-3. if valid, use it,
-4. if invalid, attempt backup control copies.
+## E1. Capacity rule
 
-## E4. Failure condition
+For `MemoryBackend<const STORAGE_SIZE: usize>`:
 
-The article’s practical failure condition is:
+- control-plane reserved bytes = `CONTROL_PLANE_COUNT * CONTROL_PLANE_ENTRY_SIZE`
+- effective block-slot count =
+  `floor((STORAGE_SIZE - control_plane_reserved_bytes) / MAX_BLOCK_SIZE)`
+  when positive, otherwise `0`
+- remainder bytes are unused.
 
-- the node is operationally lost only if **all** control copies are corrupted.
+With the current chain-types constant `MAX_BLOCK_SIZE = 2016`, this means slot geometry is defined directly by the canonical block-size contract.
 
-## E5. Why redundancy is asymmetric
+## E2. Empty-slot rule
 
-The redundancy model is stronger for control data than for blocks because:
+A memory-backend slot is treated as empty if `slot[0] == 0`.
 
-- block corruption can be compensated for by erasing and re-requesting from the network,
-- but loss of control data may prevent correct node operation entirely.
+This is valid only because the chain-types contract guarantees that a valid block must have non-zero version.
 
-## Section F — Crash-Recovery Rules
+## E3. Save algorithm
 
-## F1. General acceptance rule after reboot
+For `save_block(storage_index, block)`:
 
-After reboot, a storage unit is accepted only if its integrity check succeeds.
+1. validate `storage_index < capacity`, else return `InvalidIndex`,
+2. compute slot byte range,
+3. obtain canonical serialized block bytes through `block.serialized_bytes()`,
+4. if serialized length exceeds `MAX_BLOCK_SIZE`, return `BackendIo { code: 1 }`,
+5. zero the whole slot,
+6. copy block bytes to the beginning of the slot.
 
-Otherwise it is treated as invalid.
+## E4. Read algorithm
 
-## F2. Control-unit crash behavior
+For `read_block(storage_index)`:
 
-The article describes control-unit updates as separate erase/write operations on separate copies.
+1. validate `storage_index < capacity`, else return `InvalidIndex`,
+2. compute slot byte range,
+3. if `slot[0] == 0`, return `BlockAbsent`,
+4. attempt `Block::from_bytes(slot)`,
+5. if parsing fails, return `BackendIo { code: 2 }`,
+6. otherwise return the block.
 
-Therefore, an interrupted update can corrupt at most one control copy at a time.
+## E5. Practical meaning of memory-backend parseability
 
-Recovery rule:
+Because the memory backend passes the full fixed slot buffer into `Block::from_bytes`, successful parseability depends on current chain-types rules:
 
-1. verify primary control copy,
-2. if invalid, verify backup copies,
-3. use the first valid copy found.
+- full slot length is acceptable because `MAX_BLOCK_SIZE = slot size`,
+- version byte must be non-zero,
+- the slot content must still be structurally acceptable to the canonical block parser.
 
-## F3. Versioning note for control data
+This means the memory backend currently treats a stored block as valid if it remains parseable as a canonical block in the fixed slot representation.
 
-The article explicitly downplays versioning concerns for control data because control fields change rarely. The main mutable control-related payload is the stored configuration block, and the article notes that this can be reconstructed from chain information if needed.
+## E6. Integrity behavior boundary
 
-## F4. Block-unit crash behavior
+The memory backend does **not** maintain a stored block hash alongside each slot.
 
-If a block write is interrupted:
+Its practical block-validity model is therefore:
 
-- the target block is lost,
-- and, because erase is storage-unit-wide, the other block in the same unit may also be lost.
+- empty-slot detection,
+- plus parseability of stored slot bytes,
+- not RP2040-style explicit hash revalidation.
 
-The article treats this as acceptable because missing blocks can be requested again from the network and invalid units can simply be repopulated later.
+## Section F — RP2040 Backend Formal Model
 
-## Section G — Wear and Lifetime Estimation Model
+## F1. Core geometry constants
 
-## G1. Endurance assumption used in the article
+The RP2040 backend defines:
 
-The lifetime estimate uses a flash endurance of **10,000 erase cycles**.
+- `FLASH_PAGE_SIZE = 4096`
+- `RP2040_DEFAULT_FLASH_SIZE = 2 * 1024 * 1024`
+- `SLOT_HASH_OFFSET = MAX_BLOCK_SIZE = 2016`
+- `SLOT_SIZE_BYTES = MAX_BLOCK_SIZE + HASH_SIZE = 2048`
+- `CONTROL_PLANE_RESERVED_BYTES = CONTROL_PLANE_COUNT * FLASH_PAGE_SIZE = 12288`
+- `BLOCKS_PER_PAGE = floor(FLASH_PAGE_SIZE / SLOT_SIZE_BYTES) = 2`
 
-## G2. Control-unit wear contribution
+So with the current chain-types contracts, each RP2040 flash page stores exactly two block slots.
 
-Control units contribute little to wear because they are written only:
+## F2. Compile-time geometry guards
 
-- during initialization,
-- and when the first configuration block is gathered.
+Compilation fails if either of these would be false:
 
-## G3. Main source of wear
+- `BLOCKS_PER_PAGE >= 1`
+- `CONTROL_PLANE_ENTRY_SIZE <= FLASH_PAGE_SIZE`
 
-The main wear source is block storage.
+## F3. Valid backend-construction condition
 
-The article’s reasoning is:
+The RP2040 backend requires `data_storage_start_address` to be page-aligned.
 
-- `snake_chain` causes old blocks to expire,
-- receiving a new block usually means overwriting expired storage,
-- and this causes rewrites to be distributed across the available storage units.
+If `data_storage_start_address % FLASH_PAGE_SIZE != 0`, construction or initialization returns `InvalidConfiguration`.
 
-## G4. Default-cycle interpretation in the article
+## F4. Capacity rule
 
-In the default layout where each storage unit stores two blocks:
+The current RP2040 capacity algorithm is:
 
-- one full `snake_chain` cycle rewrites the same storage unit **twice**.
+1. `available_bytes = RP2040_FLASH_SIZE - data_storage_start_address` (saturating)
+2. `block_storage_bytes = available_bytes - CONTROL_PLANE_RESERVED_BYTES` (saturating)
+3. `usable_pages = floor(block_storage_bytes / FLASH_PAGE_SIZE)`
+4. `capacity = usable_pages * BLOCKS_PER_PAGE`
 
-## G5. 2 MB example used by the article
+## F5. Slot-mapping rule
 
-After reserving space for the binary and control storage units, the article estimates that approximately:
+For any valid `storage_index`:
 
-- **600 blocks** can be stored,
-- around **500 blocks** form the chain itself,
-- around **100 blocks** remain as fork headroom.
+- `page_index = floor(storage_index / BLOCKS_PER_PAGE)`
+- `slot_index = storage_index % BLOCKS_PER_PAGE`
+- `byte_offset_in_page = slot_index * SLOT_SIZE_BYTES`
 
-## G6. Time-based lifetime examples given by the article
+The page flash address is:
 
-The article gives these example interpretations:
+`data_storage_start_address + CONTROL_PLANE_RESERVED_BYTES + page_index * FLASH_PAGE_SIZE`
 
-- at **1 block per minute**, one full chain cycle takes about **500 minutes**, and expected lifetime is about **4.8 years**,
-- at **1 block every 5 minutes**, expected lifetime rises to nearly **20 years**,
-- with **16 MB flash**, lifetime grows much further because block-storage capacity is much larger.
+## F6. RP2040 save algorithm
 
-## G7. Formal takeaway
+For `save_block(storage_index, block)`:
 
-The article’s algorithmic conclusion is not that one exact lifetime number is universally guaranteed. It is that, under the model’s assumptions, wear is spread broadly enough that flash endurance is not the primary limiting factor for practical deployment.
+1. validate `storage_index < capacity`, else return `InvalidIndex`,
+2. map index to page and slot coordinates,
+3. read the whole containing page into the page buffer,
+4. zero the target slot region,
+5. copy canonical block bytes into the block portion of the slot,
+6. compute `calculate_hash()` over the fixed `MAX_BLOCK_SIZE` block region,
+7. store that hash in the slot hash area,
+8. erase the whole flash page,
+9. write back the full page buffer.
 
-## Section H — Explicit Algorithmic Boundaries Left Open by the Article
+## F7. RP2040 read algorithm
 
-The article leaves several important areas underspecified.
+For `read_block(storage_index)`:
 
-It does not formally define:
+1. validate `storage_index < capacity`, else return `InvalidIndex`,
+2. map index to page and slot coordinates,
+3. read the containing page into the page buffer,
+4. extract the target slot bytes,
+5. if all slot bytes are `0xFF`, return `BlockAbsent`,
+6. read stored hash from the slot hash area,
+7. recompute hash over the fixed `MAX_BLOCK_SIZE` block area,
+8. if hashes differ, return `IntegrityFailure`,
+9. parse the fixed block area as `Block`,
+10. if parsing fails, return `IntegrityFailure`,
+11. otherwise return the block.
 
-- how blocks are indexed across storage units,
-- how the node maps a requested chain block to a physical storage unit quickly,
-- whether there is a journal or metadata area beyond the units described,
-- how block replacement order is encoded on flash,
-- how rebuild or scan-on-boot works in detail,
-- or how concurrent radio and storage demands are scheduled beyond acknowledging that they interact.
+## F8. Practical meaning of RP2040 hash verification
 
-These omissions should remain explicit rather than being silently completed with invented rules.
+The RP2040 backend hashes the fixed 2016-byte block area, not merely `block.serialized_bytes()` length.
 
-## Review Notes
+So the stored RP2040 hash is currently a hash of the persisted fixed-size canonical block region as stored in the slot.
 
-Post-change review against `moonblokz-info` documentation rules:
+It therefore verifies storage-slot integrity, not merely the logical serialized prefix in isolation.
 
-- **Consistency:** This file keeps the formal storage rules aligned with the earlier bounded-chain model and does not redefine blockchain semantics.
-- **Logical soundness:** It separates persisted-data requirements, storage-unit math, integrity checks, fallback behavior, and wear estimation into distinct sections.
-- **Feasibility:** The formal model remains implementable on the target flash hardware exactly because it is built around erase-unit alignment and bounded retention.
-- **Redundancy:** Conceptual motivation and RP2040 engineering discussion are left primarily to the companion concept and implementation files.
-- **Source fidelity:** All formulas, capacities, and recovery behaviors come from the cited article or are direct restatements of its explicit reasoning.
+## F9. Practical meaning of RP2040 overwrite behavior
+
+Because one slot write rewrites the containing 4096-byte page, the current RP2040 behavior is page-granular in flash even though the public API is slot-granular.
+
+## Section G — `init()` Semantics
+
+## G1. Memory backend `init()`
+
+The memory backend:
+
+1. validates control-plane capacity,
+2. fills the entire storage byte array with zero,
+3. serializes a fresh control-plane record with no chain configuration,
+4. writes that same record to all control-plane replicas.
+
+## G2. RP2040 backend `init()`
+
+The RP2040 backend:
+
+1. validates page alignment of the configured start address,
+2. computes the flash pages from `data_storage_start_address` to end of configured storage,
+3. erases every one of those pages,
+4. builds a fresh control-plane record with no chain configuration,
+5. writes that record to all control-plane replicas.
+
+## Section H — Backend I/O Code Map
+
+The current public `BackendIo { code }` map includes:
+
+### Memory backend runtime codes
+
+- `1` — oversized block input during save path
+- `2` — parse failure for stored slot bytes on read path
+
+### RP2040 runtime codes
+
+- `210` — flash page read failed
+- `211` — flash page erase failed
+- `212` — flash page write failed
+- `213` — unexpected RP2040 save-path backend branch or save-path encoding failure branch
+- `220` — flash page read failed during retrieve path
+
+### RP2040 mock-flash test codes
+
+- `230` — mock flash read out of bounds
+- `231` — mock flash erase range invalid or out of bounds
+- `232` — mock flash write out of bounds
+
+## Section I — Conformance Behavior Visible in Tests
+
+The shared conformance tests assert at least the following cross-backend public semantics:
+
+- successful save/read round trip,
+- `BlockAbsent` for empty valid slots,
+- `InvalidIndex` for reads and writes at or above capacity,
+- capacity boundary consistency,
+- mixed startup-scan outcomes where some indexes are populated and others absent.
+
+This means backend parity in the current repository should be understood primarily at the level of **public typed storage semantics**, not necessarily identical internal integrity mechanisms.
+
+## Section J — Explicit Current Boundaries
+
+The current crates do **not** formally define:
+
+- how `storage_index` values are assigned by chain logic,
+- how a full boot scan should stop or continue across large index ranges,
+- how retained-chain policy relates to slot reuse,
+- whether `IntegrityFailure` should trigger automatic recovery from network at higher layers,
+- or how future backends must replicate the RP2040 slot-hash layout specifically.
+
+These questions remain outside the current formal storage contract.

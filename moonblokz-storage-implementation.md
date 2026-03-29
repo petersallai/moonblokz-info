@@ -2,286 +2,429 @@
 
 ## Purpose of This Document
 
-This document captures implementation-facing implications of MoonBlokz onboard storage as described in **MoonBlokz series part VIII — Onboard Storage**.
+This document captures implementation-facing implications of MoonBlokz storage **as currently implemented in `moonblokz-storage`**, with special attention to the storage-facing contracts defined by `moonblokz-chain-types`.
 
 It complements the conceptual and algorithm storage documents by identifying:
 
-- what engineering constraints follow from the RP2040 flash model,
-- why XIP changes how persistent writes must be approached,
-- how Embassy’s flash API shape influences implementation structure,
-- why flash-aware layout decisions must remain explicit,
-- how redundancy and corruption detection affect practical implementation,
-- and which important details still remain open in the source material.
+- what the current crate is responsible for today,
+- how the repository is structured,
+- how the feature model shapes the build and runtime behavior,
+- what engineering consequences follow from the two current backend implementations,
+- how the RP2040 backend encodes flash geometry and host-side testing,
+- how the canonical block and hash crate constrains storage engineering,
+- and which implementation boundaries remain explicitly open.
 
-- Use [moonblokz-storage-concept.md](./moonblokz-storage-concept.md) for the strategic role and conceptual trade-offs of MoonBlokz storage.
-- Use [moonblokz-storage-algorythm.md](./moonblokz-storage-algorythm.md) for the formal storage-unit model, integrity-check rules, fallback behavior, and lifetime-estimation logic.
+- Use [moonblokz-storage-concept.md](./moonblokz-storage-concept.md) for the strategic role and current conceptual trade-offs of MoonBlokz storage.
+- Use [moonblokz-storage-algorythm.md](./moonblokz-storage-algorythm.md) for the formal public API, control-plane record model, slot/page mapping rules, chain-types-derived geometry, and error semantics.
 
 ## Source Basis
 
-This document is based on:
+This document is grounded primarily in the current repositories, especially:
 
-- **MoonBlokz series part VIII — Onboard Storage** by Peter Sallai, published on Medium.
+- `moonblokz-storage/Cargo.toml`
+- `moonblokz-storage/README.md`
+- `moonblokz-storage/src/lib.rs`
+- `moonblokz-storage/src/error.rs`
+- `moonblokz-storage/src/backend_memory.rs`
+- `moonblokz-storage/src/backend_rp2040.rs`
+- `moonblokz-storage/src/conformance.rs`
+- `moonblokz-storage/docs/prd.md`
+- `moonblokz-storage/docs/architecture.md`
+- `moonblokz-chain-types/README.md`
+- `moonblokz-chain-types/src/lib.rs`
+- `moonblokz-chain-types/src/block.rs`
+- `moonblokz-chain-types/src/hash.rs`
+- `moonblokz-chain-types/src/error.rs`
+- `moonblokz-chain-types/docs/block-data-structure.md`
+
+Where the earlier Part VIII article diverges from the current repositories, this document treats the codebases as authoritative.
 
 ## Scope and Intent
 
-This is not a repository walkthrough and not a complete engineering specification. Instead, it records the practical implementation consequences of the article so future engineering work can preserve the stated constraints without filling the gaps with undocumented assumptions.
+This is not a line-by-line source tour. Instead, it records the engineering consequences of the current implementation so future work can preserve current invariants and avoid silently re-expanding the crate into responsibilities it does not currently own.
 
-## Relationship to the Earlier MoonBlokz Architecture
+## Current Repository Shape
 
-The earlier MoonBlokz documents already establish several constraints that storage must respect:
+The current repository is compact and intentionally narrow.
 
-- the chain is bounded through `snake_chain`,
-- radio processing remains timing-sensitive,
-- embedded memory is limited,
-- and persistent storage cannot be treated as unlimited archival history.
+### Public contract modules
 
-Part VIII adds the implementation-facing persistence side of those same constraints. Storage logic must therefore be engineered as a bounded embedded subsystem, not as a transparent database layer hidden underneath the chain.
+- `src/lib.rs` — feature gating, public constants, `ControlPlaneData`, `StorageTrait`, backend exports and selected-backend alias
+- `src/types.rs` — canonical public type aliases such as `StorageIndex`
+- `src/error.rs` — public error model
 
-## RP2040-Specific Engineering Constraints
+### Backend modules
 
-The article makes the RP2040’s flash behavior a direct implementation concern.
+- `src/backend_memory.rs` — in-memory backend for off-target integration and contract testing
+- `src/backend_rp2040.rs` — RP2040 backend with actual flash-geometry model and host/mock support
 
-### External flash rather than large internal non-volatile storage
+### Validation module
 
-The RP2040 typically boots from external QSPI flash.
+- `src/conformance.rs` — backend-agnostic conformance tests for shared public semantics
 
-Implementation consequence:
+### Supporting repository material
 
-- MoonBlokz persistent data shares the same chip with firmware,
-- so flash partitioning or reserved-offset planning is mandatory,
-- and storage capacity calculations must always account for firmware occupancy first.
+- `README.md` — integration guidance, feature rules, error-code map, example usage
+- `docs/prd.md` and `docs/architecture.md` — BMAD-generated product and architecture intent for the crate
+- `examples/` — host and embedded example projects
+- `scripts/` and GitHub workflow — backend matrix support and CI automation
 
-### Granularity mismatch between writing and erasing
+## Feature and Dependency Model
 
-The article uses:
+## Exactly one backend is selected at build time
 
-- **256-byte programming pages**,
-- **4 KB erase sectors**.
+The current crate uses feature-based backend selection with compile-time exclusivity:
 
-Implementation consequence:
+- `backend-memory`
+- `backend-rp2040`
 
-- data layout must be sector-aware,
-- write paths must avoid pretending that arbitrary in-place logical updates are cheap,
-- and any mutation that requires erase must be treated as a whole-storage-unit operation.
+This has several engineering consequences:
 
-### Endurance is finite
+- builds remain small and target-specific,
+- backend code is not selected dynamically at runtime,
+- and adding a new backend must preserve this exclusivity model.
 
-Implementation consequence:
+## Default feature set
 
-- rewrites must be distributed,
-- hot-spot updates should be avoided,
-- and wear behavior must be part of data-layout design rather than an afterthought.
+The crate currently defaults to:
 
-## XIP Implications for Storage Engineering
+- `backend-memory`
+- `schnorr`
 
-The article’s XIP discussion creates several non-optional engineering consequences.
+The `schnorr` feature enables `moonblokz-crypto/schnorr-crypto-bigint`.
 
-### Flash writes interfere with ordinary execution from flash
+This means the storage crate’s default development posture is a host-friendly memory backend rather than embedded flash.
 
-Because the RP2040 executes code directly from external flash in normal operation, erase or write activity occupies the flash interface.
+## Dependency boundaries
 
-Implementation consequence:
+The current crate depends on:
 
-- persistent updates are not merely slow I/O,
-- they are events that may interfere with normal instruction fetch,
-- so write routines must be designed with explicit awareness of system execution state.
+- `moonblokz-chain-types` for `Block`, `MAX_BLOCK_SIZE`, `HEADER_SIZE`, `MAX_PAYLOAD_SIZE`, `HASH_SIZE`, and `calculate_hash`
+- `moonblokz-crypto` for `PRIVATE_KEY_SIZE`
+- `embassy-rp` only on ARM targets for the RP2040 backend
 
-### Timing-sensitive work must be considered during writes
+Engineering consequence:
 
-The article explicitly connects this concern to MoonBlokz radio activity.
+- canonical block serialization and hashing stay outside storage,
+- storage consumes those contracts rather than redefining them,
+- and embedded flash integration is isolated behind target-specific dependencies.
 
-Implementation consequence:
+## Chain-Types Boundary Engineering Consequences
 
-- storage code cannot assume it can mutate flash at arbitrary moments without broader runtime impact,
-- and higher-level scheduling or pausing strategy will matter even though the article does not yet define the full policy.
+## Storage is tied to one canonical immutable block representation
 
-### Running flash operations from RAM is part of the expected model
+`moonblokz-chain-types` defines `Block` as an immutable wrapper over a fixed `[u8; MAX_BLOCK_SIZE]` internal buffer plus a logical length.
 
-The article states that firmware must typically perform flash updates carefully, usually by running the flash operation from RAM.
+Engineering consequence:
 
-Implementation consequence:
+- storage backends do not need their own canonical block serializer,
+- `serialized_bytes()` is the authoritative byte sequence for storage-facing round-tripping,
+- and any future change to `Block` binary layout is a storage compatibility event.
 
-- any real implementation should verify that the chosen flash-access path respects the RP2040 execution constraints,
-- and low-level storage integration cannot be treated as an ordinary library call with no platform-specific execution considerations.
+## Current block-size constants directly shape storage geometry
 
-## Embassy Flash API Consequences
+The current storage geometry is downstream of the canonical block and hash constants defined in `moonblokz-chain-types`.
 
-The article uses Embassy as the software foundation and emphasizes the shape of the API rather than any one code sample.
+Engineering consequence:
 
-### Read / erase / write are separate first-class operations
+- memory-backend slot size is defined by the canonical maximum block size,
+- RP2040 slot payload size and total slot size are defined by the canonical block-size and hash-size contracts,
+- and RP2040 page packing therefore depends directly on upstream chain-types constants.
 
-Implementation consequence:
+The exact constants and derived geometry belong primarily in [moonblokz-storage-algorythm.md](./moonblokz-storage-algorythm.md).
 
-- storage abstractions should preserve these distinctions internally,
-- rather than flattening flash into a fake random-write byte store.
+## The version invariant is operationally important
 
-### Size constants are part of correctness
+The chain-types crate explicitly reserves `version == 0` for storage empty-slot markers and rejects zero-version blocks in `Block::from_bytes()` and `BlockBuilder::build()`.
 
-The article explicitly calls out `ERASE_SIZE`, `PAGE_SIZE`, and `WRITE_SIZE`.
+Engineering consequence:
 
-Implementation consequence:
+- the memory backend’s `slot[0] == 0` empty-slot rule is safe only because of this upstream invariant,
+- and changing that invariant would require coordinated storage redesign.
 
-- these values should drive layout and validation logic,
-- not be treated as informal comments or assumptions,
-- and future target changes should flow through these constraints rather than silently breaking the storage model.
+## `Block::from_bytes()` defines current storage parseability
 
-### Blocking access remains a valid practical choice
+The chain-types parser currently enforces the canonical structural entry conditions for a stored block.
 
-The article rejects DMA as a fundamental solution because DMA does not remove XIP blocking.
+Engineering consequence:
 
-Implementation consequence:
+- storage read success today means “the canonical block parser accepted the current byte shape,” not “full blockchain semantic validity was proven,”
+- and storage docs should not overstate what block parsing currently guarantees.
 
-- a simpler blocking implementation can still be the correct engineering choice,
-- provided the system-level effects of the blocking operation are handled deliberately.
+The exact parser constraints belong primarily in [moonblokz-storage-algorythm.md](./moonblokz-storage-algorythm.md).
 
-## Storage-Layout Engineering Consequences
+## Hashing semantics have two engineering uses
 
-The article’s storage-unit design implies several practical responsibilities.
+`moonblokz-chain-types` documents `calculate_hash(block.serialized_bytes())` as the normal canonical hashing pattern.
 
-### Sector-aligned partitioning should remain explicit
+The RP2040 backend uses the same hash function but applies it to the fixed 2016-byte slot block area.
 
-Each erase-sized region becomes one storage unit.
+Engineering consequence:
 
-Implementation consequence:
+- there is one canonical hash algorithm,
+- but storage uses it in a storage-integrity context rather than only in a logical block-identity context,
+- so documentation must distinguish “canonical algorithm” from “exact byte range hashed in one backend.”
 
-- storage code should model units explicitly,
-- not merely raw offsets,
-- because integrity handling, replacement, and recovery all operate at unit granularity.
+## Public API Engineering Consequences
 
-### Block bytes must remain reproducible and verifiable
+## Synchronous `no_std` contract is a hard constraint
 
-Because each stored block carries a stored hash computed from the block bytes:
+The trait remains synchronous and `no_std`.
 
-- block serialization must be deterministic,
-- read-back verification must use the exact stored bytes,
-- and incomplete writes must be detectable by recomputation.
+Engineering consequence:
 
-### Control data should remain a single coherent record
+- callers must integrate storage into synchronous control flow,
+- backends cannot assume async runtime ownership,
+- and design choices that require asynchronous coordination belong outside the current crate boundary.
 
-The control unit is treated as a compact recovery bundle.
+## `ControlPlaneData` is intentionally minimal
 
-Implementation consequence:
+The public control-plane data struct omits convenience derives such as `Debug` and `Clone` in production builds.
 
-- it is reasonable to implement control data as one serialized structure with one checksum,
-- rather than as many separately mutable small records,
-- because the article’s recovery logic expects whole-copy validation and fallback.
+Engineering consequence:
 
-### Fixed-length initialization parameters imply reserved payload space
+- embedded binary-size discipline is a first-class implementation concern,
+- and future additions to public data models should be justified carefully.
 
-The article defines a fixed **100-byte** initialization-parameter field.
+## Error model is intentionally coarse but typed
 
-Implementation consequence:
+The public error enum uses a small number of semantically meaningful categories plus backend-local numeric I/O codes.
 
-- storage structures should preserve this fixed reservation exactly as part of the control record,
-- even though MoonBlokz itself does not interpret the field.
+Engineering consequence:
 
-## Integrity and Recovery Engineering Consequences
+- contract users can write deterministic recovery logic against the named variants,
+- while backend maintainers still retain a narrow escape hatch for backend-specific failures.
 
-The article’s integrity rules are simple, but they have direct implementation implications.
+## Memory Backend Engineering Consequences
 
-### Stored-hash validation should happen before trusting block contents
+## Storage is byte-array-backed and compile-time sized
 
-Implementation consequence:
+`MemoryBackend<const STORAGE_SIZE: usize>` stores one flat byte array.
 
-- block-loading paths should verify the stored hash before treating the block as usable persisted data,
-- and corruption handling should treat a mismatch as invalid local storage rather than as proof of invalid blockchain authorship.
+Engineering consequence:
 
-### CRC validation should gate use of control copies
+- all geometry is compile-time predictable,
+- capacity is deterministic,
+- and tests can use exact-size fixtures to validate slot boundaries.
 
-Implementation consequence:
+## Control-plane region is packed, block plane is slot-linear
 
-- startup logic should validate the primary control copy first,
-- then fall back through backups,
-- and should not silently merge partially valid control fragments across copies, because the article describes whole-copy fallback.
+Unlike the RP2040 backend, the memory backend reserves only the exact control-plane entry bytes it needs, not full 4 KB pages.
 
-### Recovery strategy is class-dependent
+Engineering consequence:
 
-Implementation consequence:
+- the memory backend is contract-oriented rather than hardware-faithful,
+- and it should not be mistaken for a flash-geometry simulator.
 
-- block corruption should trigger re-fetch or repopulation logic,
-- while control corruption should trigger backup-copy selection,
-- because the article assigns different recovery mechanisms to the two data classes.
+## Block storage is zero-cleared and parseability-based
 
-## Wear-Distribution Engineering Consequences
+The memory backend zeros the target slot before writing a block, and later treats `slot[0] == 0` as empty.
 
-The article’s lifetime reasoning depends on an implementation property that should remain explicit: block rewrites should be spread over the available block-storage space rather than concentrated in a few locations.
+Engineering consequence:
 
-Implementation consequence:
+- slot emptiness depends on the chain-types non-zero block-version invariant,
+- and corruption detection is weaker than the RP2040 backend because the memory backend relies on parseability rather than stored-hash verification.
 
-- replacement behavior must preserve the intended broad distribution of erases,
-- because the durability argument depends on it.
+## Fixed-slot parsing is currently accepted by chain-types
 
-The article does not define the exact bookkeeping mechanism for this distribution, so the knowledge base should not pretend that one specific allocator or ring-buffer design is already mandated.
+The memory backend reads blocks by passing the entire fixed slot buffer into `Block::from_bytes()`.
 
-## Capacity-Planning Consequences
+Engineering consequence:
 
-The article’s example calculations create practical planning duties.
+- fixed-slot padding is currently tolerated by the canonical parser in this backend path,
+- and any future tightening of `Block::from_bytes()` could change memory-backend read behavior.
 
-### Firmware reservation must be explicit
+This is a real compatibility-sensitive boundary between the two crates.
 
-The storage calculation only works after reserving space for:
+## Replica repair happens in-memory too
 
-- the application binary,
-- and the control storage units.
+The memory backend implements the same “first valid replica, then repair invalid replicas” logic as the RP2040 backend.
 
-Implementation consequence:
+Engineering consequence:
 
-- deployment-specific flash maps matter,
-- and a storage implementation should make the reserved regions explicit rather than implicit.
+- control-plane semantics are intentionally kept aligned across backends even when block-plane integrity behavior differs.
 
-### Fork headroom must not be consumed accidentally
+## RP2040 Backend Engineering Consequences
 
-The article’s 2 MB example distinguishes chain capacity from extra fork headroom.
+## Geometry is page-centric even though the API is slot-centric
 
-Implementation consequence:
+The RP2040 backend exposes indexed slot operations publicly, but internally it rewrites full 4096-byte pages.
 
-- implementations should preserve the idea that not all stored blocks belong to the ideal main chain length,
-- because extra capacity is intentionally reserved for unresolved forks.
+Engineering consequence:
 
-## Security Boundary Explicitly Left by the Article
+- one logical slot write is implemented as read-page, mutate-slot, erase-page, write-page,
+- page buffering is unavoidable in the current design,
+- and write amplification exists at page granularity.
 
-The article acknowledges a security trade-off in storing the private key directly in flash.
+## `data_storage_start_address` is a critical integration parameter
 
-Implementation consequence:
+The RP2040 backend does not own the full flash map. Instead, it receives a start address for the region reserved to MoonBlokz storage.
 
-- this design assumes accidental corruption is a more immediate concern than physical key extraction,
-- and deployments with stronger physical-security requirements may need secure-element or equivalent protection.
+Engineering consequence:
 
-This should be documented as a threat-model boundary, not silently treated as universally sufficient key protection.
+- the embedding firmware must allocate storage space explicitly,
+- must keep that start address page-aligned,
+- and must account for three reserved control-plane pages at the start of the storage region.
 
-## Important Open Engineering Questions
+## Hash metadata is stored per slot, not per page as one summary
 
-The article leaves several implementation-relevant points open.
+The current backend stores one hash next to each fixed-size block area.
 
-It does not fully specify:
+Engineering consequence:
 
-- the concrete crate/module API of `moonblokz-storage`,
-- the exact serialized control-record format,
-- the exact on-flash directory or lookup scheme for blocks,
-- how startup scanning discovers valid units efficiently,
-- how writes are coordinated with radio activity in a full runtime,
-- how corruption events are surfaced to higher layers,
-- or whether future targets beyond RP2040 must preserve the same unit sizes.
+- integrity verification is local to each slot,
+- not tied to a page-level manifest,
+- and partial-slot corruption can be detected independently of other slots in the same page.
 
-These are real design questions, but they are not settled by the article and should remain explicitly open in the knowledge base.
+## RP2040 hash range is fixed-size, not logical-length
 
-## Engineering Guidance That Follows Directly from the Article
+The current backend computes the stored hash over the full fixed-size block region, not just the logical `serialized_bytes()` prefix.
 
-Without inventing missing detail, the article still supports several concrete implementation guidelines:
+Engineering consequence:
 
-- preserve flash semantics in the storage abstraction instead of hiding them,
-- keep block and control persistence paths distinct,
-- validate stored bytes before trusting them,
-- treat crash recovery as integrity-checked acceptance plus fallback,
-- reserve storage space explicitly for firmware and redundant control units,
-- and preserve wide wear distribution as a design invariant.
+- the stored integrity hash covers the padded slot representation,
+- and this should remain explicit in any future optimization or migration work.
 
-## Review Notes
+## Empty-flash semantics are represented as `0xFF`
 
-Post-change review against `moonblokz-info` documentation rules:
+The RP2040 backend treats all-`0xFF` slots as absent, which matches erased-flash expectations.
 
-- **Consistency:** This document remains aligned with the concept and algorithm storage files and keeps RP2040/XIP/Embassy concerns in the implementation layer.
-- **Logical soundness:** It focuses on engineering consequences rather than re-explaining the full storage concept or repeating all sizing formulas.
-- **Feasibility:** The notes describe a realistic embedded implementation direction without claiming missing repository details as settled.
-- **Redundancy:** Formal rules and conceptual motivations are referenced back to the companion storage files rather than duplicated in full.
-- **Source fidelity:** Every implementation recommendation is grounded in explicit statements or direct engineering consequences of the cited article.
+Engineering consequence:
+
+- startup and retrieval behavior distinguish erased flash from malformed persisted data,
+- and test fixtures can model partial writes by manually constructing non-`0xFF` slots with broken hashes.
+
+## Host-side mock flash is part of the implementation strategy
+
+On non-ARM or test builds, the RP2040 backend uses an in-memory `MockFlash` with the same read/erase/write surface.
+
+Engineering consequence:
+
+- most geometry, integrity, and error-path logic can be tested off-device,
+- while the public backend contract remains the same,
+- and backend-local error codes 230–232 are reserved for mock-flash failures.
+
+## Control-plane Implementation Consequences
+
+## Control-plane layout is duplicated intentionally across backends
+
+Both backends independently serialize and deserialize a logically equivalent control-plane record rather than sharing one backend implementation helper.
+
+Engineering consequence:
+
+- backend isolation is preserved,
+- but compatibility between the two implementations must be maintained intentionally through tests and review.
+
+## Control-plane compatibility is tied to runtime constants
+
+Persisted `PRIVATE_KEY_SIZE`, `INIT_PARAMS_SIZE`, and `MAX_BLOCK_SIZE` are checked against current binary constants.
+
+Engineering consequence:
+
+- changing these constants is a persisted-data compatibility event,
+- and storage docs, release notes, and migration expectations should treat such changes seriously.
+
+## Chain configuration storage uses canonical block round-tripping
+
+Both backends reconstruct the saved configuration as `Block::from_bytes(block.serialized_bytes())` before persisting.
+
+Engineering consequence:
+
+- this preserves canonical serialized-byte behavior,
+- and it avoids silently storing a block value that cannot round-trip through the canonical block parser.
+
+## Testing and Conformance Consequences
+
+## Shared conformance focuses on public semantics, not full mechanical identity
+
+The current conformance tests validate:
+
+- round-trip save/read behavior,
+- absent-slot behavior,
+- invalid-index behavior,
+- capacity-boundary behavior,
+- mixed startup-scan style reads.
+
+Engineering consequence:
+
+- public behavior parity is the current required invariant,
+- but backend internals are still allowed to differ where explicitly intended.
+
+## RP2040 tests go beyond public conformance
+
+The RP2040 backend includes tests for:
+
+- page-boundary mapping,
+- hash mismatch detection,
+- malformed slot detection,
+- partial-slot detection,
+- control-plane repair,
+- and start-address alignment validation.
+
+Engineering consequence:
+
+- the RP2040 backend currently carries the stronger integrity specification in practice,
+- and future backends should document clearly whether they match RP2040-style integrity or only shared conformance semantics.
+
+## Example and Distribution Consequences
+
+## Examples encode the intended integration flow
+
+The README and example projects reinforce a simple pattern:
+
+1. call `load_control_data()`
+2. if uninitialized, call `init(...)`
+3. save blocks by index
+4. read blocks back by index
+
+Engineering consequence:
+
+- this is the current intended use shape for integrators,
+- and documentation should continue to present storage as a direct chain-runtime dependency rather than an autonomous storage service.
+
+## Git dependency is still the primary integration model
+
+The README states Git dependency as the recommended current integration path, with crates.io as a later phase.
+
+Engineering consequence:
+
+- API stability matters now, even before registry publication,
+- and repository consumers may track commit-level changes closely.
+
+## Important Current Boundaries and Risks
+
+## The crate does not yet implement full article-era storage policy
+
+The current implementation does not manage:
+
+- bounded-chain movement,
+- automatic replacement policy,
+- replay scheduling,
+- wear-leveling policy beyond current page/slot mapping,
+- or network recovery of corrupted blocks.
+
+These remain external responsibilities.
+
+## Page rewrite cost is real on RP2040
+
+The current RP2040 implementation’s correctness depends on whole-page buffering and rewrite.
+
+Engineering consequence:
+
+- future optimization work must preserve hash correctness, page mapping, and control-plane reservation semantics,
+- and must not silently change slot layout or absent-slot detection.
+
+## Persisted constant changes are compatibility-sensitive
+
+Because control-plane compatibility checks include embedded size constants, future changes to core constants can strand old persisted control data unless a migration strategy is added.
+
+## Chain-types changes are storage compatibility events
+
+Because storage depends directly on canonical block layout, version invariants, and hash size:
+
+- changes to `MAX_BLOCK_SIZE`,
+- changes to block parsing strictness,
+- changes to the `version == 0` reservation,
+- or changes to the canonical hash contract
+
+are all storage-relevant compatibility events and should be treated as such in both documentation and release planning.

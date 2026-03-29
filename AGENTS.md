@@ -18,6 +18,12 @@ If a detail is missing from the source materials, it must not be introduced into
 
 If the knowledge base and the current source materials diverge, the discrepancy must be called out explicitly and must not be ignored silently.
 
+## Scope and Compactness
+
+The knowledge base may become part of any MoonBlokz-related context, so its size must remain as small as possible while preserving the necessary information content.
+
+Only actual knowledge-base content should be stored in its Markdown files. Material that does not belong to the knowledge itself, such as review notes, must not be written into the knowledge-base files.
+
 ## Modification Rules
 
 If any inconsistency, illogical addition, or non-implementable solution is identified during any modification, the issue must be flagged immediately and clarified with the user. The problem must be identified explicitly, and the resolution decision must be left to the user.
@@ -54,3 +60,5 @@ When modifying an existing knowledge-base file under `moonblokz-info`:
 ## Post-Change Validation
 
 After every knowledge base modification, a consistency, logical soundness, feasibility, redundancy, and source-fidelity review must be performed.
+
+The review must be carried out, but its results must be returned in the response rather than stored in the knowledge-base Markdown files.

@@ -596,11 +596,3 @@ This document should be read as the answer to these questions:
 
 - [moonblokz-crypto-concept.md](./moonblokz-crypto-concept.md)
 - [moonblokz-crypto-implementation.md](./moonblokz-crypto-implementation.md)
-
-## Review Notes
-
-Post-change review against `moonblokz-info` rules:
-
-- **Consistency:** This document now uses the same signature-role terminology as the companion crypto documents and remains focused on formal API, constants, serialization, and behavior.
-- **Logical soundness:** It separates formal code behavior from higher-level rationale and lower-level engineering cautions, while treating the codebase as authoritative.
-- **Feasibility:** The model described here is directly implementable and testable because it is derived from the existing library rather than from aspirational future behavior.

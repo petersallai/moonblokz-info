@@ -22,17 +22,17 @@ Use this file when you want to understand the project from a product, vision, an
 
 ### 2. [MoonBlokz Technology and Architecture](./moonblokz-technology.md)
 
-A technical foundation document based on Part II of the Medium series.
+A project-level technology and architecture summary that keeps the Part II foundations but is updated using the broader MoonBlokz knowledge base.
 
 This document explains:
 
-- why Rust was selected,
-- how the project is structured as a portable core library,
-- which modules and integration boundaries shape the architecture,
-- how storage, crypto, randomness, clock, and radio are treated,
-- and what technical decisions are already established versus intentionally deferred.
+- why Rust and embedded-first design still shape the project,
+- which architectural invariants connect blockchain, crypto, radio, storage, telemetry, and simulator work,
+- how the major subsystems fit together as one bounded portable system,
+- which implementation-grounded updates sharpen the original Part II framing,
+- and which technology boundaries and open questions must remain explicit.
 
-Use this file when you want to understand the technology stack, architectural direction, and platform abstraction model behind MoonBlokz.
+Use this file when you want a single architectural summary of how MoonBlokz is built before reading the subsystem-specific documents.
 
 ### 3. [MoonBlokz Blockchain Concept Model](./moonblokz-blockchain-concept.md)
 
@@ -267,63 +267,50 @@ Use this file when you want implementation guidance that complements the concept
 
 ### 18. [MoonBlokz Storage Concept Model](./moonblokz-storage-concept.md)
 
-A conceptual storage document based on Part VIII of the MoonBlokz series.
+A conceptual storage document grounded in the current `moonblokz-storage` and `moonblokz-chain-types` codebases.
 
 This document explains:
 
-- why onboard storage becomes a first-class subsystem in MoonBlokz,
-- why microcontroller flash cannot be treated like an ordinary filesystem,
-- how `snake_chain` makes bounded blockchain storage possible,
-- what data must survive persistently on the node,
-- why block data and control data are separated,
-- and why redundancy, integrity checking, and crash tolerance shape the storage design.
+- why the storage crate is modeled as a narrow embedded contract rather than a full blockchain database,
+- how the current crate separates control-plane persistence from indexed block persistence,
+- why backend portability is implemented through compile-time feature selection,
+- how the canonical block and hash contracts from `moonblokz-chain-types` constrain storage behavior,
+- how the current memory and RP2040 backends differ conceptually,
+- and where the current implementation narrows or sharpens the earlier Part VIII article framing.
 
-Use this file when you want to understand the role, design philosophy, and conceptual trade-offs of MoonBlokz onboard storage before reading the more formal or implementation-facing storage notes.
+Use this file when you want to understand the role, current design philosophy, and conceptual trade-offs of MoonBlokz storage before reading the more formal or implementation-facing storage notes.
 
 ### 19. [MoonBlokz Storage Algorithm Model](./moonblokz-storage-algorythm.md)
 
-A formal, algorithm-oriented storage document based on Part VIII of the MoonBlokz series.
+A formal, algorithm-oriented storage document grounded in the current `moonblokz-storage` implementation and the canonical `moonblokz-chain-types` block and hash contracts.
 
 This document explains:
 
-- the formal persisted-data categories,
-- the storage-unit model built around flash erase regions,
-- the block-capacity sizing formula,
-- the stored-hash and CRC-based integrity rules,
-- the redundancy and fallback behavior for control data,
-- the crash-recovery rules for invalid or interrupted writes,
-- and the wear-lifetime estimation logic used to justify the design.
+- the current public storage API contract,
+- the control-plane record and replica-repair model,
+- the upstream block-size and hash constraints storage depends on,
+- the memory-backend slot rules,
+- the RP2040 page and slot mapping rules,
+- the current integrity and error semantics,
+- and the backend conformance expectations visible in tests.
 
-Use this file when you want the main formal description of the MoonBlokz storage model described in the onboard-storage article.
+Use this file when you want the main formal description of the currently implemented MoonBlokz storage behavior.
 
 ### 20. [MoonBlokz Storage Implementation Notes](./moonblokz-storage-implementation.md)
 
-An implementation-support storage document based on Part VIII of the MoonBlokz series.
+An implementation-support storage document grounded in the current `moonblokz-storage` repository and its dependency on `moonblokz-chain-types`.
 
 This document explains:
 
-- what engineering constraints follow from RP2040 flash behavior,
-- how XIP affects persistent-write design,
-- why Embassy’s flash API shape matters,
-- what practical consequences follow from sector-aligned storage units,
-- how integrity checking, redundancy, and wear distribution affect engineering choices,
-- and which implementation details remain explicitly open in the source material.
+- the current crate structure and feature model,
+- what engineering consequences follow from the memory and RP2040 backend split,
+- how the canonical block layout and hash contract shape storage geometry and parsing behavior,
+- how the RP2040 backend encodes flash geometry and host-side testing,
+- what compatibility and binary-size considerations are explicit today,
+- and which implementation boundaries remain open.
 
-Use this file when you want implementation guidance that complements the conceptual and algorithm storage documents without inventing details beyond the article.
+Use this file when you want implementation guidance that complements the conceptual and algorithm storage documents while staying grounded in the current codebase.
 
-### 21. [MoonBlokz Radio Documentation Discrepancies](./moonblokz-radio-doc-discrepancies.md)
-
-A discrepancy summary document comparing the earlier VII/1–VII/3 radio article framing with the current `moonblokz-radio-lib` implementation.
-
-This document explains:
-
-- where the current code is narrower than the earlier conceptual radio descriptions,
-- which radio ideas were confirmed and made more concrete by implementation,
-- how the current runtime, relaying, recovery, and backend model sharpen earlier summaries,
-- which article-era features should now be read as future extensions rather than present behavior,
-- and how future documentation should distinguish current implementation from long-term intent.
-
-Use this file when you want a quick reconciliation between the historical radio design narrative and the current codebase-grounded documentation.
 
 ## Suggested Reading Order
 
@@ -347,14 +334,3 @@ Use this file when you want a quick reconciliation between the historical radio 
 18. Then read [MoonBlokz Storage Concept Model](./moonblokz-storage-concept.md) to understand why bounded blockchain persistence on flash is possible at all and how MoonBlokz separates recoverable block data from recovery-critical control data.
 19. Continue with [MoonBlokz Storage Algorithm Model](./moonblokz-storage-algorythm.md) for the formal storage-unit layout, integrity-check rules, redundancy behavior, crash recovery, and wear-lifetime model.
 20. Continue with [MoonBlokz Storage Implementation Notes](./moonblokz-storage-implementation.md) for RP2040/XIP/Embassy engineering consequences, capacity-planning cautions, and explicitly open storage design questions.
-21. Use [MoonBlokz Radio Documentation Discrepancies](./moonblokz-radio-doc-discrepancies.md) when you need to compare the earlier VII/1–VII/3 article narrative with the current code-grounded radio documents.
-
-## Review Notes
-
-Post-change review against `moonblokz-info` documentation rules:
-
-- **Consistency:** The index now includes a dedicated three-file storage document set in addition to the existing blockchain, crypto, radio, simulator, and telemetry groups.
-- **Logical soundness:** The file presents a staged path from overall MoonBlokz context through blockchain, crypto, radio, simulator, telemetry, and finally onboard storage, which depends on the earlier `snake_chain` and embedded-platform constraints.
-- **Feasibility:** The updated structure remains simple and maintainable while giving future readers a clear path from protocol behavior into persistent-storage design.
-- **Redundancy:** Each large topic keeps the same concept / algorythm / implementation split, reducing overlap and making navigation more predictable.
-- **Source fidelity:** The new storage entries are explicitly scoped to Part VIII and do not claim broader implementation detail than that source provides.

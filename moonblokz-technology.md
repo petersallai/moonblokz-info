@@ -2,362 +2,507 @@
 
 ## Purpose of This Document
 
-This document summarizes the technology selection and the high-level architecture introduced in Part II of the MoonBlokz series. Its goal is to capture the project's technical foundation in a form that is useful for planning, implementation, documentation, and future architectural review.
+This document provides a project-level summary of MoonBlokz technology and architecture across the current knowledge base.
 
-The document focuses on what the article explicitly establishes and extends it with carefully bounded architectural interpretation where that helps clarify implementation consequences.
+Its role is to explain how MoonBlokz is built as a whole:
+
+- which technology choices define the project,
+- which architectural boundaries are stable across subsystems,
+- how the major repositories and runtime components fit together,
+- and which constraints must remain visible when planning or implementing changes.
+
+This document is intentionally broader than the original Part II technology article. It keeps the Part II architectural foundations, but it is updated to reflect the current blockchain, crypto, radio, simulator, telemetry, and storage documents.
 
 ## Source Basis
 
-This document is based on:
+This document is based on the following knowledge-base sources:
 
-- **MoonBlokz series part II. — Technologies & Architecture** by Peter Sallai, published on Medium on February 25, 2025.
+- [`moonblokz-overview.md`](./moonblokz-overview.md)
+- [`moonblokz-blockchain-concept.md`](./moonblokz-blockchain-concept.md)
+- [`moonblokz-blockchain-algorythm.md`](./moonblokz-blockchain-algorythm.md)
+- [`moonblokz-blockchain-implementation.md`](./moonblokz-blockchain-implementation.md)
+- [`moonblokz-crypto-concept.md`](./moonblokz-crypto-concept.md)
+- [`moonblokz-crypto-algorythm.md`](./moonblokz-crypto-algorythm.md)
+- [`moonblokz-crypto-implementation.md`](./moonblokz-crypto-implementation.md)
+- [`moonblokz-radio-concept.md`](./moonblokz-radio-concept.md)
+- [`moonblokz-radio-algorythm.md`](./moonblokz-radio-algorythm.md)
+- [`moonblokz-radio-implementation.md`](./moonblokz-radio-implementation.md)
+- [`moonblokz-simulator-concept.md`](./moonblokz-simulator-concept.md)
+- [`moonblokz-simulator-algorythm.md`](./moonblokz-simulator-algorythm.md)
+- [`moonblokz-simulator-implementation.md`](./moonblokz-simulator-implementation.md)
+- [`moonblokz-telemetry-concept.md`](./moonblokz-telemetry-concept.md)
+- [`moonblokz-telemetry-algorythm.md`](./moonblokz-telemetry-algorythm.md)
+- [`moonblokz-telemetry-implementation.md`](./moonblokz-telemetry-implementation.md)
+- [`moonblokz-storage-concept.md`](./moonblokz-storage-concept.md)
+- [`moonblokz-storage-algorythm.md`](./moonblokz-storage-algorythm.md)
+- [`moonblokz-storage-implementation.md`](./moonblokz-storage-implementation.md)
 
-## Project Goal and Technical Framing
+## Project-Level Technology Framing
 
-MoonBlokz is a hyper-local DePIN blockchain designed for constrained devices that communicate over radio instead of depending on continuous, high-bandwidth internet connectivity. Part II does not redefine the strategic vision from Part I; instead, it turns that vision into an initial technology and architecture direction.
+MoonBlokz is a hyper-local DePIN blockchain for constrained devices that communicate over unreliable low-bandwidth radio instead of depending on globally available internet infrastructure.
 
-At this stage, the article answers a practical question:
+At a technology level, MoonBlokz is not one single executable or one isolated repository. It is a coordinated system made of several focused Rust codebases and companion tools that together support:
 
-> Given the constraints of microcontrollers, weak radio communication, and the need to run both on embedded devices and regular computers, what technology stack and architectural shape make MoonBlokz implementable?
+- blockchain state propagation over radio,
+- bounded on-device persistence,
+- cryptographic signing and aggregation,
+- simulation and replay-based analysis,
+- and out-of-band telemetry, command, and update workflows.
 
-The answer in Part II is built around three framing decisions:
+The overall architecture is shaped by a small set of non-negotiable environmental assumptions:
 
-- the implementation language should work well on both embedded targets and computers,
-- the reusable blockchain logic should live in a portable library,
-- and hardware- or platform-specific behavior should be abstracted behind integration modules provided by the embedding application.
+- nodes may have very limited RAM and flash,
+- radio links are weak, local, delayed, and lossy,
+- global time cannot be assumed,
+- some hardware lacks true random generation or crypto acceleration,
+- and field testing needs observability that must not distort the LoRa mesh itself.
 
-This makes Part II the first concrete architectural foundation of the project.
+These assumptions are not local implementation details. They define the architecture of the whole project.
 
-## Business Analyst View: What Problem the Technology Must Solve
+## Core Technology Direction
 
-From a business and requirements perspective, the technology choices in Part II are not independent engineering preferences. They are direct responses to the operating conditions defined for MoonBlokz.
+## Rust as the Unifying Implementation Language
 
-The project needs a technical foundation that can support:
+MoonBlokz is built around Rust because the project needs one technology stack that can span:
 
-- deployment on small, resource-constrained devices,
-- operation in environments with unreliable or low-bandwidth communication,
-- portability across multiple hardware setups,
-- extension toward a broader local economic platform,
-- and a development model that reduces the probability of subtle implementation bugs in a safety-critical distributed system.
+- embedded targets,
+- desktop tools,
+- command-line utilities,
+- and server-side telemetry components.
 
-Seen from that perspective, the article establishes that MoonBlokz is not simply a blockchain implementation project. It is a portability and systems-integration project that must preserve the same conceptual behavior across very different runtime environments.
+Rust is therefore not only a language preference. It is the main portability mechanism that lets MoonBlokz keep shared engineering practices across very different runtime environments while still targeting constrained hardware.
 
-That requirement strongly influences the architecture:
+Across the current knowledge base, this decision is reinforced by recurring implementation patterns:
 
-- core blockchain logic must be reusable,
-- hardware dependencies must be isolated,
-- and APIs must be designed around capabilities rather than specific devices.
+- explicit type-driven APIs,
+- compile-time feature selection,
+- bounded memory strategies,
+- and careful separation between portable logic and environment-specific adapters.
 
-## Why Rust Was Chosen
+## `no_std` Orientation and Embedded Discipline
 
-Part II evaluates the implementation language primarily through the lens of embedded viability and software quality.
+The original MoonBlokz architecture treated the portable core as `no_std`-friendly, and the current subsystem documents still reflect that embedded-first discipline.
 
-The article reviews several options:
+This does not mean every repository is `no_std`. Some tools are desktop or server applications and depend on `std`. Instead, it means the project consistently favors designs that are compatible with constrained environments whenever that is practical:
 
-- **C/C++** offer mature embedded support, broad library availability, and strong performance, but provide less protection against common bugs and weak design patterns.
-- **MicroPython** works on many microcontrollers, but is not positioned as the best choice when the system needs to extract maximum hardware performance.
-- **Other languages** are described as either unsuitable for effective embedded development or unsuitable as a single language spanning both microcontrollers and computers.
-- **Rust** is selected because it combines near-C/C++ performance with stronger support for safer and more idiomatic software design.
+- narrow public contracts,
+- static or bounded allocation strategies in hot paths,
+- explicit queue sizing,
+- binary-oriented serialization,
+- and cooperative processing instead of hidden autonomous runtime behavior.
 
-The article frames Rust as the best balance between low-level control and high-level language support. This is important for MoonBlokz because the project combines several difficult concerns at once:
+## Compile-Time Replaceability
 
-- embedded execution,
-- protocol correctness,
-- cryptographic operations,
-- radio communication,
-- and cross-platform portability.
+A strong cross-cutting pattern in the current codebase is compile-time backend selection.
 
-The explicit reason for choosing Rust is therefore not novelty. It is risk reduction without giving up performance.
+This appears in multiple subsystems:
 
-## Consequences of the Rust Decision
+- crypto chooses one algorithm family and one concrete backend at build time,
+- radio chooses one device backend and one memory profile at build time,
+- storage chooses exactly one backend at build time,
+- and host versus embedded execution differences are made explicit rather than hidden.
 
-The language choice immediately constrains the project in ways the article makes explicit.
+Architecturally, this means MoonBlokz prefers stable public interfaces with replaceable implementations behind them, instead of one universal runtime abstraction layer with dynamic dispatch everywhere.
 
-### Supported prototype hardware is limited to Rust-capable embedded targets
+## The Main Architectural Invariants
 
-Because MoonBlokz is implemented in Rust, the first prototype must use a microcontroller platform with sufficiently mature Rust support. The article selects RP2040-based devices as the initial direction and names concrete examples with integrated or attachable LoRa hardware.
+The current knowledge base establishes several project-wide invariants that should guide future work.
 
-This is a practical scoping decision:
+### 1. Best-effort operation is normal
 
-- it narrows the hardware search space,
-- it allows the project to move forward with real devices,
-- and it keeps the prototype grounded in available toolchains.
+MoonBlokz is designed for unreliable communication. The radio layer does not provide guaranteed delivery, and the blockchain layer does not assume strict global ordering.
 
-### Initial distribution model is source-code based
+Instead, the system uses:
 
-The article states that MoonBlokz can only be distributed as source code at this stage. This reflects both the realities of Rust-based embedded development and common embedded distribution patterns.
+- best-effort propagation,
+- reactive recovery of missing information,
+- staged validation,
+- and eventual convergence where conditions permit.
 
-This has several downstream implications:
+This principle affects the entire architecture, not just the radio code.
 
-- adopters need a build environment,
-- hardware-specific builds remain the responsibility of the integrator or deployer,
-- and release management is likely to be more artifact-fragmented than for a single packaged desktop or server application.
+### 2. Bounded resources are part of correctness
 
-The article also notes that source distribution does **not** automatically imply open source. That decision remains open.
+MoonBlokz treats limits on airtime, RAM, flash, queue depth, and payload size as architectural constraints.
 
-## High-Level Architectural Model
+The project therefore consistently favors:
 
-Part II introduces MoonBlokz as a reusable Rust library that can be embedded into different applications. The planned library name is `moon_blokz_lib`.
+- bounded queues,
+- bounded signature aggregation,
+- bounded storage windows,
+- bounded telemetry buffers,
+- and deterministic overload behavior.
 
-This library-centric approach is a major architectural decision. Instead of treating MoonBlokz as a single monolithic executable, the article defines it as a portable core that can be integrated into multiple runtime environments.
+In MoonBlokz, “resource bounds” are not merely optimization concerns. They are part of the design contract.
 
-The library is planned as a `no_std` library.
+### 3. Data size is a protocol concern
 
-This matters for two reasons:
+The knowledge base repeatedly shows that serialization size is tied to radio fragmentation, flash layout, replay cost, and fee pressure.
 
-- a `no_std` library can run in embedded environments without relying on the standard library,
-- and the same library can still be used from standard applications on computers.
+As a result:
 
-This design directly supports one of the project's stated needs: portability across microcontrollers and computer-based tooling or companion applications.
+- binary representation matters,
+- compact encodings matter,
+- large objects must be fragmented or compressed carefully,
+- and richer payloads are never free from a protocol perspective.
 
-## Core Library Modules
+This is one of the clearest project-wide connections between blockchain, crypto, radio, and storage.
 
-The article identifies four main modules inside the library.
+### 4. Global time is intentionally avoided
 
-### BlockChain
+MoonBlokz assumes local elapsed-time measurement but not reliable shared wall-clock time.
 
-The `BlockChain` module is responsible for blockchain management and related algorithms.
+That affects multiple layers:
 
-This is the domain core of the system. It is where chain handling logic belongs, including the rules and structures needed to maintain blockchain state.
+- blockchain uniqueness and sequencing cannot depend on synchronized timestamps,
+- radio behavior is driven by local timers and pacing,
+- simulator time is synthetic and explicitly controlled,
+- and telemetry coordination uses polling intervals and server policy rather than a global time model shared with the mesh.
 
-### MoonBlokzNetwork
+### 5. Control and observability stay explicit
 
-The `MoonBlokzNetwork` module is described as the central facade of the library.
+MoonBlokz prefers explicit control flow over hidden background behavior.
 
-Its role is to:
+This appears in:
 
-- expose a local API to the embedding program,
-- connect the other internal modules,
-- and present MoonBlokz functionality as a coherent subsystem rather than a loose set of primitives.
+- host-owned event loops and processing steps,
+- explicit radio pipeline tasks,
+- explicit application feedback to the radio layer,
+- explicit analyzer replay behavior,
+- and explicit command / update paths in the telemetry stack.
 
-Architecturally, this suggests that the library should be consumed through a clear orchestration boundary instead of requiring external code to coordinate low-level internals manually.
+This design style improves predictability on constrained systems and makes field behavior easier to inspect.
 
-### Communication
+### 6. Telemetry and control are out-of-band
 
-The `Communication` module contains the implementation-independent parts of radio communication, such as relaying algorithms.
+The telemetry documents make clear that logging, commands, and OTA updates are operationally important but must not distort the LoRa mesh.
 
-This separation is important. It means the project distinguishes between:
+For that reason, MoonBlokz keeps these concerns outside the radio blockchain network through the Probe, HUB, Collector, CLI, and analyzer integrations.
 
-- communication logic that belongs to MoonBlokz as a protocol system,
-- and hardware-dependent radio mechanics that belong to the embedding environment.
+This is now a core architectural boundary, not an implementation accident.
 
-That boundary is central to long-term portability.
+## System Architecture Overview
 
-### Utils
+At a high level, MoonBlokz is composed of six tightly related technical areas:
 
-The `Utils` module contains utility functions shared by other parts of the library.
+1. **Blockchain** — defines bounded-chain behavior, state reconstruction, approvals, balances, UTXOs, and active-state preservation.
+2. **Crypto** — provides signatures, aggregation-ready signatures, and aggregated evidence through replaceable backends.
+3. **Radio** — provides the bounded message-propagation substrate used to synchronize blockchain-related state over LoRa-class links.
+4. **Storage** — provides compact indexed persistence contracts for control-plane data and canonical block bytes.
+5. **Telemetry** — provides out-of-band logs, command routing, OTA flows, and analysis data collection.
+6. **Simulator / Analyzer** — provides a desktop environment for simulation, live tracking, replay, visualization, and control integration.
 
-The article does not expand on its contents, so this should be treated as a support module rather than a place to infer major domain behavior.
+These are separate subsystems, but they are intentionally interdependent.
 
-## Required External Integration Modules
+## Subsystem Roles and Architectural Boundaries
 
-The library is not meant to operate in isolation. The embedding program must provide several external modules or services so the library can function on a concrete platform.
+### Blockchain
 
-This is one of the most important architectural ideas in Part II: MoonBlokz keeps its portable logic in the library and pushes environment-specific concerns to integration boundaries.
+The blockchain subsystem is not modeled as an infinite globally ordered chain. It is modeled as a block-tree operating under weak connectivity and bounded retention.
 
-### Storage
+Its architectural role is to:
 
-Storage is treated as a special case because the article argues that a very low-level universal storage API would not fit the real diversity of embedded persistence models.
+- reconstruct and maintain useful blockchain state under unreliable propagation,
+- tolerate missing parents and delayed validation,
+- preserve the active economic state through the `snake_chain` retention model,
+- and keep balances, configuration, approval evidence, and live UTXOs reconstructable near the active head.
 
-Two example storage models are described:
+Important project-level implications from the blockchain documents include:
 
-- **memory-mapped plus page-write flash access**, such as on RP2040-style platforms,
-- **file-system-based storage**, where data is managed as files and directories.
+- startup and recovery are first-class states,
+- dominant-chain acquisition is a practical objective before full reconstruction,
+- branch switching and replay are normal protocol work,
+- and chain compactness is tied directly to radio and storage feasibility.
 
-The article explains that these two models differ too much to share a single efficient low-level abstraction. As a result, the storage API should be **higher level**, exposing operations such as saving and querying blockchain blocks rather than raw storage primitives.
-
-The article's example is especially important:
-
-- blocks are binary payloads of roughly 2500 bytes,
-- they are queried by a sequence identifier and a 32-byte hash,
-- and the internal storage strategy may be radically different depending on whether a file system exists.
-
-Architecturally, this means:
-
-- storage abstraction is driven by **data access intent**, not hardware mechanics,
-- storage backends may legitimately use very different internal indexing strategies,
-- and the library should encapsulate the query/store semantics instead of leaking backend assumptions upward.
-
-The article states that two distinct storage implementations will be provided within the library, both built on lower-level APIs supplied by the embedding program.
-
-### Random
-
-Random number generation is needed for several domains:
-
-- cryptography,
-- relay decisions,
-- and selecting transactions to drop when the mempool is full.
-
-The article distinguishes between two deployment cases:
-
-- if the hardware provides a true random number generator, the project can use it broadly,
-- if not, pseudo-random generation is acceptable for most algorithms except initial key generation.
-
-In the second case, the key pair must be generated externally and copied to the node.
-
-This is a meaningful system constraint because it avoids pretending all embedded hardware has the same cryptographic readiness. It also separates:
-
-- what the node must be able to do locally at runtime,
-- from what can be provisioned offline during deployment.
-
-The described API is intentionally simple and provides random values of different types.
+The storage subsystem supports blockchain persistence, but it does **not** own blockchain policy. Retention rules, active-state replay, and branch semantics belong above the storage contract.
 
 ### Crypto
 
-The `Crypto` integration boundary exists because cryptographic functions can be implemented in software but may also be accelerated by hardware on some chipsets.
+The crypto subsystem is designed as a replaceable crate with a stable public role model rather than one hard-coded cryptographic implementation.
 
-The article therefore sets a flexible policy:
+Its architectural role is to provide:
 
-- the library includes a standard implementation,
-- but the architecture should also allow hardware-accelerated crypto when available.
+- direct signatures,
+- aggregation-ready signatures,
+- and aggregated evidence structures
 
-This is a good example of MoonBlokz's portability model. Functional behavior should remain stable while implementation details can vary based on platform capability.
+within explicit embedded limits.
 
-### Clock
+The current documents show that MoonBlokz uses:
 
-The `Clock` module is responsible for elapsed-time measurement rather than for globally synchronized wall-clock time.
+- compile-time backend selection,
+- Schnorr as the practical default family,
+- BLS as an important alternative family,
+- deterministic signing behavior where appropriate,
+- and a hard bound on aggregated evidence size.
 
-This is fully aligned with the project's earlier assumption that nodes do not rely on shared global time. The article says the API should simply provide time in milliseconds.
-
-However, it also highlights one non-trivial requirement: time must continue to increase monotonically even across reboot.
-
-This is architecturally significant because it means the clock abstraction is not just a thin wrapper over a hardware timer. It may require additional persistence or reconstruction logic to preserve monotonic behavior after restart.
-
-The article does not define that solution yet, so this remains an identified requirement rather than a resolved design.
+This means crypto is not a purely isolated utility layer. Its serialization size, verification behavior, and aggregation strategy affect blockchain payload design and radio/storage capacity planning.
 
 ### Radio
 
-The `Radio` module is responsible for hardware-dependent communication behavior.
+The radio subsystem is the synchronization fabric of MoonBlokz. It does not behave like a reliable transport stack.
 
-Its API is intentionally minimal:
+Its architectural role is to provide:
 
-- `send_message` adds a message to the output buffer,
-- `get_received_message` retrieves a message from the input buffer in a non-blocking way,
-- `process` lets the module maintain its input and output buffers as part of the main loop.
+- bounded message transmission and reception,
+- local topology awareness through echo mapping,
+- stateful relaying through the connection matrix and wait pool,
+- packet fragmentation and reassembly for large messages,
+- and reactive self-healing through missing-part and missing-block requests.
 
-This design has several implications:
+The current radio architecture is explicitly organized around a three-task runtime pipeline:
 
-- radio I/O is expected to be buffer-oriented,
-- library integration should avoid blocking behavior,
-- and the runtime model is based on explicit periodic processing rather than hidden background execution.
+- TX Scheduler,
+- Radio Device,
+- RX Handler.
 
-The article also says that this module is responsible for formatting messages to fit radio frames, which means the interface boundary includes not only transport I/O but also frame-shaping concerns tied to the specific radio medium.
+That pipeline, together with the Relay Manager and wait-pool logic, makes radio behavior both bounded and stateful.
 
-## Main Loop and Control Model
+The radio subsystem also depends on the application layer for some validation and duplicate handling decisions. This explicit application/radio contract is an important architectural boundary.
 
-Part II explicitly addresses event-loop ownership.
+### Storage
 
-The article says MoonBlokz state changes are driven by two event classes:
+The storage subsystem is intentionally narrow. It is not a full blockchain database.
 
-- arrival of incoming radio messages,
-- and direct calls from the embedding program, such as creating a new transaction.
+Its architectural role is to provide:
 
-Two architectural options are considered:
+- a compact persistence contract for canonical block bytes,
+- replicated control-plane persistence for recovery-critical metadata,
+- backend-specific integrity handling,
+- and a backend split suitable for both host/testing and RP2040-class deployment.
 
-1. the library owns the event loop and calls user-registered callbacks,
-2. the embedding program owns the event loop and calls into the library during each iteration.
+The current documents establish two conceptual planes:
 
-The article chooses the second option.
+- a **control plane** for critical small metadata such as chain configuration,
+- and a **block plane** for indexed block persistence.
 
-This is an important control-plane decision because it keeps orchestration responsibility in the host application. That approach:
+The current storage design also shows that compatibility checks and replica repair are part of control-plane recovery. This is more precise than the earlier high-level “storage abstraction” framing from Part II.
 
-- simplifies the library's responsibilities,
-- gives the embedding application more control,
-- fits embedded main-loop patterns well,
-- and avoids forcing one runtime model on every target environment.
+### Telemetry
 
-From an architecture standpoint, MoonBlokz is therefore designed as a cooperative subsystem, not as an autonomous runtime container.
+Telemetry is the operational support system for real deployments and test environments.
 
-## Architect View: Key Design Implications
+Its architectural role is to provide:
 
-Viewed as an architecture document, Part II establishes several principles that should shape implementation decisions in the rest of the project.
+- out-of-band log capture,
+- command routing,
+- node and Probe update workflows,
+- centralized policy such as polling intervals,
+- delayed and ordered download for collectors,
+- and data paths for analyzer and live-tracking tools.
 
-### 1. Core logic and platform adaptation are deliberately separated
+The telemetry architecture is split across three environments:
 
-The architecture is built around a portable core library plus environment-specific adapters. This separation is essential if the same blockchain logic must run on both microcontrollers and computers.
+- the embedded or test-station environment,
+- the cloud coordination environment,
+- and the local analysis / operations environment.
 
-### 2. Abstractions are capability-driven, not hardware-driven
+Within that model, the Probe is the bridge between node-local USB/log/update behavior and the HUB-based coordination layer.
 
-The storage example makes this explicit. MoonBlokz should ask for operations such as storing or querying a block, not for raw flash primitives. This allows radically different persistence strategies without changing the core logic.
+This subsystem is operationally essential, but it is intentionally kept outside the LoRa blockchain/radio path.
 
-### 3. The architecture favors explicit control over hidden runtime behavior
+### Simulator and Analyzer
 
-The chosen event-loop model, non-blocking receive path, and explicit `process` step all point toward a design style where scheduling and control remain visible. This is especially valuable on constrained devices.
+The simulator is not only a development toy. It is a core architectural support tool that reuses the real radio library and connects simulation, observation, and analysis.
 
-### 4. Hardware acceleration is optional, not foundational
+Its architectural role is to provide:
 
-Crypto acceleration and true random generation can improve implementation quality on some targets, but the system is not defined in a way that depends on them universally. This preserves portability.
+- simulation mode for radio-network experiments,
+- real-time tracking of deployed systems through telemetry-fed logs,
+- historical log replay and visualization,
+- scene-based spatial context,
+- connection-matrix inspection,
+- and a desktop UI surface for understanding network behavior.
 
-### 5. Some critical design questions are intentionally deferred
+The simulator therefore acts as a bridge between code-grounded radio behavior and field-observation workflows.
 
-The article deliberately stops at the high-level architectural level. It does not yet define:
+It also makes clear that MoonBlokz values architecture-level testability and observability, not only deployable node runtime behavior.
 
-- blockchain algorithms,
-- detailed data structures,
-- exact storage schemas,
-- monotonic-time recovery across reboot,
-- or precise radio-frame handling rules.
+## Cross-Subsystem Relationships
 
-That is a strength, not a gap, as long as later documents preserve the boundaries introduced here.
+The reviewed documents show several important subsystem relationships.
 
-## Technical Writer View: Recommended Knowledge-Base Interpretation
+### Blockchain, radio, and storage are tightly coupled by size and recovery cost
 
-For knowledge-base purposes, Part II should be treated as the **technology selection and integration-boundary document** of the MoonBlokz series.
+Blockchain objects are larger than many radio payloads, so fragmentation is unavoidable for some message types. That in turn makes missing-part recovery and replay scheduling part of the real protocol behavior.
 
-Part I explains *why* MoonBlokz exists and what constraints define the problem space. Part II explains *what technical foundation* the project chooses in response.
+At the same time, bounded retention means storage cannot simply keep unlimited history. The blockchain therefore depends on replayable active-state preservation near the head, while storage provides only the underlying persistence contract.
 
-The most important documentation takeaways are:
+### Crypto choices affect protocol capacity
 
-- MoonBlokz is centered on a portable Rust core.
-- The core is intended to be `no_std`.
-- The project cleanly separates domain logic from hardware integration.
-- Storage is abstracted at a higher level because backend models vary too widely.
-- The host application owns the main loop.
-- Some requirements are identified early even when implementation details are deferred.
+Signature and aggregated-evidence formats influence:
 
-This framing is useful because it helps later documents stay consistent. Future protocol, networking, storage, and runtime details should build on these boundaries rather than accidentally collapsing them.
+- blockchain payload size,
+- radio fragmentation pressure,
+- serialization contracts,
+- and verification cost.
 
-## Key Architectural Principles Established in Part II
+For MoonBlokz, cryptography is therefore partly a capacity-planning concern.
 
-The following principles are directly supported by the article and should be preserved across the codebase and documentation.
+### Telemetry and simulator form the observability layer around the mesh
 
-- **Rust-first implementation strategy:** prioritize performance with stronger safety guarantees than traditional embedded defaults.
-- **Portable core library:** put MoonBlokz logic into an embeddable library rather than a single fixed application.
-- **`no_std` compatibility:** keep the core usable in constrained embedded targets while remaining reusable from standard applications.
-- **Host-provided integration boundaries:** treat storage, randomness, crypto, clock, and radio as platform-facing interfaces.
-- **High-level storage abstraction:** model persistence around blockchain operations rather than raw storage mechanics.
-- **Non-blocking radio interaction:** use buffered message passing and explicit processing steps.
-- **Host-owned control flow:** keep event-loop control in the embedding application.
-- **Deferred low-level design:** postpone algorithmic and data-structure commitments until later series parts define them.
+The simulator/analyzer depends on telemetry logs and HUB-mediated control paths for live tracking and replay.
 
-## Open Questions and Deferred Decisions
+This creates a deliberate architectural separation:
 
-Part II intentionally leaves several design areas open. They should be treated as pending architectural topics rather than assumed behavior.
+- the mesh carries blockchain-related messages,
+- while telemetry carries operational visibility and control.
 
-### Open technical questions explicitly or implicitly left for later
+### Host tools and embedded nodes share concepts but not identical runtime models
 
-- How blockchain algorithms and consensus behavior are defined in detail.
-- How blocks, indexes, and on-device persistence structures are represented concretely.
-- How monotonic elapsed time is preserved across reboot.
-- How radio frames are encoded, segmented, retried, or validated in detail.
-- How software and hardware crypto implementations are selected and validated.
-- How source distribution, licensing, and possible openness of the project will be handled.
+MoonBlokz reuses logic and semantics across embedded devices, desktop tools, and backend services, but the documents make clear that these are not collapsed into one runtime model.
 
-These are not contradictions. They are scoped deferrals.
+Examples include:
 
-## Relationship to the Rest of the Series
+- radio host versus embedded initialization differences,
+- memory versus RP2040 storage backends,
+- simulator time-driver behavior versus embedded local timers,
+- and telemetry server behavior versus field-node operation.
 
-Within the broader MoonBlokz series, this document should be understood as the bridge between concept and implementation.
+This is a portability architecture built on shared contracts, not on pretending all targets are the same.
 
-- **Part I** defines the motivation, use cases, and core constraints.
-- **Part II** selects the technology platform and high-level architecture.
-- **Later parts** are expected to define algorithms, data structures, and protocol behavior that fit inside the boundaries established here.
+## Current Implementation-Grounded Technology Picture
 
-## Review Notes
+The present knowledge base sharpens the original Part II architectural framing in several important ways.
 
-Post-change review against `moonblokz-info` rules:
+### The project is now a multi-repository Rust system
 
-- **Consistency:** This document stays consistent with the cited Part II article and with the broader project framing already documented in `moonblokz-overview.md`.
-- **Logical soundness:** The text distinguishes article-stated facts from architectural interpretation and avoids inventing unsupported low-level mechanisms.
-- **Feasibility:** The described architecture is feasible for an embedded-first Rust project because it isolates hardware-specific concerns behind integration boundaries and keeps the portable core compact in scope.
-- **Potential ambiguity noted:** The article names the planned library as `moon_blokz_lib`. Current repository naming conventions may differ. This document preserves the article's wording rather than assuming a final crate name.
+MoonBlokz currently spans several focused repositories and crates rather than one single portable library with a small set of helpers.
+
+At the knowledge-base level, the main architectural areas include:
+
+- blockchain logic and its data/state model,
+- `moonblokz-crypto-lib`,
+- `moonblokz-radio-lib`,
+- `moonblokz-storage`,
+- `moonblokz-radio-simulator`,
+- and the telemetry-side repositories such as Probe, HUB, Collector, CLI, and Update Server.
+
+This is consistent with the original portable-core idea, but more operationally mature.
+
+### The radio layer is more concrete than the Part II abstraction
+
+Part II described a minimal radio integration boundary. The current radio documents show a much more specific design with:
+
+- message and packet layers,
+- queue-backed async tasks,
+- connection matrices,
+- relay scoring,
+- duplicate caches,
+- CRC handling,
+- and explicit fragmentation/recovery rules.
+
+The architecture is still modular, but the current project has moved far beyond a purely abstract “send / receive / process” radio model.
+
+### Storage is narrower than a generic persistence abstraction
+
+Part II emphasized high-level storage operations instead of low-level flash APIs. The current storage crate confirms that direction, but in a more constrained form than a generic “save and query blockchain data” interpretation might suggest.
+
+The present storage contract is:
+
+- synchronous,
+- small in public surface,
+- block-index oriented,
+- and explicit about backend-specific recovery/integrity differences.
+
+This means the storage layer is deliberately minimal and should not silently accumulate blockchain-policy responsibilities.
+
+### Telemetry is a full operational subsystem
+
+Part II did not yet define the later operational stack. The current documents now establish that MoonBlokz requires a distinct telemetry architecture with:
+
+- a Linux-based Probe daemon,
+- a Spin/WASI HUB with SQLite and key-value state,
+- thin CLI and Collector clients,
+- static update artifact hosting,
+- and analyzer-facing log consumption.
+
+This is now a central part of how MoonBlokz is developed, tested, observed, and updated.
+
+### The simulator is a first-class architecture tool
+
+The current project includes a desktop simulator/analyzer that reuses real radio logic, visualizes connection state, and supports both synthetic scenarios and live telemetry-fed analysis.
+
+That makes simulation and replay part of the project architecture, not merely auxiliary documentation support.
+
+## What Must Remain Explicit
+
+The current knowledge base also defines several boundaries that should remain visible.
+
+### MoonBlokz does not promise perfect reliability
+
+The project is built around loss tolerance, reactive recovery, and eventual convergence where possible. Documentation should not drift toward internet-style reliable-delivery assumptions.
+
+### The radio layer does not provide a full security transport stack
+
+The current radio documents explicitly note the absence of a built-in network-layer security system. Security-sensitive interpretations must therefore stay aligned with the actual current scope.
+
+### Storage is not the owner of active-chain policy
+
+The storage crate persists blocks and control-plane data, but it does not fully define branch retention, UTXO replay policy, or `snake_chain` scheduling decisions.
+
+### Telemetry policy is intentionally simple today
+
+The HUB currently acts as a central policy point for intervals and command delivery, while Collector and CLI remain thin and intentionally shallow. Future richer policy or persistence models would be architectural changes, not small implementation tweaks.
+
+### The simulator remains approximate in physical modeling
+
+The simulator preserves important timing and topology realities, but it is still an approximation. Path loss, collision, capture, and obstacle models should not be described as a perfect RF truth model.
+
+### Some strategic questions remain open
+
+The knowledge base still leaves some areas intentionally unresolved or only partially defined, including:
+
+- some detailed blockchain-policy choices,
+- some communication and approval-format details,
+- long-term configuration mutability behavior,
+- future telemetry policy richness,
+- and future cryptographic evolution such as any post-quantum path.
+
+These should remain explicit open boundaries rather than being filled with unsupported assumptions.
+
+## Business Analyst View: Why This Technology Shape Exists
+
+From a business and delivery perspective, MoonBlokz technology is designed to make a local economic system feasible under severe infrastructure constraints.
+
+The architecture supports that goal by combining:
+
+- a blockchain model that tolerates weak communication,
+- a radio model that works under bounded embedded conditions,
+- a storage model that fits limited flash,
+- a crypto model that balances deployability with aggregation needs,
+- and an operational telemetry layer that makes field use and testing practical.
+
+In other words, the technology stack exists to make the project viable where mainstream internet-dependent designs would fail.
+
+## Architect View: The Most Important Structural Reading
+
+The most important architectural interpretation of MoonBlokz today is this:
+
+MoonBlokz is a bounded, portable, multi-subsystem Rust platform for local blockchain coordination over weak radio, surrounded by explicit observability and operational tooling.
+
+Its architecture is successful only if it preserves all of the following at once:
+
+- portable contracts,
+- bounded runtime behavior,
+- explicit control flow,
+- out-of-band operations support,
+- and fidelity to the constraints of low-bandwidth local networks.
+
+Any future change that weakens those properties should be treated as a significant architectural decision.
+
+## Technical Writer View: How to Use This Document
+
+Use this file when you need a single technical summary of how the MoonBlokz project fits together before reading subsystem-specific documents.
+
+Then continue into the detailed document sets based on your question:
+
+- read the blockchain files for chain-state and consensus behavior,
+- the crypto files for signature and aggregation behavior,
+- the radio files for mesh propagation and recovery behavior,
+- the storage files for persistence contracts and backend behavior,
+- the telemetry files for operational flows and OTA/control architecture,
+- and the simulator files for simulation, replay, and visualization behavior.
+
+This document should summarize and connect those areas, not replace them.
+

@@ -781,11 +781,3 @@ From the perspective of the MoonBlokz knowledge base, the current codebase estab
 7. missing-fragment recovery is explicit and currently implemented for block fragments,
 8. application processing results directly influence relay and reply behavior,
 9. bounded queues and bounded pools are part of the algorithm, not only implementation detail.
-
-## Review Notes
-
-Post-change review against `moonblokz-info` documentation rules:
-
-- **Consistency:** This document now matches the current `moonblokz-radio-lib` codebase rather than relying only on article-era radio summaries.
-- **Logical soundness:** The file is careful to distinguish what is actually implemented in code from what earlier descriptions may have suggested, especially around message types and fragment-recovery behavior.
-- **Feasibility:** The described algorithms remain realistic for constrained hardware: fixed-size structures, explicit timing, bounded relay competition, and reactive gap repair.

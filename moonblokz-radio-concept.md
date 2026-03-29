@@ -412,11 +412,3 @@ Then continue with:
 
 - [moonblokz-radio-algorythm.md](./moonblokz-radio-algorythm.md) to see the formal current flow of messages, packetization, scheduling, relaying, reassembly, and recovery,
 - and [moonblokz-radio-implementation.md](./moonblokz-radio-implementation.md) to see the actual code-level API, feature model, memory configuration, backend responsibilities, and engineering cautions.
-
-## Review Notes
-
-Post-change review against `moonblokz-info` documentation rules:
-
-- **Consistency:** This document now uses the actual `moonblokz-radio-lib` codebase as the primary source of truth and updates earlier article-era understanding accordingly.
-- **Logical soundness:** The file keeps the synchronization-first, local-topology, bounded-memory logic of the system intact while explicitly documenting where the current code is narrower or more specific than earlier summaries.
-- **Feasibility:** The documented model remains realistic for constrained devices: static allocation, fixed-size queues, reactive recovery, backend modularity, and graceful loss under overload.

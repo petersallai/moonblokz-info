@@ -159,11 +159,3 @@ This makes the article best understood as the strategic and requirements-level i
 This document is based on:
 
 - **MoonBlokz series part I. — Building a Hyper-Local DePIN Blockchain** by Peter Sallai, published on Medium on February 18, 2025.
-
-## Review Notes
-
-Post-change review against `moonblokz-info` documentation rules:
-
-- **Consistency:** The document stays aligned with Part I and does not introduce detailed mechanisms that the article does not claim yet.
-- **Logical soundness:** The overview separates confirmed statements from inferred architectural implications.
-- **Feasibility:** The text reflects the project as a constrained-device blockchain exploration and avoids promising unmentioned implementation guarantees.

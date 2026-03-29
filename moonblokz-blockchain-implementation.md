@@ -538,11 +538,3 @@ Read this file when you want to answer questions such as:
 
 - [`moonblokz-blockchain-concept.md`](./moonblokz-blockchain-concept.md)
 - [`moonblokz-blockchain-algorythm.md`](./moonblokz-blockchain-algorythm.md)
-
-## Review Notes
-
-Post-change review against `moonblokz-info` rules:
-
-- **Consistency:** This file now reflects Part V’s binary-structure, memory, flash, and packetization implications while staying aligned with the Part III consensus model and Part IV bounded-storage `snake_chain` rules, while also documenting processing restart policy, pruning cost, retained-history tradeoffs, active-chain-switch recomputation, and formula-execution boundaries suggested by the todo material.
-- **Logical soundness:** The text distinguishes clearly between protocol obligations, engineering consequences, and still-deferred transport or payload specifics, while keeping evaluator-versus-VM choices and restart semantics explicitly open where the source material is not yet final.
-- **Feasibility:** The document now gives implementation planning enough structure to proceed on serialization, storage, caching, fragmentation boundaries, recomputation responsibilities, and pruning tradeoffs without pretending that deferred details are already settled.

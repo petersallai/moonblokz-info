@@ -335,11 +335,3 @@ Readers looking for exact constants, trait behavior, serialization formats, per-
 
 - [moonblokz-crypto-algorythm.md](./moonblokz-crypto-algorythm.md)
 - [moonblokz-crypto-implementation.md](./moonblokz-crypto-implementation.md)
-
-## Review Notes
-
-Post-change review against `moonblokz-info` rules:
-
-- **Consistency:** This document now uses the same signature-role terminology as the companion crypto documents and stays focused on conceptual scope instead of repeating formal or implementation-level detail.
-- **Logical soundness:** The text distinguishes clearly between conceptual requirements, API-level role meaning, backend replaceability, and strategic limitations such as the lack of a post-quantum implementation path.
-- **Feasibility:** The document reflects what the current library actually supports today without inventing capabilities beyond the codebase.

@@ -462,11 +462,3 @@ Read this file when you want to answer questions such as:
 
 - [moonblokz-crypto-concept.md](./moonblokz-crypto-concept.md)
 - [moonblokz-crypto-algorythm.md](./moonblokz-crypto-algorythm.md)
-
-## Review Notes
-
-Post-change review against `moonblokz-info` rules:
-
-- **Consistency:** This document now uses the same signature-role terminology as the companion crypto documents and stays focused on implementation responsibilities, compatibility boundaries, and maintenance risks.
-- **Logical soundness:** It distinguishes carefully between what the code guarantees today, what remains family-specific behavior, and what would constitute a compatibility-sensitive change.
-- **Feasibility:** The guidance is actionable for future implementation work because it focuses on actual contracts, limits, and risks present in the current codebase instead of speculative future architecture.

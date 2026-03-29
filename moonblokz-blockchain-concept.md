@@ -430,11 +430,3 @@ Readers looking for detailed structure layouts, field definitions, or implementa
 
 - [`moonblokz-blockchain-algorythm.md`](./moonblokz-blockchain-algorythm.md)
 - [`moonblokz-blockchain-implementation.md`](./moonblokz-blockchain-implementation.md)
-
-## Review Notes
-
-Post-change review against `moonblokz-info` rules:
-
-- **Consistency:** This document now integrates Part V’s compact-data perspective while staying aligned with the Part III block-tree and Part IV `snake_chain` model.
-- **Logical soundness:** The file keeps structural and economic consequences at the conceptual level and leaves detailed field layouts to the algorithm document.
-- **Feasibility:** The document reflects the real operating constraints of MoonBlokz by treating representation size, bounded storage, and no-global-time assumptions as core design properties.

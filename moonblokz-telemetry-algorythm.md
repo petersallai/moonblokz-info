@@ -1470,11 +1470,3 @@ From the perspective of the MoonBlokz knowledge base, the current `moonblokz-pro
 17. the current Probe/HUB/Collector/CLI/Update-Server surfaces contain important discrepancies that documentation must keep explicit,
 18. Probe-generated `TM8` version lines are part of the current telemetry stream semantics,
 19. the simulator analyzer is formally downstream of this telemetry pipeline and should be read as a telemetry consumer rather than a second source of telemetry architecture.
-
-## Review Notes
-
-Post-change review against `moonblokz-info` documentation rules:
-
-- **Consistency:** This document now describes the reviewed telemetry flow from station side, cloud side, collector side, operator CLI side, and update-artifact-hosting side rather than leaving the update host at article-only level.
-- **Logical soundness:** The file clearly separates what the reviewed code actually implements today from older spec/doc expectations, including the global HUB-owned interval policy, timestamp-based collector cursoring, the CLI’s actual parser and `/command` submission behavior, and the Update Server’s actual role as a static Spin fileserver.
-- **Feasibility:** The described algorithms match the current code: bounded buffering, substring filtering, serial reconnect with recovery attempts, explicit SQLite/KV persistence, global interval policy, delayed log serving, timestamp-cursor-based collection, local CLI validation, hub-mediated command submission, static artifact publication, hourly update checks, and version-reporting telemetry injection.

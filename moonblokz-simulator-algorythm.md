@@ -644,11 +644,3 @@ From the perspective of the MoonBlokz knowledge base, the current codebase estab
 9. all important histories and queues remain bounded by design.
 
 For the broader field-testing telemetry flow that feeds these analyzer behaviors — including Probe uploads, HUB ordering rules, Collector downloads, CLI command routing, OTA/update paths, and the formal meaning of these control requests — use [moonblokz-telemetry-algorythm.md](./moonblokz-telemetry-algorythm.md) rather than duplicating that architecture here.
-
-## Review Notes
-
-Post-change review against `moonblokz-info` documentation rules:
-
-- **Consistency:** This document now matches the current `moonblokz-radio-simulator` codebase rather than only the earlier article description.
-- **Logical soundness:** The file distinguishes carefully between simulation behavior, analyzer behavior, and out-of-band control behavior.
-- **Feasibility:** The described algorithms remain realistic for the current application: bounded queues, bounded histories, simplified but explicit RF heuristics, and a practical hybrid of synthetic simulation and log-driven observation.
