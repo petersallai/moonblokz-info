@@ -78,10 +78,5 @@ Amennyiben da illő új információ merül fel, akkor frissítsd a radio és si
 
 Használd a moonblokz-info/AGENTS.md fájt. Olvasd végig a moonblokz-probe könyvtárban lévő kódbázist és annak tartalma alapján frissítsd a moonblokz-info tudástárban az alábbi fájlokat: moonblokz-telemetry-conceptual.md, moonblokz-telemetry-algorythm.md, moonblokz-telemetry-implementation.md
 
-Hátramaradt feladatok
-- Storage két kódbázis bedolgoztatni
-- Storage nyelvezet/redundancia ellenőrtés
-- moonblokz-technology.md frissítés
-- Konzisztencia ellenőrzés a teljes tudástárra
-- Tudástár Readme.md ellenőrizni (legyenek benne linkek az egyes dokumentumokra)
-- Repo-ba áthelyezés (gitignore is)
+
+Használd a moonblokz-info/AGENTS.md fájlt. A MoonBlokz tudástárból (moonblokz-info/moonblokz-index.md) most a storage tudástárral fogunk dolgozni. Olvasd végig az ehhez tartozó 3 fájlt, majd konszolidáld a nevezéktant köztük (ha van eltérés), valamint a redundáns információkat döntsd el, hogy melyik dokumentumban relevánsabbak és ott szerepeltesd.

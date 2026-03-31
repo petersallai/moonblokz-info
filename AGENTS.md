@@ -42,6 +42,12 @@ The knowledge base must avoid unnecessary redundancy across its files.
 
 Each piece of information should appear in full detail only in the single file where it is most relevant. If the same information is also important elsewhere, the other files should reference the primary source instead of duplicating the content.
 
+## Knowledge Base Entry Point
+
+The primary entry point to this knowledge base is [`moonblokz-index.md`](./moonblokz-index.md).
+
+Whenever this `AGENTS.md` file is active, every request and task should be treated as related to the MoonBlokz system by default, and the knowledge base should be used accordingly.
+
 ## Index Maintenance
 
 The file [`moonblokz-index.md`](./moonblokz-index.md) serves as the knowledge-base table of contents for the `moonblokz-info` directory.
