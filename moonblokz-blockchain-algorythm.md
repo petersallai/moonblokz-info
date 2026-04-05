@@ -1098,17 +1098,6 @@ Architecturally, Parts III, IV, and V imply that the full algorithm has at least
 6. **valuation layer** — assigning branch value so later reconciliation remains deterministic,
 7. **structure layer** — keeping every logical unit compact, serializable, and fragmentation-tolerant.
 
-## Technical Writer View: How to Read This File
-
-This document should be read as the answer to these questions:
-
-- What is the full algorithmic flow described in Parts III, IV, and V?
-- What are the main blockchain data structures?
-- How do those structures support branch selection, replay, and uniqueness?
-- How does `snake_chain` alter ordinary blockchain behavior?
-- How are registration, genesis, serialization, and transport boundaries handled?
-- What are the main efficiency and failure limits?
-
 ## Related Documents
 
 - [`moonblokz-blockchain-concept.md`](./moonblokz-blockchain-concept.md)

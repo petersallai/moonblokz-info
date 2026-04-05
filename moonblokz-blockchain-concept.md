@@ -451,21 +451,6 @@ From an architectural point of view, the combined model establishes several dura
 - storage bounds are a first-class protocol design constraint,
 - and compact binary representations are part of protocol design because radio, RAM, and flash limitations are inseparable from correctness.
 
-## Technical Writer View: How to Read This Document
-
-For knowledge-base purposes, this file should be read as the answer to these questions:
-
-- What kinds of actors exist in MoonBlokz?
-- Why is a block-tree normal in this environment?
-- Why can MoonBlokz not keep the whole chain forever?
-- Why does compact data representation matter conceptually, not just technically?
-- What information must survive tail deletion?
-- Why are balances, configuration, approvals, and UTXOs treated differently?
-- Why does MoonBlokz avoid global time?
-- What is the practical conceptual limit of resynchronization?
-
-Readers looking for detailed structure layouts, field definitions, or implementation-facing storage concerns should continue with the companion files.
-
 ## Related Documents
 
 - [`moonblokz-blockchain-algorythm.md`](./moonblokz-blockchain-algorythm.md)

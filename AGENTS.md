@@ -24,6 +24,8 @@ The knowledge base may become part of any MoonBlokz-related context, so its size
 
 Only actual knowledge-base content should be stored in its Markdown files. Material that does not belong to the knowledge itself, such as review notes, must not be written into the knowledge-base files.
 
+Do not add low-information meta sections such as `Technical Writer View`, “how to read this file”, or similar document-usage boilerplate when they do not introduce real MoonBlokz knowledge. Short non-generic summaries of a file’s role are allowed, but they must stay compact and must not restate what is already obvious from the title, structure, or nearby sections.
+
 ## Modification Rules
 
 If any inconsistency, illogical addition, or non-implementable solution is identified during any modification, the issue must be flagged immediately and clarified with the user. The problem must be identified explicitly, and the resolution decision must be left to the user.

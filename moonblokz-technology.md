@@ -499,18 +499,4 @@ Its architecture is successful only if it preserves all of the following at once
 
 Any future change that weakens those properties should be treated as a significant architectural decision.
 
-## Technical Writer View: How to Use This Document
-
-Use this file when you need a single technical summary of how the MoonBlokz project fits together before reading subsystem-specific documents.
-
-Then continue into the detailed document sets based on your question:
-
-- read the blockchain files for chain-state and consensus behavior,
-- the crypto files for signature and aggregation behavior,
-- the radio files for mesh propagation and recovery behavior,
-- the storage files for persistence contracts and backend behavior,
-- the telemetry files for operational flows and OTA/control architecture,
-- and the simulator files for simulation, replay, and visualization behavior.
-
-This document should summarize and connect those areas, not replace them.
 

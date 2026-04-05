@@ -583,16 +583,6 @@ Architecturally, the combined logic should eventually be implemented with a clea
 
 This separation should make later evolution easier when data structures, communication details, and cryptographic evidence become more concrete.
 
-## Technical Writer View: How to Use This File
-
-Read this file when you want to answer questions such as:
-
-- What must an implementation remember after Parts IV and V?
-- How do binary layout and packetization change blockchain engineering responsibilities?
-- Which values should remain configurable?
-- Which areas are too underspecified to hard-code yet?
-- Where are the hardest approval, retention, and transport interactions likely to appear?
-
 ## Related Documents
 
 - [`moonblokz-blockchain-concept.md`](./moonblokz-blockchain-concept.md)
