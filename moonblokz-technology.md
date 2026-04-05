@@ -200,12 +200,16 @@ These are separate subsystems, but they are intentionally interdependent.
 
 The blockchain subsystem is not modeled as an infinite globally ordered chain. It is modeled as a block-tree operating under weak connectivity and bounded retention.
 
+At current design level, `moonblokz-blockchain` is also best understood as a stateful semantic event state machine with a deliberately narrow responsibility boundary.
+
 Its architectural role is to:
 
 - reconstruct and maintain useful blockchain state under unreliable propagation,
 - tolerate missing parents and delayed validation,
 - preserve the active economic state through the `snake_chain` retention model,
 - and keep balances, configuration, approval evidence, and live UTXOs reconstructable near the active head.
+
+The current boundary refinement also treats communication transport, storage mechanics, crypto backend details, and radio-derived creator-scoring logic as external dependencies rather than internal blockchain responsibilities.
 
 Important project-level implications from the blockchain documents include:
 

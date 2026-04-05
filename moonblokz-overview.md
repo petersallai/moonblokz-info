@@ -50,6 +50,50 @@ The most grounded example is a large rural construction or industrial site where
 
 This scenario is important because it demonstrates that the system is not only speculative; it also targets real operational settings where localized coordination has practical value.
 
+## Additional Representative Use Cases Shown on the Current Public Website
+
+In addition to the three illustrative Part I scenarios above, the current public MoonBlokz website presents a broader set of representative use-case areas. These should be treated as current public-facing positioning material rather than as Part I source content.
+
+### 1. Industrial Worksites
+
+Large industrial or isolated worksites may need local accounting, coordination, and service tracking across a wide physical area with incomplete connectivity and many known participants.
+
+### 2. Agricultural Operations
+
+Large farms or cooperating agricultural operations may benefit from local coordination between machines, operators, storage points, and shared resources in environments where connectivity is uneven.
+
+### 3. Logistics and Ports
+
+Logistics yards, warehouse parks, and port zones may use a local transaction and accounting layer to track repeated service interactions, equipment access, capacity use, and internal operational events.
+
+### 4. Community Backup Payments
+
+A town, district, or local community may need a fallback local transaction layer when centralized payment infrastructure is degraded, unreachable, or unavailable.
+
+### 5. Disaster Response
+
+Temporary emergency zones may need local coordination and operational accounting in environments where infrastructure is damaged, overloaded, or fragmented.
+
+### 6. Off-Grid Communities
+
+Communities operating with limited infrastructure over long periods may need local exchange and coordination tools that do not depend on always-on centralized services.
+
+### 7. Machine-to-Machine Coordination
+
+Some environments require structured local interaction not only between people, but also between active devices that register service events, access rights, handoffs, or internal transactions.
+
+### 8. Research Expeditions
+
+Remote research expeditions and field science bases may need local coordination, shared-resource tracking, and operational recordkeeping under intermittent connectivity.
+
+### 9. Humanitarian Relief Operations
+
+Relief camps and field operations may need internal accounting, controlled access to resources, work tracking, and local coordination in degraded environments.
+
+### 10. Space Device Economies
+
+The public website also retains a long-range MoonBlokz scenario focused on autonomous or semi-autonomous devices operating in extremely isolated environments where local economic coordination may be necessary.
+
 ## Core Design Framing
 
 MoonBlokz is framed around a few foundational ideas already visible in Part I:
@@ -62,12 +106,17 @@ MoonBlokz is framed around a few foundational ideas already visible in Part I:
 - **Operational simplicity:** nodes should be easy to configure and require minimal setup.
 - **Future extensibility:** the MVP starts with currency transfer, but the chain should later support broader payloads and higher-level logic.
 
+In the current MoonBlokz direction, this simplicity goal does not conflict with compile-time backend selection in lower-level crates. Build-time feature selection is primarily a product-build concern: it defines which hardware backend, memory profile, and similar platform choices are compiled into a given blockchain application image. Once those deployment-level choices are fixed for a given build, node-level configuration can remain intentionally small. In the simplest case, if radio parameters are also fixed by that build or deployment profile, a node may only need values such as `node_id` and `private_key` to become operational.
+
 ## Project Goals
 
 The article states the following goals and requirements for MoonBlokz:
 
 1. The blockchain must securely and reliably handle cryptocurrency transactions between nodes.
 2. The network should scale from as few as two nodes to tens of thousands of nodes.
+
+   This scaling goal should be read at network level, not as a requirement that each node maintain a complete view of all other nodes. In the current architecture, per-node radio state is intentionally local and bounded. The connection matrix is used to track direct or otherwise immediately relevant local neighbors, while larger network size is achieved through relaying across multiple hops. If a node can directly observe more peers than fit into its bounded local matrix, the radio logic still aims to retain the more useful or stronger entries rather than treating matrix size as a global network-size cap.
+
 3. The consensus algorithm must support the operation of the network.
 4. The prototype must run on a standard microcontroller available on the market.
 5. The network should be able to grow beyond direct radio range by using relaying in a mesh-like topology.

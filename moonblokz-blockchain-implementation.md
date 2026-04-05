@@ -6,6 +6,7 @@ This document captures implementation-facing implications of the MoonBlokz block
 
 - Use [`moonblokz-blockchain-concept.md`](./moonblokz-blockchain-concept.md) for the conceptual description.
 - Use [`moonblokz-blockchain-algorythm.md`](./moonblokz-blockchain-algorythm.md) for the algorithm model and the detailed main data structures.
+- Use [`blockchain-adrs/ADR-INDEX.md`](./blockchain-adrs/ADR-INDEX.md) for the current accepted blockchain architecture decision set and its reading order.
 
 ## Source Basis
 
@@ -29,6 +30,31 @@ Parts III, IV, and V together provide a strong implementation direction, but the
 ## Relationship to Part II Architecture
 
 Part II established that MoonBlokz is built around a portable core library with clear integration boundaries. Parts III, IV, and V add blockchain behavior on top of that structure.
+
+## Current Module Boundary Direction
+
+The current MoonBlokz design direction sharpens the blockchain module boundary beyond the original article-era framing.
+
+`moonblokz-blockchain` is best treated as a **single-threaded, synchronous, stateful semantic event state machine**.
+
+It should own:
+
+- blockchain decisions,
+- staged validation logic,
+- known-block and branch knowledge,
+- active-chain selection,
+- runtime mempool handling,
+- vote / next-creator state,
+- and local blockchain-facing query answers.
+
+It should not own:
+
+- communication transport,
+- fragment handling,
+- serialization / deserialization adapters,
+- radio-derived score computation used as creator-selection input,
+- storage implementation mechanics,
+- or cryptographic backend implementation.
 
 For implementation planning, this means:
 
@@ -82,17 +108,34 @@ For now, the conservative interpretation is:
 
 Even without a final storage schema, Parts III, IV, and V imply that an implementation will need access to several categories of state.
 
+## Authoritative Versus Derived State
+
+The current module design direction keeps the authoritative state deliberately small.
+
+The canonical conceptual explanation of authoritative versus derived blockchain state belongs in [`moonblokz-blockchain-concept.md`](./moonblokz-blockchain-concept.md) and is formalized in [ADR-003](./blockchain-adrs/ADR-003-authoritative-vs-derived-state-in-moonblokz-blockchain.md).
+
+From an implementation perspective, the key consequence is that restart, persistence, and recovery behavior should be anchored in a compact authoritative base, while selected active-chain state, balance / UTXO truth, and vote / next-creator state should be engineered as maintained operational views that can be corrected or recomputed when necessary.
+
+## Internal Logical Structure
+
+A practical implementation can be understood as four tightly related internal logical areas:
+
+1. **Chain Knowledge Core** — known blocks, branch knowledge, active-chain selection, operating mode, and the embedded recovery / approval / `snake_chain` consequences.
+2. **Derived Economic State Cache** — incrementally maintained balance and UTXO truth derived from the active chain.
+3. **Mempool Registry** — pending transaction registry and block-proposal source, subject to chain-driven correction.
+4. **Vote Engine** — creator-selection state derived from blockchain events plus external radio-derived score input.
+
 ### 1. Block storage state
 
 The implementation must be able to retain:
 
-- known blocks,
-- parent relationships,
-- child relationships or equivalent branch-navigation support,
-- disconnected blocks whose parents are not yet available,
+- known blocks that have passed the configured persistence threshold,
+- disconnected but signature-valid blocks whose parents are not yet available,
 - block types,
 - serialized block bytes or a lossless reconstruction path,
 - and enough metadata to compare branches later.
+
+At current design level, the durable storage boundary is intentionally strict: only received blocks that are at least signature-valid belong in persistent storage. Parent/child indexes, branch-navigation aids, and similar helper structures may still exist, but they should be treated as derived implementation support rather than the primary durable truth.
 
 The need for serialized-byte fidelity is stronger after Part V because signatures and hashes depend on exact byte layout.
 
@@ -145,12 +188,14 @@ To support missing-parent recovery, the implementation will likely need to track
 
 The algorithm implies local tracking of:
 
-- valid message counts per sender node,
 - votes or vote scores per candidate creator,
+- external score input used to determine which node receives the vote when a new transaction is accepted,
 - vote score resets after successful creation or penalty,
 - vote-interest growth over time,
 - spent-vote values recorded into block headers,
 - and first-ranked creator information used by approval deviation logic.
+
+At current module-boundary level, the blockchain module should not compute from raw radio observation which node a newly accepted transaction should vote for. That decision belongs to an external score-calculation module based on message-count visibility. The blockchain module does own the accumulation, reset, and creator-selection consequences of votes that are already present in blockchain transactions and blocks.
 
 ### 7. Approval-support state
 
@@ -265,6 +310,18 @@ Pruning policy therefore cannot be evaluated only by counting removed blocks. Th
 ## Caching and Flash Considerations
 
 Part V directly motivates implementation techniques such as in-memory caching and flash-aware data structures.
+
+## Mempool-Specific Engineering Notes
+
+The current design direction treats the mempool as authoritative runtime state but not as durable blockchain truth.
+
+That means:
+
+- mempool contents may be lost across restart,
+- active-chain changes must be allowed to remove now-confirmed transactions from the mempool,
+- and transactions that fall out of the active chain during a chain switch may need to be reintroduced into the mempool.
+
+When mempool capacity is exhausted, randomized eviction is preferable to deterministic eviction because it increases the chance that the network as a whole retains a more diverse transaction set.
 
 ### RAM-side expectations
 
@@ -392,6 +449,8 @@ This should be treated as explicit startup logic rather than a quirky exception 
 
 The todo material makes clear that an active-chain switch is not just a matter of choosing a new tip hash.
 
+At current design level, chain switch should be treated as a rare but first-class correction event. The Chain Knowledge Core remains the orchestrating truth source, while derived subsystems are reconciled against the newly selected branch.
+
 A practical implementation may need to recompute or refresh at least:
 
 - creator-score state,
@@ -399,7 +458,7 @@ A practical implementation may need to recompute or refresh at least:
 - branch bookkeeping structures,
 - mempool assumptions that depended on the previous active chain.
 
-Reorg handling should therefore be implemented as a structured recomputation workflow rather than a small side effect attached to tip replacement.
+For vote state and similar derived subsystems, a practical strategy is to walk backward to the common ancestor and then forward along the new active branch while updating derived state incrementally. Reorg handling should therefore be implemented as a structured recomputation workflow rather than a small side effect attached to tip replacement.
 
 ## Scheduling Implications of snake_chain
 

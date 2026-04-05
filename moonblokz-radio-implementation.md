@@ -373,6 +373,8 @@ The current relay manager owns:
 
 The relay manager does not store a global topology. It stores only bounded local state and uses linear searches intentionally because the bounded sizes are small enough for that trade-off.
 
+More specifically, the connection matrix should be understood as a bounded local view of directly relevant neighbors rather than as a representation of the entire MoonBlokz network. The overall network may therefore be much larger than any single node’s matrix capacity, because end-to-end reachability comes from multi-hop relaying rather than from every node tracking every other node explicitly. When a node can directly observe more peers than fit into the configured matrix size, the current design direction is still to keep the more useful or stronger local entries instead of treating matrix capacity as a hard cap on total network scale.
+
 ## Connection Matrix Concrete Storage Model
 
 The current code stores the connection matrix as:

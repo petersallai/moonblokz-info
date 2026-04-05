@@ -19,7 +19,7 @@ This document is based on:
 
 ## Scope and Limits
 
-This file captures the algorithmic structure explicitly described or directly implied by the articles, including:
+This file captures the algorithmic structure explicitly described or directly implied by the articles, together with current MoonBlokz planning decisions that refine the blockchain module boundary, including:
 
 - block-tree formation,
 - missing-parent recovery,
@@ -62,7 +62,30 @@ The algorithm therefore has to solve five related problems:
 
 ## Runtime Lifecycle States
 
-The combined blockchain behavior is best understood as a staged runtime lifecycle rather than one uniform mode. The terminology below intentionally matches the conceptual document: **collection**, **processing**, and **ready** are the preferred phase names across the blockchain knowledge-base set.
+The combined blockchain behavior is best understood as a staged runtime lifecycle rather than one uniform mode. The canonical conceptual definition of these phases belongs in [`moonblokz-blockchain-concept.md`](./moonblokz-blockchain-concept.md); this algorithm document uses the same terminology and focuses on the operational consequences of those phases.
+
+Across the blockchain knowledge-base set, **collection**, **processing**, and **ready** are the preferred phase names.
+
+## Blockchain Boundary at Algorithm Level
+
+At current MoonBlokz planning level, the blockchain module is treated as a **semantic event state machine**.
+
+That means the algorithm should be read as operating on semantic units such as:
+
+- candidate block received,
+- support-related artifact received,
+- transaction received,
+- local command to create genesis or a transaction,
+- local query for active-chain-facing state,
+- and locally timed retry or block-creation triggers.
+
+Communication transport, fragment handling, serialization/deserialization mechanics, and cryptographic backend implementation remain outside the algorithmic blockchain boundary, even when the blockchain rules still depend on their outputs.
+
+## Authoritative and Derived Algorithmic State
+
+The canonical statement of the authoritative-versus-derived distinction belongs in [`moonblokz-blockchain-concept.md`](./moonblokz-blockchain-concept.md) and is formalized normatively in [ADR-003](./blockchain-adrs/ADR-003-authoritative-vs-derived-state-in-moonblokz-blockchain.md).
+
+Within this algorithm document, the important consequence is that algorithmic workflows operate over a deliberately small authoritative base while treating active-chain selection, balance / UTXO truth, and vote / next-creator state as maintained operational views that may need recomputation or reconciliation.
 
 ### Collection state
 
@@ -251,6 +274,8 @@ Part V currently defines three transaction types:
 ### Vote field semantics
 
 Each transaction can vote for a node and thereby increase its chance of future block creation.
+
+At current module-boundary level, the choice of **which node gets the vote when a new transaction is accepted** is not made by the blockchain module from raw radio observations. Instead, a separate score-calculation module determines which other node currently matters most in the local network view of the accepting node, based on which node has sent it the most messages. The chosen vote target is then recorded into the transaction, while the blockchain module later handles the consequences of votes that already exist in transactions and blocks.
 
 Restrictions explicitly stated by the article:
 
@@ -587,20 +612,24 @@ Once a sufficiently long candidate chain has been found, the node must reconstru
 
 Startup validation may therefore be a dedicated reconstruction pass rather than merely the same logic used for ordinary steady-state block extension.
 
-## Algorithm 3: Creator Selection by Message-Based Voting
+## Algorithm 3: Creator Selection by Voting Over Radio-Derived Score Input
 
 ### Objective
 
-Select the next block creator using only lightweight, locally available information.
+Select the next block creator using lightweight locally available information while keeping radio-observation scoring outside the blockchain module boundary.
 
 ### Selection process
 
-1. Observe valid messages and count them per sender.
-2. When a node makes a transaction, it votes for the node that has sent it the most valid messages.
-3. Aggregate vote scores per candidate node.
-4. When a block should be created, select the node with the highest vote score.
+1. Receive vote-target selection input from an external score-calculation module derived from radio-layer observation of valid messages.
+2. When a node accepts a new transaction, that external score-calculation module determines which other node currently has the strongest local message-based score and therefore receives the vote recorded into the transaction.
+3. Aggregate vote scores per candidate node inside blockchain state from the votes already present in accepted transactions and blocks.
+4. When a block should be created, select the node with the highest accumulated blockchain vote score.
 5. Break ties deterministically using node identifiers.
 6. After successful block creation by the selected node, reset that node’s vote count to zero.
+
+### Boundary note
+
+The original article-era framing described vote preference in terms of directly observed valid messages. The current MoonBlokz module boundary refines that design so the blockchain module consumes radio-derived scoring input rather than owning the score computation itself.
 
 ## Algorithm 4: Block Creation Readiness
 
@@ -982,6 +1011,23 @@ Any transport design must preserve:
 - and bounded handling of partial or missing fragments.
 
 The exact packet format is outside the scope of the article, but the boundary itself is explicit.
+
+## Algorithm 26: Local Active-Chain Query Surface
+
+### Objective
+
+Expose a practical local-facing blockchain truth surface without requiring full internal branch observability.
+
+### Query model
+
+1. Transaction queries should distinguish at least between unknown, present in mempool, and present in the active chain.
+2. If a transaction is present in the active chain, the response should also expose its active-chain depth in sequence terms.
+3. Block queries should resolve only against the current active chain rather than the full retained block-tree.
+4. Balance queries may expose a simple current answer by default, with an optional richer answer that also reports how deeply the visible balance is supported inside the active chain.
+
+### Interpretation
+
+This query surface is intentionally product-facing and active-chain-centered. It does not deny the existence of side branches internally, but it avoids turning the default local interface into a full branch-inspection API.
 
 ## Failure and Limit Cases
 

@@ -783,17 +783,9 @@ From an implementation perspective, the important boundary is this:
 
 ### Important drift to keep explicit
 
-Some repo docs/spec text still describe older or different shapes, such as:
+Some repo docs/spec text still describe older or different shapes than the reviewed code. The concrete mismatches are summarized later in this file under **Current Deployment-Model and Documentation Drift**.
 
-- Collector config fields `interval` and `max-items` being live in code,
-- download by message ID instead of timestamp,
-- `/update` returning only a command array,
-- `max_upload_interval` KV usage instead of stored interval config,
-- cleanup running only in `/update`,
-- CLI accepting `command(...)` as the raw-command syntax when the parser currently accepts `run_command(...)`,
-- CLI examples showing node-scoped `set_update_interval(...)` even though current parser logic rejects `node_id` for that command.
-
-The code should be treated as authoritative for the reviewed components.
+For the reviewed components, the code should be treated as authoritative.
 
 ## Command Routing Notes
 

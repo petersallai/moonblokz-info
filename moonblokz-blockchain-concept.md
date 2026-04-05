@@ -118,6 +118,32 @@ Three constraints drive this:
 
 As a result, MoonBlokz does not treat “how data is shaped” as separable from “how the chain works.” The structure of blocks, transactions, balances, and replay information directly affects whether the protocol is operable on target devices.
 
+## Blockchain Module as a Semantic State Machine
+
+The current MoonBlokz design direction sharpens the module boundary around blockchain behavior.
+
+Conceptually, `moonblokz-blockchain` is best understood as a **stateful semantic event state machine** rather than as a transport-aware byte-processing layer.
+
+It:
+
+- receives blockchain-relevant semantic events from network, local, and timer directions,
+- maintains authoritative blockchain knowledge about known blocks, mempool contents, and current operating mode,
+- derives the active chain and current economic state from that authoritative base,
+- and answers local blockchain-facing queries needed by higher-level payment or application interfaces.
+
+This framing keeps communication transport, serialization details, storage mechanics, radio-observation logic, and cryptographic implementation outside the conceptual blockchain responsibility boundary.
+
+## Conceptual Boundary Between Core Truth and Derived Views
+
+The current design direction also clarifies that not every useful blockchain-facing state should be treated as primary truth.
+
+Conceptually, MoonBlokz distinguishes between:
+
+- **authoritative blockchain knowledge** such as known blocks, runtime mempool contents, and the current operating mode,
+- and **derived operational views** such as the currently selected active chain and the currently usable balance and UTXO state.
+
+This matters because MoonBlokz must operate under bounded storage and staged validation. A node may safely retain some blockchain knowledge before it is able to derive a fully usable active state from it.
+
 ## Why the Tree Cannot Grow Forever
 
 Part IV added a second defining constraint: nodes have limited storage capacity. The chain cannot grow without bound.
@@ -354,6 +380,20 @@ Both statements can therefore be true at the same time:
 - but a node may only confirm all configuration-dependent rules after enough chain state has been reconstructed.
 
 This is another example of MoonBlokz favoring staged reconstruction over instant complete understanding.
+
+## Local Query Surface as a Product Boundary
+
+The current design direction adds one more useful conceptual boundary: the local side of the blockchain module is not only for debugging or maintenance. It is also the foundation of a future payment-facing interface.
+
+That local-facing side should therefore expose active-chain-centered answers rather than full internal branch observability by default.
+
+Examples include:
+
+- transaction status queries that distinguish between unknown, present in mempool, and present in the active chain,
+- active-chain block lookup rather than arbitrary block-tree exploration,
+- and balance queries that can optionally report how deeply the visible answer is supported within the active chain.
+
+This keeps the internal block-tree and staged-validation complexity inside the blockchain module while still exposing a useful operational truth surface to higher-level local consumers.
 
 ## Resynchronization Limitation
 
