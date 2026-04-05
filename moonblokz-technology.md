@@ -104,6 +104,8 @@ This appears in multiple subsystems:
 
 Architecturally, this means MoonBlokz prefers stable public interfaces with replaceable implementations behind them, instead of one universal runtime abstraction layer with dynamic dispatch everywhere.
 
+This build-time replaceability should not be confused with node-level operational complexity. In the current MoonBlokz direction, backend and memory-profile selection are primarily product-build and deployment-image concerns. Once those choices are fixed for a given build, the intended node-level configuration surface can remain very small.
+
 ## The Main Architectural Invariants
 
 The current knowledge base establishes several project-wide invariants that should guide future work.
@@ -253,6 +255,8 @@ Its architectural role is to provide:
 - stateful relaying through the connection matrix and wait pool,
 - packet fragmentation and reassembly for large messages,
 - and reactive self-healing through missing-part and missing-block requests.
+
+At project level, the connection matrix should be understood as bounded local neighbor knowledge rather than a global network map. This means MoonBlokz can still target much larger multi-hop networks than any one node can track directly, because end-to-end reachability depends on relaying across local neighborhoods rather than on globally complete topology state.
 
 The current radio architecture is explicitly organized around a three-task runtime pipeline:
 

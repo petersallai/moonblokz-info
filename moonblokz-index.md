@@ -80,7 +80,7 @@ This document explains:
 - what state an implementation will need to track,
 - how the blockchain boundary separates semantic-event handling from transport, storage mechanics, crypto backends, and radio-derived scoring,
 - how bounded storage changes blockchain engineering responsibilities,
-- how authoritative versus derived state should be modeled,
+- how restart, persistence, and reconciliation should be anchored in a compact authoritative base,
 - how canonical binary representation, serialization, and radio packetization affect design,
 - how processing-state restart policy, pruning cost, mempool behavior, and branch-switch recomputation affect engineering design,
 - which values should remain configurable,
@@ -274,6 +274,7 @@ This document explains:
 - why the node–Probe USB boundary is operationally important,
 - what safety and failure-mode concerns matter for OTA updates,
 - how TM-tagged logs shape compatibility between deployed systems and analysis tools,
+- where current deployment and documentation drift must remain explicit,
 - and which implementation boundaries should remain explicit as the telemetry stack evolves.
 
 Use this file when you want implementation guidance that complements the conceptual and algorithm telemetry documents without scattering those details across the simulator files.
@@ -332,7 +333,7 @@ This document explains:
 
 - where the public website is available,
 - what major homepage sections it currently contains,
-- which representative use-case pages are exposed publicly,
+- that the site exposes dedicated public use-case pages while the detailed use-case list is maintained in the overview document,
 - what kind of public-facing material the website currently links to,
 - and how the current public site is packaged for static deployment.
 

@@ -15,7 +15,7 @@ Its purpose is to describe:
 
 This file is intentionally focused on conceptual understanding rather than exact wire layout, queue constants, or line-by-line code structure.
 
-- Use this document to understand **what the radio subsystem is**, **why it behaves this way**, and **which core design principles the current code preserves**.
+- Use this document to understand **what the radio subsystem is**, **why it behaves this way**, and **which architectural boundaries and design principles the current code preserves**.
 - Use [moonblokz-radio-algorythm.md](./moonblokz-radio-algorythm.md) for the formal runtime flow, message handling rules, relay scoring, and recovery behavior.
 - Use [moonblokz-radio-implementation.md](./moonblokz-radio-implementation.md) for the code-grounded API, feature flags, backend details, memory profiles, and engineering constraints.
 

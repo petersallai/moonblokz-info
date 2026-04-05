@@ -14,6 +14,7 @@ Its purpose is to explain:
 
 This file is intentionally conceptual. It focuses on goals, roles, boundaries, and architectural meaning rather than exact endpoint schemas, command payloads, or line-by-line implementation detail.
 
+- Use this document to understand **why the telemetry system exists**, **how its major actors fit together**, and **why MoonBlokz keeps operational traffic outside the LoRa mesh**.
 - Use [moonblokz-telemetry-algorythm.md](./moonblokz-telemetry-algorythm.md) for the formal end-to-end flow of logs, commands, polling, cleanup, updates, and analysis.
 - Use [moonblokz-telemetry-implementation.md](./moonblokz-telemetry-implementation.md) for implementation-facing notes, repository roles, current module structure, and engineering cautions.
 

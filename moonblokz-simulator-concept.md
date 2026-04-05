@@ -15,6 +15,7 @@ Its purpose is to explain:
 
 This file is intentionally conceptual. It focuses on purpose, scope, design philosophy, and system boundaries rather than exact queue types, parsing details, or line-by-line code behavior.
 
+- Use this document to understand **what the simulator/analyzer tool is for**, **why it exists as a multi-mode desktop surface**, and **where its boundary lies relative to the radio and telemetry subsystems**.
 - Use [moonblokz-simulator-algorythm.md](./moonblokz-simulator-algorythm.md) for the formal runtime flow, scene semantics, signal model, analyzer logic, and UI-facing behaviors.
 - Use [moonblokz-simulator-implementation.md](./moonblokz-simulator-implementation.md) for implementation-facing notes grounded in the current crate structure, Embassy integration, UI modules, analyzer pipeline, and control path.
 
