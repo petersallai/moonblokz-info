@@ -296,6 +296,45 @@ It also acts as a pressure mechanism against unbounded address-state accumulatio
 
 This means MoonBlokz uses pricing not only for incentives and privacy, but also for **bounded-state maintenance**.
 
+## Dynamic Custodian Fee (Post-MVP Concept)
+
+This section captures a concept for making the custodian fee chain-saturation-aware, beyond what the MVP supports. In the MVP, the custodian fee is resolved by the `configuration_module` as an **input-less** chain-config-derived value: the same fee applies whether the active chain is nearly empty or nearly full. The chain-stall risk under high UTXO accumulation (described under [UTXO growth can stall the chain](#utxo-growth-can-stall-the-chain)) therefore depends on a fee value tuned in advance for the expected saturation range, with no chain-internal feedback when actual saturation diverges from expectations.
+
+Making the fee responsive to current saturation gives the chain a self-regulating relief mechanism: at low saturation the fee stays small (light pressure on tiny UTXOs); at high saturation the fee scales up (faster reclamation of chain space).
+
+The concept here is intentionally pre-design: it captures the operating idea and the questions a post-MVP requirement and architecture pass must answer. It does not change any MVP-scope requirement.
+
+### Operating idea
+
+The proposed mechanism extends the `configuration_module`’s custodian-fee accessor with one new input: the **count of currently-unspent UTXOs on the active chain**.
+
+This input is cheap to derive from existing data. Under the per-block UTXO spent-bit-vector model (ADR-016), every active-chain block already carries a bit vector whose unset bits identify still-unspent outputs. The active-chain-wide unspent UTXO count is therefore the sum of unset bits across the active-window blocks — an `O(W)` popcount-based computation against state the module already maintains.
+
+With this input available, the configuration content can specify a fee curve rather than a fixed value. The `configuration_module`’s existing mini-VM already supports both literal constants and bytecode-evaluated functions of accessor inputs, and the **registration price** accessor already takes a similar derived-state input (the current registered-node count). The custodian-fee accessor would follow the same pattern: same interface shape, same VM semantics, same fall-back-to-default behavior when a chain-config payload omits the accessor.
+
+### Fit with existing structural decisions
+
+The concept aligns with several decisions that are already part of the MVP model:
+
+- The `configuration_module` boundary remains the canonical source for custodian-fee resolution; only the accessor’s input contract is extended.
+- The pattern matches the existing `registration price` accessor, which already takes the registered-node count as input — there is no new architectural shape, only a new input applied to a parameter that today takes none.
+- Per-block UTXO spent-bit vectors (ADR-016) already expose the information needed for cheap unspent counting; no new persistent state is introduced.
+- Active-chain-centered query semantics (ADR-008) are preserved: the count is derived strictly from the current active chain, not from incidental block-tree contents.
+- Replay determinism is preserved as long as the count is sampled at a deterministic moment in the carry-forward flow (open question 1 below).
+
+### Open questions for the post-MVP design
+
+The concept introduces tensions that a post-MVP requirement and ADR pass must resolve. They are deliberately left open here:
+
+1. **Sampling moment.** “The count of unspent UTXOs on the active chain” must pin down exactly when the count is sampled inside the UTXO carry-forward flow, so that every node replaying the same active-chain state arrives at the same fee. Candidate moments include: at the start of carry-forward processing for the dropping tail block, per individual UTXO before it is reduced, or once per accepted block. Each choice has slightly different replay semantics and the post-MVP design must commit to one.
+2. **Cross-block consistency under chain switch.** Chain-switch reconciliation can change which blocks are on the active chain, which changes the unspent count, which retroactively changes the fee that would have applied. The post-MVP design must decide whether previously-applied fees are recomputed against the new active chain or whether the fee captured at acceptance time is canonical and carried forward unchanged.
+3. **Fee-curve encoding.** The configuration content must express the mapping from `unspent_utxo_count` to fee in a form the configuration-module mini-VM can evaluate cheaply and deterministically on RP2040-class hardware. The post-MVP design must choose the encoding (sampled table, piecewise-linear segments, polynomial coefficients, free bytecode) so that the curve stays compact and bounded in evaluation cost.
+4. **Bounds enforcement.** A curve that grows without limit could effectively confiscate small UTXOs; one that stays flat defeats the purpose. The post-MVP design must decide where bounds enforcement lives: as a protocol-level hard ceiling and floor, or as a configuration-content-level convention that the configuration author is responsible for honoring.
+5. **Backward compatibility with the input-less custodian-fee accessor.** A chain-config payload that omits the custodian-fee accessor (or supplies one with the current “no input” shape) must continue to resolve to a sensible value. The post-MVP design must decide whether the input-less form is still accepted (the unspent-count input is supplied but ignored by an input-less bytecode) or whether the dynamic form replaces it entirely (forcing chain-config evolution to roll out together).
+6. **Observability.** The structured-log record for each fee resolution should expose both the unspent-count input and the resolved fee, so that simulator replay and operator inspection can verify deterministic behavior across nodes and diagnose curves that misbehave under unexpected saturation patterns.
+
+This section captures only the conceptual idea and the open questions. It is not a requirement, does not change any MVP-scope FR (including the current “no input” specification for the custodian-fee accessor), and does not commit to specific fee curves, encodings, or thresholds. The corresponding requirement-level wording — including the extended `configuration_module` custodian-fee accessor input contract — and any architectural decision records will be created when the post-MVP work begins.
+
 ## Node Registration Concept
 
 Part IV introduced the conceptual model for adding new nodes, and Part V clarifies that registration is also a compact, explicit transaction type.
@@ -484,7 +523,7 @@ Complex and privacy-preserving transactions consume more bytes and therefore mor
 
 ### UTXO growth can stall the chain
 
-If live UTXOs occupy all available chain space, the chain may temporarily stop accepting new transactions until repeated custodian-fee reductions shrink the UTXO set.
+If live UTXOs occupy all available chain space, the chain may temporarily stop accepting new transactions until repeated custodian-fee reductions shrink the UTXO set. A post-MVP concept for making the custodian fee respond to active-chain UTXO saturation is captured under [Dynamic Custodian Fee (Post-MVP Concept)](#dynamic-custodian-fee-post-mvp-concept); the limitation above describes the MVP behavior under a fixed-by-default custodian fee and is not changed by the existence of that concept section.
 
 ### Long disconnects can become permanent forks
 
