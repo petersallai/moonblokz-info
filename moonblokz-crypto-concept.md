@@ -124,9 +124,16 @@ Conceptually, this reflects a preference for reducing fragile runtime randomness
 
 ### Bounded aggregation
 
-The current library defines `MAX_AGGREGATED_SIGNATURES = 50`.
+The library defines a compile-time constant `MAX_AGGREGATED_SIGNATURES`, currently `50`, that sets a global upper bound on aggregated-signature storage.
 
-Conceptually, that means aggregated approval evidence is intentionally bounded. MoonBlokz is not modeling an unbounded “aggregate as many as you want” scheme. It is modeling a resource-conscious, fixed-limit approach suitable for embedded software and predictable serialization.
+Conceptually, that means aggregated approval evidence is intentionally bounded. MoonBlokz is not modeling an unbounded "aggregate as many as you want" scheme. It is modeling a resource-conscious, fixed-limit approach suitable for embedded software and predictable serialization.
+
+The **practical ceiling** for how many supporters can be carried inside one approval evidence block is backend-dependent, because `AGGREGATED_SIGNATURE_VARIABLE_SIZE` differs between backends. With a roughly 2 KB block-size budget, minus headers and a 4-byte node-id per signer, the backend-specific capacity currently works out as:
+
+- Schnorr: `VARIABLE_SIZE = 32` bytes per signer → approximately 50 supporters per evidence block.
+- BLS: `VARIABLE_SIZE = 0` bytes per signer → approximately 450 supporters per evidence block.
+
+The global `MAX_AGGREGATED_SIGNATURES = 50` therefore matches the Schnorr capacity today but is a conservative cap for BLS. Any chain-config validator that enforces `required_support ≤ MAX_AGGREGATED_SIGNATURES` must treat the effective ceiling as a backend-calibrated value rather than as a single fixed number across all deployments.
 
 ## Why MoonBlokz Distinguishes Three Signature Roles
 
@@ -246,9 +253,10 @@ The library uses fixed limits and fixed-size serialization conventions.
 
 Most importantly:
 
-- `MAX_AGGREGATED_SIGNATURES = 50`
+- `MAX_AGGREGATED_SIGNATURES = 50` as the current global compile-time cap,
+- with a backend-dependent practical ceiling (see "Bounded aggregation" above): approximately 50 supporters per evidence block for Schnorr, approximately 450 for BLS, determined by each backend's `AGGREGATED_SIGNATURE_VARIABLE_SIZE` together with the per-signer node-id overhead and the available block payload budget.
 
-Conceptually, this means the crypto subsystem is designed for predictable upper bounds in memory and payload handling.
+Conceptually, this means the crypto subsystem is designed for predictable upper bounds in memory and payload handling, while still allowing a BLS-using deployment to carry substantially more supporters per approval evidence block if the global cap is later raised.
 
 This fits the broader MoonBlokz philosophy of bounded behavior on constrained devices.
 
@@ -300,7 +308,7 @@ The Schnorr designs show a clear preference for deterministic nonce derivation o
 
 ### Fixed limits are part of the design, not an implementation accident
 
-The aggregation limit of 50 signatures is a conceptual commitment to bounded behavior.
+The current global aggregation limit of 50 signatures is a conceptual commitment to bounded behavior, with a backend-dependent practical ceiling per approval evidence block (approximately 50 for Schnorr, approximately 450 for BLS).
 
 ### MoonBlokz still prioritizes practical deployability
 

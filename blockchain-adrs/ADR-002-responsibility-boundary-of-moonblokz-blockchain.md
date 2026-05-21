@@ -4,7 +4,7 @@
 Accepted
 
 ### Context
-The blockchain module sits next to several adjacent subsystem concerns: communication transport, fragmentation, storage, cryptography, radio-observation-based creator scoring, local query serving, and chain-state management. Without a clear responsibility boundary, implementation would tend to pull transport and infrastructure concerns into the blockchain core.
+The blockchain module sits next to several adjacent subsystem concerns: communication transport, fragmentation, storage, cryptography, the scoring module, local query serving, and chain-state management. Without a clear responsibility boundary, implementation would tend to pull transport and infrastructure concerns into the blockchain core.
 
 MoonBlokz uses explicit subsystem boundaries across radio, storage, crypto, telemetry, and simulation. The blockchain module must follow the same discipline if it is to remain testable, portable, and conceptually clean.
 
@@ -24,7 +24,7 @@ MoonBlokz uses explicit subsystem boundaries across radio, storage, crypto, tele
 - serialization / deserialization adapters,
 - storage implementation mechanics,
 - crypto backend implementation,
-- or radio-derived score computation used as creator-selection input.
+- or the scoring module used as creator-selection input.
 
 The blockchain module therefore remains a domain core with explicit surrounding adapters and dependencies, not an all-in-one blockchain engine.
 

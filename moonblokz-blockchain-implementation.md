@@ -4,6 +4,7 @@
 
 This document captures implementation-facing implications of the MoonBlokz blockchain model introduced in Part III and extended in Part IV and Part V of the MoonBlokz series. It is not a full implementation specification. Instead, it complements the conceptual and algorithm documents by identifying what an implementation will need to track, where configuration boundaries exist, how compact binary structures affect engineering choices, and which details must remain open until later articles or repository decisions define them.
 
+- Use [`moonblokz-blockchain-prd.md`](./moonblokz-blockchain-prd.md) as the **authoritative source** for every FR-numbered functional requirement and Non-Functional Requirement cited in this document; FR references in the implementation guidance resolve to the canonical wording in the PRD.
 - Use [`moonblokz-blockchain-concept.md`](./moonblokz-blockchain-concept.md) for the conceptual description.
 - Use [`moonblokz-blockchain-algorythm.md`](./moonblokz-blockchain-algorythm.md) for the algorithm model and the detailed main data structures.
 - Use [`blockchain-adrs/ADR-INDEX.md`](./blockchain-adrs/ADR-INDEX.md) for the current accepted blockchain architecture decision set and its reading order.
@@ -52,7 +53,7 @@ It should not own:
 - communication transport,
 - fragment handling,
 - serialization / deserialization adapters,
-- radio-derived score computation used as creator-selection input,
+- the scoring module used as creator-selection input,
 - storage implementation mechanics,
 - or cryptographic backend implementation.
 
@@ -94,15 +95,30 @@ The article explicitly suggests that specialized storage structures such as B-tr
 
 ## Processing-State Crash Semantics
 
-The todo material highlights an implementation behavior that deserves explicit documentation: if the **processing** phase is interrupted, for example by restart, the current practical recovery policy may be to discard in-progress reconstructed state and start over. This uses the same lifecycle terminology as the conceptual and algorithm documents.
-
-This matters because processing is not merely incremental block intake. It may be a reconstruction pass over a candidate chain. If that pass is interrupted, the implementation must decide whether partially rebuilt state is resumable or disposable.
+The **processing** phase is not merely incremental block intake. It may be a reconstruction pass over a candidate chain. If that pass is interrupted, for example by restart, the implementation must decide whether partially rebuilt state is resumable or disposable.
 
 For now, the conservative interpretation is:
 
 - processing-state restart behavior should be treated as an explicit policy,
 - a full restart of reconstruction is an acceptable current simplification,
 - resumable processing should be treated as future enhancement rather than assumed capability.
+
+## Failed Full-Chain Validation Recovery
+
+Failure during full-chain validation in the processing phase is a distinct situation from restart. The chain has been traversed and the reconstruction failed against a rule that is already enforceable at the reached position.
+
+Recovery combines two scoped actions that must be applied together, not substituted for each other:
+
+1. **Reconstruction working-set rollback** — the derived state accumulated during the forward traversal is discarded in full and atomically, regardless of the durable-deletion path chosen below. This always applies and restores the module to a clean state before returning to collecting.
+2. **Durable-storage deletion under the ADR-004 processing-phase deletion path** — the block proven invalid by the re-execution is removed from durable storage as well. If the specific offending block can be identified from the failure signal, only that block is deleted. If it cannot be precisely identified, the fallback is to delete **exactly one block — the candidate chain's head**; repeating this single-block drop across subsequent collecting → processing cycles eventually expels the offender. There is no configurable fallback depth. Every transitive descendant of a deleted block — every block whose `previous_hash` chain passes through it — is also deleted, since a block has exactly one parent link and that link cannot be re-routed (the `previous_hash` is immutable). This explicitly includes every block on the candidate chain between the offender and the pre-failure tip when the offender is precisely identified. Sibling subtrees on other branches of the block-tree (blocks whose `previous_hash` chain does not pass through any deleted block) are unaffected and remain in storage.
+
+After these actions, the module returns to collecting state and resumes dominant-chain acquisition on the remaining retained history.
+
+The durable deletion is required for forward progress, not optional cleanup. If the offending block remained in durable storage, the next collecting iteration would re-select the same candidate tip by the dominant-chain acquisition rule, re-enter processing, fail the same invariant at the same position, and loop indefinitely between collecting and processing. Removing the offender (or, in the fallback case, lowering the tip one block at a time) is the only mechanism that breaks this livelock. The loss of a block that might in principle be valid on another branch is bounded and acceptable because the radio layer can re-disseminate blocks on demand; an unbreakable livelock would not be acceptable.
+
+Discarding the working-set in full is preferred for atomicity and simplicity: working-set state and durable storage are separate layers, so a full working-set reset does not remove durable blocks beyond those identified by the deletion path. The single-block durable fallback keeps recovery bounded and predictable without introducing a configuration surface whose correct value would be hard to reason about in practice.
+
+This recovery path is distinct from the intake-time persistence threshold of ADR-004: intake remains permissive, and durable deletion here is authorized only by the processing-phase "proven invalid" evidence produced by the re-execution itself.
 
 ## Implementation-Relevant State
 
@@ -123,19 +139,21 @@ A practical implementation can be understood as four tightly related internal lo
 1. **Chain Knowledge Core** — known blocks, branch knowledge, active-chain selection, operating mode, and the embedded recovery / approval / `snake_chain` consequences.
 2. **Derived Economic State Cache** — incrementally maintained balance and UTXO truth derived from the active chain.
 3. **Mempool Registry** — pending transaction registry and block-proposal source, subject to chain-driven correction.
-4. **Vote Engine** — creator-selection state derived from blockchain events plus external radio-derived score input.
+4. **Vote Module** — tracks per-node accumulated vote counts and determines the next block creator from that state, using vote targets supplied by the scoring module at transaction-creation time.
 
 ### 1. Block storage state
 
 The implementation must be able to retain:
 
-- known blocks that have passed the configured persistence threshold,
-- disconnected but signature-valid blocks whose parents are not yet available,
+- every received block for which the module has no exact evidence of unacceptability,
+- disconnected blocks whose parents are not yet available,
+- blocks whose creator key is not yet known and whose signature therefore cannot be verified yet,
 - block types,
 - serialized block bytes or a lossless reconstruction path,
+- verification-stage markers so that stored-but-unverified, signature-valid, and active-chain-selected blocks can be distinguished,
 - and enough metadata to compare branches later.
 
-At current design level, the durable storage boundary is intentionally strict: only received blocks that are at least signature-valid belong in persistent storage. Parent/child indexes, branch-navigation aids, and similar helper structures may still exist, but they should be treated as derived implementation support rather than the primary durable truth.
+At current design level (see [ADR-004](./blockchain-adrs/ADR-004-durable-blockchain-storage-persistence-threshold.md)), the durable storage boundary is permissive during collection and processing and remains permissive in ready state except when intake-time exact evidence is already present. The intake-time exact-evidence forms are: parsing failure; ready-state direct-active-chain-extension creator-signature invalidity when `previous_hash = active_chain_head_hash` and the creator key is derivable from the current active chain; chain-config content-signature invalidity against `node_zero_public_key`; configuration-module rejection of chain-config content; ready-state chain-config content mismatch against the durable-locked configuration; deviation-branch creator-exclusivity violation; and the FR74 node-zero trust-anchor mismatches on node-`#0` registration, balance-block NodeInfo, or chain-config signature material. Outside the narrow direct-active-extension case and those explicit trust-anchor / chain-config exact-evidence forms, a block whose creator signature later turns out to be invalid against the candidate-side public-key projection during chain-switch reconciliation (blockchain module PRD FR9 Tier 3) or during processing-pass re-execution (blockchain module PRD FR3 / blockchain module PRD FR5) must be removed from durable storage through the explicit deferred-rejection path defined for that reconciliation event; the intake-time signature check outside the direct-extension exception (blockchain module PRD FR9 Tier 1 opportunistic side effect) primes the signature-verification cache against the active-chain projection but does not by itself reject the block. Parent/child indexes, branch-navigation aids, and similar helper structures may still exist, but they should be treated as derived implementation support rather than the primary durable truth.
 
 The need for serialized-byte fidelity is stronger after Part V because signatures and hashes depend on exact byte layout.
 
@@ -163,39 +181,37 @@ This implies explicit support for:
 - registration-derived node count progression,
 - and determining which balances must be present in active balance blocks.
 
-### 4. Live UTXO state
+### 4. UTXO spent-state projection
 
-The address side of the model requires tracking:
+The address side of the model is represented as a **per-block spent-bit vector** rather than as an in-memory live UTXO set, per [ADR-016](./blockchain-adrs/ADR-016-sequence-indexed-utxo-input-model.md). Each block stored within the active `snake_chain` window carries one bit per UTXO output produced by its transactions; the bit is `0` while the output is unspent on the current active chain and `1` once spent. The spent-bit vector is co-located with the block in storage and is a derived projection of the current active chain.
 
-- currently unspent UTXOs,
-- which UTXOs originated in blocks that are nearing tail deletion,
-- whether those UTXOs have already been scheduled for carry-forward,
-- the custodian-fee-adjusted value that would be re-added,
-- and enough reference information to rebuild zero-input replay transactions.
+Practical consequences for the implementation:
 
-Part V makes one modeling decision explicit: UTXO references use transaction hashes, not sequence numbers. Any storage schema must support efficient lookup by transaction hash plus output index.
+- UTXO input lookup uses `(block_sequence, output_index)` directly against the sequence-indexed block storage; no hash-keyed auxiliary index is required.
+- Carry-forward at tail-drop time reads the dropping block's spent-bit vector to identify still-unspent outputs; no separate "find unspent" scan is needed.
+- Chain-switch reconciliation must recompute the spent-bit vectors of blocks inside the rollback scope by forward-replaying the new active chain from the common ancestor. This is a bounded, deterministic step of the chain-switch workflow.
+- Saturation-related scheduling (which UTXOs are approaching tail deletion, custodian-fee-adjusted value, zero-input replay construction) is driven from the spent-bit vector plus block metadata, not from a continuously maintained live UTXO set. Repeated carry-forward is intentionally self-clearing: each preservation step reduces every surviving carried-forward UTXO by the custodian fee, and below-fee UTXOs disappear instead of being preserved again.
 
 ### 5. Recovery state
 
-To support missing-parent recovery, the implementation will likely need to track:
+To support missing-parent recovery deterministically and within bounded resources, the implementation maintains an explicit `chain_heads` table (per blockchain module PRD FR19) indexing every block-tree tip — every block whose hash is not the parent reference of any other retained block — regardless of its FR9 status (Stored, Connected, or Active). Per chain_heads entry: the head block's hash; the head block's sequence; a `connected` cache flag; for Stored heads a tail-point cache (the lowest-sequence block on the head's branch whose parent reference does not resolve in the tree) and `last_request_timestamp` (initialized to the epoch); for Connected/Active heads a connection-point cache. The active head is identified by a single global `active_chain_head_id` field — no per-head active flag. Per block, a `head_ref_count` field counts how many chain_heads entries' ancestry passes through that block (structural — block-tree graph based, not active-chain based, and therefore unaffected by FR23 chain-switch reconciliation).
 
-- whether a block is fully connected to known ancestry,
-- which parent references are unresolved,
-- which fragment sets are still incomplete before a block can even be parsed,
-- and whether recovery requests have already been made or still need scheduling.
+The chain_heads table is bounded by `chain_heads_max_capacity`. Eviction selects the non-active head with the smallest `head_sequence` (deterministic tie-break by smallest `head_block_id` for FR67 replay determinism — wall-clock arrival timestamps are not consulted because they are not deterministic across nodes). Eviction walks back from the evicted head's `head_block_id` along the parent reference chain, decrementing each block's `head_ref_count` by 1; blocks whose count reaches 0 are deleted from durable storage and from the retained block-tree, and the walk continues to the deleted block's parent; blocks whose count remains positive are shared with another head and the walk terminates.
+
+Parent-recovery requests are emitted at most one per scheduler tick. Two chain-config parameters govern timing: `parent_recovery_global_tick_interval` (the wall-clock period between scheduler ticks) and `parent_recovery_per_head_retry_interval` (the minimum wall-clock period between two consecutive requests for the same head). On each tick the scheduler enumerates Stored heads whose per-head retry window has elapsed and selects the one with the smallest `last_request_timestamp` (deterministic tie-break by smallest head_sequence, then smallest head_block_id), emits a single recovery request for that head's tail-point parent, and updates the head's `last_request_timestamp` to the current monotonic time. Tail-pointing parent admission triggers a walking ref-count update along the merging branch (bounded by the snake_chain window length). FR23 chain-switch reconciliation triggers cache recomputation across all heads (connected flag, connection-point, demotion of newly-disconnected heads to Stored with `last_request_timestamp = 0`) without affecting `head_ref_count`. FR5 atomic recovery deletion removes any chain_heads entry whose `head_block_id` was deleted and recomputes cache fields of surviving heads. See FR19 for the full normative rules and edge cases.
 
 ### 6. Vote and participation state
 
 The algorithm implies local tracking of:
 
 - votes or vote scores per candidate creator,
-- external score input used to determine which node receives the vote when a new transaction is accepted,
+- scoring module input used to determine which node receives the vote when a new transaction is accepted,
 - vote score resets after successful creation or penalty,
 - vote-interest growth over time,
 - spent-vote values recorded into block headers,
 - and first-ranked creator information used by approval deviation logic.
 
-At current module-boundary level, the blockchain module should not compute from raw radio observation which node a newly accepted transaction should vote for. That decision belongs to an external score-calculation module based on message-count visibility. The blockchain module does own the accumulation, reset, and creator-selection consequences of votes that are already present in blockchain transactions and blocks.
+At current module-boundary level, the blockchain module should not compute from raw radio observation which node a newly accepted transaction should vote for. That decision belongs to an upstream **scoring module**, whose selected vote target is written into the locally assembled signed transaction before the blockchain module sees it. The blockchain module's dedicated local transaction-creation surface therefore receives a fully formed signed transaction, validates it, and inserts it into the mempool automatically when accepted. The blockchain **vote module** owns the per-node accumulated vote count, the rule that each accepted transaction contributes one configured `vote_scale` credit to its target node, the integer-only anti-capture growth rule `score += floor(score × vote_interest / vote_scale)` applied on accepted blocks, the creator reset on successful block creation, the grace-period reset policy, and the determination of the next block creator from that accumulated state.
 
 ### 7. Approval-support state
 
@@ -323,6 +339,26 @@ That means:
 
 When mempool capacity is exhausted, randomized eviction is preferable to deterministic eviction because it increases the chance that the network as a whole retains a more diverse transaction set.
 
+### Compact transaction storage layout
+
+MoonBlokz transactions are variable-size: a node transfer is 101 bytes while a complex transaction with several inputs and outputs can be much larger. Storing each pending transaction as a fixed-size object (allocating maximum transaction size per slot) would waste significant RAM on a constrained device.
+
+The mempool must therefore store transactions in **compacted form**:
+
+1. **Transaction byte buffer** — a single contiguous `[u8]` array that holds all pending transactions packed end-to-end with no inter-entry gaps.
+2. **Transaction index array** — a separate, much smaller array of fixed-size entries, one per pending transaction. Each entry contains:
+   - `start` (`u32`) — byte offset of the transaction within the byte buffer,
+   - `length` (`u32`) — byte length of the transaction,
+   - `arrival_time` (`u64`) — timestamp of when the transaction was received,
+   - `crc32` (`u32`) — CRC-32 checksum of the transaction bytes.
+
+The index array enables two critical fast-path operations:
+
+- **Block-proposal selection** — scanning the index to select transactions for inclusion in a new block without parsing the byte buffer until needed.
+- **Duplicate detection on arrival** — comparing the incoming transaction's CRC-32 against index entries. A CRC-32 match triggers a full byte comparison; a CRC-32 mismatch immediately rules out a duplicate. This avoids full-buffer scans for every incoming transaction.
+
+When a transaction is removed from the mempool (confirmed by the active chain, invalidated by a chain switch, or evicted under capacity pressure), the byte buffer must be **compacted**: remaining transactions are shifted to close the gap and the affected index entries are updated. This preserves the contiguous-storage invariant and prevents internal fragmentation from accumulating over the mempool's lifetime.
+
 ### RAM-side expectations
 
 The implementation should expect to cache only a subset of:
@@ -393,8 +429,10 @@ The articles say monetary behavior may depend on chain-level configuration, incl
 The following are implied configuration candidates:
 
 - enough time has passed to force block creation,
+- transactional block-fill threshold percentage of `MAX_BLOCK_SIZE`,
 - grace-period duration,
 - approval timing windows,
+- mempool-replenishment request interval (used continuously whenever the local mempool is below the transactional fill threshold, independently of whether the local node is the currently expected creator; see Algorithm 4 mempool replenishment in `moonblokz-blockchain-algorythm.md`),
 - and retention-related scheduling margins.
 
 The todo material also suggests that some timing behavior may later depend on runtime-derived metrics such as average block time or capped grace-time formulas.
@@ -427,9 +465,11 @@ The implementation must be able to represent at least the options explicitly men
 
 Approval depends on a predetermined number of support messages or majority conditions. These thresholds must be explicit rather than hidden inside ad hoc logic.
 
+Per [ADR-015](./blockchain-adrs/ADR-015-approval-subgroup-selection.md), chain-config validation must reject `required_support` values that exceed the active crypto backend's `MAX_AGGREGATED_SIGNATURES`, because only the actually signing supporters enter the evidence block. The subgroup size `m` is then derived as `min(2 · required_support − 1, |A|)` and does not carry a direct crypto cap of its own.
+
 ### Anti-capture parameter
 
-The vote-interest mechanism uses a small parameter `y`. This should remain configurable or centrally defined.
+The vote-interest mechanism is parameterized by two configuration values: `vote_scale` (the numeric value of one received vote credit and the denominator of the anti-capture rule) and `vote_interest` (the per-block growth numerator). Anti-capture growth then uses integer arithmetic: `score += floor(score × vote_interest / vote_scale)`.
 
 ## Genesis and Bootstrap Implications
 
@@ -480,7 +520,7 @@ The implementation needs a policy for competing block intents, at minimum among:
 
 ### Size-aware packing matters
 
-Because blocks are capped and complex transactions may be large, the scheduler must consider not only semantic priority but also packing feasibility. A replay obligation that does not fit may need to be split across successive blocks where the protocol allows it.
+Because blocks are capped and complex transactions may be large, the scheduler must consider not only semantic priority but also packing feasibility. Under the current PRD, balance replay at a single tail step is guaranteed to fit in one balance block because only one block's worth of seed sources becomes newly droppable at once; size pressure remains relevant for other replay content, especially UTXO carry-forward.
 
 ### Registration-aware balance scheduling matters
 
@@ -503,11 +543,11 @@ The articles point toward special multi-signature constructions. Current plannin
 
 ### 3. Random subgroup selection
 
-The approval model references majority approval by a randomly selected subgroup but postpones the details.
+Resolved by [ADR-015](./blockchain-adrs/ADR-015-approval-subgroup-selection.md). The subgroup is derived by a deterministic rendezvous-hash ordering seeded by the snake-chain tail hash, the proposer node identity, and the proposed sequence.
 
 ### 4. Active-node-window semantics
 
-The phrase “previous `n` blocks” is not yet fully formalized.
+Resolved by [ADR-015](./blockchain-adrs/ADR-015-approval-subgroup-selection.md). A node is active if it appears in the current active `snake_chain` as the creator of at least one block or transaction.
 
 ### 5. Mutable configuration support
 
@@ -517,9 +557,9 @@ Part IV mentions future support for configuration changes with approval and comp
 
 Part IV clearly states that once active-chain overlap is gone, resynchronization fails. It does not yet define any alternate recovery path such as trusted snapshots, external rebootstrap, or assisted reseeding.
 
-### 7. Exact chain-config payload schema
+### 7. Chain-config payload envelope vs. open parameter catalog
 
-Part V confirms the existence of configuration payloads but defers the detailed parameter schema and dynamic-formula mechanism to a later article.
+The outer chain-config payload envelope is now fixed: it carries canonical configuration-content bytes plus a content-signature by node `#0`'s registering key, and replay chain-config blocks reproduce both byte-for-byte. What remains open is the inner parameter catalog and any future dynamic-formula mechanism discussed by later articles.
 
 ## Practical Engineering Cautions
 
@@ -541,7 +581,7 @@ The target environment is constrained. Replay logic should avoid unbounded scans
 
 ### Expect complex approval interactions
 
-Because essential replay blocks can be inserted before evidence blocks, approval workflows should be designed as state machines rather than linear happy-path flows.
+Because essential replay blocks can be inserted before evidence blocks while the same proposer-controlled deviation-bearing branch remains in progress, approval workflows should be designed as state machines rather than linear happy-path flows. Those inserted replay blocks do not by themselves start a fresh approval cycle for the already-pending deviation; once the required support package is complete, the proposer can emit the evidence block immediately.
 
 ### Plan for observability
 

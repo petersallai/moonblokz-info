@@ -230,12 +230,14 @@ When the `bls` family is active:
 
 ### Global bounded-aggregation constants
 
-Across all families:
+Across all families, the library currently uses:
 
 - `MAX_AGGREGATED_SIGNATURES = 50`
 - `MAX_AGGREGATED_SIGNATURE_BYTES = AGGREGATED_SIGNATURE_CONSTANT_SIZE + AGGREGATED_SIGNATURE_VARIABLE_SIZE * MAX_AGGREGATED_SIGNATURES`
 
 This gives the library a compile-time upper bound for serialized aggregated-signature storage.
+
+The **practical per-backend ceiling** for how many supporters fit into one approval evidence block differs because `AGGREGATED_SIGNATURE_VARIABLE_SIZE` differs between backends. With a roughly 2 KB block-size budget, minus headers and a 4-byte node-id per signer, the resulting capacities are approximately 50 supporters for Schnorr (`VARIABLE_SIZE = 32`) and approximately 450 supporters for BLS (`VARIABLE_SIZE = 0`). The current global cap of 50 therefore matches the Schnorr capacity today; a BLS-centered deployment could carry more supporters per approval evidence block if the global cap were raised.
 
 ## Current Schnorr Algorithm Family Model
 

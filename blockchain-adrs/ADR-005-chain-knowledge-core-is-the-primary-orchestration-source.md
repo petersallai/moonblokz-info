@@ -21,7 +21,7 @@ The Chain Knowledge Core owns:
 Derived or working subsystems such as:
 - the economic state cache,
 - the mempool registry,
-- and the vote engine
+- and the vote module
 
 may maintain their own internal state, but the Chain Knowledge Core remains the source that drives correction and reconciliation when active-chain truth changes.
 

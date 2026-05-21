@@ -26,6 +26,8 @@ This file should be read after:
 - [`moonblokz-technology.md`](./moonblokz-technology.md), which introduces the technology platform and architectural boundaries,
 - and before the more detailed algorithm and implementation notes.
 
+The authoritative source for the FR-numbered functional requirements (FR1–FR69) and the Non-Functional Requirements referenced from the algorithm, implementation, and ADR documents is [`moonblokz-blockchain-prd.md`](./moonblokz-blockchain-prd.md). This concept document explains the operating model behind those requirements; the canonical wording of any FR lives in the PRD.
+
 This document answers the conceptual question: **what kind of blockchain does MoonBlokz become when it must operate over unreliable radio, cannot store unbounded history, and must keep every critical representation compact enough for constrained devices?**
 
 ## Business Analyst View: What Problem This Model Solves
@@ -304,7 +306,7 @@ MoonBlokz uses a hybrid registration model:
 - every node can register a new node,
 - registration has a configurable price,
 - the new key must prove possession of its private key,
-- and the registration fee is absorbed by the network rather than paid to a specific node.
+- and the registration price is absorbed by the network rather than paid to a specific node; the ordinary transaction fee is a distinct amount and is handled separately.
 
 The conceptual reason is that adding nodes is not free for the system. More nodes mean:
 
@@ -406,6 +408,59 @@ If a node is disconnected so long that the entire active chain window moves past
 
 This is one of the most important conceptual boundaries in the current MoonBlokz model. The system is designed for long but still bounded disconnection tolerance, not arbitrary offline recovery after unlimited time.
 
+## Long-Disconnect Recovery (Post-MVP Concept)
+
+This section captures a concept for partial recovery from long-disconnect states, beyond what the MVP currently supports. The MVP keeps long-disconnect resynchronization out of scope: a node that detects the long-disconnect condition (an incoming block whose sequence is so far ahead that the active chain window cannot be bridged by ordinary parent recovery) today only emits a diagnostic log entry, and external operator intervention is the only recovery path. For deployments where occasional long disconnects are expected as normal operating conditions, a chain-internal recovery path would substantially reduce operator burden.
+
+The concept here is intentionally pre-design: it captures the operating idea and the questions a post-MVP requirement and architecture pass must answer. It does not change any MVP-scope requirement.
+
+### Trust source: the node’s own known active-chain participants
+
+The recovery concept’s trust source is the node’s own (potentially stale) active-chain knowledge: the set of nodes the local active chain considers active, in the sense already used by the approval-subgroup concept (ADR-015). The local node trusts that those known nodes were honest when they entered its active chain, and uses a majority of a deterministically-selected subgroup of them to authenticate the recovery anchor.
+
+This is a partial-coverage trust model by construction. The further the local active chain has fallen behind reality, the more likely it is that a non-trivial fraction of the trusted set is no longer reachable, no longer holds the requested block, or has rotated its keys. The mechanism is intentionally probabilistic: it works under wide but not universal boundary conditions and is not a substitute for staying connected.
+
+### Outline of the proposed mechanism
+
+The proposed mechanism works, at a conceptual level only, as follows:
+
+1. **Watcher activation.** In ready state, when an incoming block’s sequence is too far ahead to be bridged by ordinary parent recovery (matching the existing long-disconnect detection condition), the node activates an internal long-disconnect watcher. Normal ready-state operation on the local active chain continues unchanged during watcher activity; the watcher is purely additive observation.
+2. **Anchor capture.** The watcher counts consecutive incoming too-new blocks. After observing `n` of them (where `n` is a chain-config parameter), the watcher retains the `n`-th observed block as a **recovery anchor** in a dedicated single-slot recovery state outside the regular block-tree, so that the anchor is not subject to capacity-pressure eviction.
+3. **Subgroup determination.** The node forms a **recovery subgroup** of `m` known active-chain nodes (where `m` is a chain-config parameter). Subgroup membership is derived from a deterministic ordering whose seed combines the local node’s private PRNG state (initialized from the node’s private key) with the anchor’s sequence. This pattern echoes the approval-subgroup approach of ADR-015 but uses a private rather than a public seed: the recovery subgroup is the requester’s own private querying decision rather than a globally verifiable consensus selection, so external verifiability of the choice is traded for external unpredictability of who will be queried.
+4. **Authentication request.** The node emits a recovery-request message carrying the anchor’s sequence, its hash, and the subgroup member identifiers. The message propagates through the radio layer’s existing relay pipeline like any other blockchain message.
+5. **Confirmation response.** A subgroup member that receives the request checks whether the requested `(sequence, hash)` matches a block in its own active chain. If it does, the member emits a confirmation message signed over the `(sequence, hash)` value.
+6. **Majority-confirmation outcome.** When the requesting node has collected confirmation messages from at least `50 % + 1` of the subgroup, it deletes its stored blocks, saves the recovery anchor as the only retained block, and transitions back into collecting state. The ordinary collecting → processing → ready lifecycle then re-establishes operational state against the anchor.
+7. **Retry on insufficient confirmations.** If insufficient confirmations are received, the watcher waits until another `n` consecutive too-new blocks have been observed and retries against the newly-arrived anchor sequence, which yields a fresh subgroup through the changed PRNG-plus-sequence seed.
+
+### Fit with existing structural decisions
+
+The concept aligns with several decisions that are already part of the MVP model:
+
+- The `ready → collecting → processing → ready` re-entry path uses the lifecycle already specified by the chain lifecycle and recovery requirements; no new lifecycle state is introduced.
+- The subgroup-based authentication pattern reuses the conceptual approach of the approval-subgroup mechanism (ADR-015).
+- The trust-from-known-participants idea is consistent with how vote-based creator selection and approval evidence already work.
+- “The recovered chain must still be the same chain” follows naturally from the set-once chain-configuration lock: a recovery anchor whose chain belongs to a different chain-config will fail the durable-lock match check during the subsequent processing → ready transition, which is the correct behavior under the existing “no cross-chain merging” boundary.
+
+### Open questions for the post-MVP design
+
+The concept introduces tensions that a post-MVP requirement and ADR pass must resolve. They are deliberately left open here:
+
+1. **Modification of the current long-disconnect intake behavior.** The current ready-state rule discards too-new blocks entirely. The watcher concept requires retaining at least the recovery anchor outside the regular block-tree, so the intake rule for too-new blocks needs an explicit watcher-mode exception.
+2. **Same-chain-only recovery as an explicit boundary.** The concept recovers only from a disconnect on the same chain (same locked chain-configuration content). Cross-chain merging remains out of scope, as in the MVP; the post-MVP wording must state this explicitly so the durable-lock failure path is treated as expected behavior rather than as a recovery defect.
+3. **Stale-subgroup probabilistic coverage.** The longer the disconnect, the more likely it is that subgroup members are no longer reachable. Deployment guidance must communicate that the recovery is “wide but not universal”, and the post-MVP design must decide how many retries are reasonable before the watcher gives up.
+4. **Private vs. public subgroup seed.** Using a private PRNG seed (derived from the requester’s private key) is intentional: external attackers cannot pre-position colluding subgroup members because they cannot predict who will be queried. The trade-off is that the subgroup choice is not externally verifiable. This is acceptable because the subgroup is a private querying decision rather than a consensus input. The contrast with the public-seed approval-subgroup of ADR-015 must be made explicit in a future ADR so that the two patterns are not conflated.
+5. **Counter semantics for “n consecutive too-new blocks”.** The precise definition of consecutive — arrival order vs. distinct sequences, reset behavior when a non-too-new arrival interleaves, treatment of duplicate retransmissions, treatment of fork siblings at the same sequence — is left for post-MVP refinement.
+6. **Confirmation-collection mechanics.** Timeout vs. count-bounded waiting, deduplication of confirmations by signer node identifier, partial-confirmation carry-over across retries, and the choice between aggregated and individual signatures (the existing aggregated-evidence pattern is a natural candidate) are all post-MVP design choices.
+7. **Order of operations: confirm before delete.** The subgroup-selection input depends on the node’s current active chain. Deletion of stored blocks must therefore happen only after the `50 % + 1` confirmations have been processed, so that the trust basis remains available until the recovery is committed.
+8. **Retry mechanics.** The proposed retry on each subsequent batch of `n` too-new blocks yields a fresh subgroup through the changed seed. Whether partially-collected confirmations carry over between retries, and how the watcher chooses between waiting longer with the current anchor and rolling forward to a new anchor, is left for post-MVP design.
+9. **Replay determinism for the private seed.** Because the subgroup selection consumes the node’s private PRNG state, deterministic replay (a core MVP property) requires that this state be captured as part of the replay input set, in the same spirit as the existing node-identity and trust-anchor initialization parameters.
+10. **Anchor pinning.** Holding the recovery anchor in a dedicated single-slot recovery state outside the block-tree avoids any interaction with capacity-pressure eviction. If a post-MVP design instead places the anchor inside the block-tree, an explicit pin flag would be required to prevent the anchor from being evicted before the recovery completes.
+11. **Subgroup-identifier disclosure.** The recovery-request message necessarily lists the subgroup member identifiers so that recipients can recognize whether the request concerns them. This makes the subgroup choice observable to attackers — a minor observability cost accepted as the price of relay-compatible addressing.
+12. **New blockchain message types.** The recovery request and the confirmation response are new message types in the radio-layer’s blockchain-message set. The relay pipeline can forward them opaquely, but the message-type enumeration and any chain-config-bound size constraints (driven by the `m` subgroup-identifier list) must be defined explicitly.
+13. **Sybil exposure against a long-disconnected trusted set.** If an adversary obtains control of a sufficient fraction of the local active chain’s known nodes over the course of a long disconnect (through compromise or key compromise), they can produce a successful but fraudulent confirmation set. This is the general weakness of any trust-from-known-set system and is not unique to this mechanism; the post-MVP design must acknowledge it explicitly rather than overstating the recovery’s security guarantee.
+
+This section captures only the conceptual idea and the open questions. It is not a requirement, does not change any MVP-scope FR, and does not commit to specific parameter ranges, message layouts, or aggregation strategies. The corresponding requirement-level wording — including the watcher-mode exception to the current long-disconnect-intake rule — and any architectural decision records will be created when the post-MVP work begins.
+
 ## Security Framing
 
 The article series continues to separate algorithmic protection from physical-world limits.
@@ -433,7 +488,7 @@ If live UTXOs occupy all available chain space, the chain may temporarily stop a
 
 ### Long disconnects can become permanent forks
 
-If no common active-chain overlap remains, rejoin is impossible in the current model.
+If no common active-chain overlap remains, rejoin is impossible in the current MVP model. A partial recovery approach based on a known-active-node subgroup is captured as a post-MVP concept under [Long-Disconnect Recovery (Post-MVP Concept)](#long-disconnect-recovery-post-mvp-concept); the limitation above describes the MVP behavior and is not changed by the existence of that concept section.
 
 ### Configuration mutability is deferred
 

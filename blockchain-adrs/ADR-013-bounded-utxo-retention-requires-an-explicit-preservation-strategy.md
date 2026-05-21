@@ -11,27 +11,40 @@ The brainstorming session identified bounded UTXO handling as one of the most da
 ### Decision
 MoonBlokz requires an explicit **bounded UTXO preservation strategy** rather than treating UTXO carry-forward as an incidental implementation detail.
 
-That strategy must define:
-- how live UTXOs are identified for carry-forward,
-- how they compete with normal transaction capacity,
-- how custodian-fee reduction participates in state pressure relief,
-- and what happens when UTXO preservation threatens normal chain progress.
+That strategy is:
+- live UTXOs in a dropping block are identified directly from that block's spent-bit vector,
+- the still-unspent outputs are replayed forward through a zero-input carry-forward transaction,
+- each preservation step reduces every surviving carried-forward output by the current chain-config-derived custodian fee,
+- any output whose remaining amount would fall below the custodian fee is discarded instead of being preserved again,
+- and repeated carry-forward therefore erodes retained carry-forward-only residue until it clears naturally.
+
+#### Fixed custodian fee
+
+The custodian fee is a **fixed chain-config-derived value** with no dynamic inputs. The configuration module's custodian-fee accessor returns the fixed value derived from chain-config content alone; the blockchain module may invoke it whenever a custodian-fee value is needed (per carry-forward construction) and is not required to cache the result. The long-run pressure-relief mechanism therefore relies on the steady deduction of this fixed amount from every surviving carried-forward UTXO at each FR53 carry-forward step until the UTXO's pre-fee amount falls below the custodian fee and the UTXO is discarded under FR53's below-fee rule.
+
+#### No explicit UTXO saturation handling
+
+When the active-window's unspent UTXOs combine with `snake_chain` replay obligations to consume most or all of `MAX_BLOCK_SIZE` over many consecutive head blocks, the blockchain module performs no special saturation detection, status reporting, structured log emission, mempool admission backpressure, or replay-deferral mechanism. The chain continues ordinary block creation per the standard content-assembly priority, producing a sequence of replay-bearing blocks that may admit no ordinary mempool transactions. The mempool continues to accept new transactions throughout — including complex transactions that would produce additional UTXO outputs — and any such admitted transactions remain in the mempool until block capacity becomes available again. The condition self-clears across many tail-advance cycles because the fixed custodian fee reduces every surviving carried-forward UTXO at each carry-forward step, eventually discarding UTXOs whose pre-fee amount falls below the custodian fee, until block capacity for ordinary mempool transactions is restored.
+
+Source: this ADR is currently accepted with a fixed-value custodian fee per `_bmad-output/planning-artifacts/prd.md` FR59 / FR55 / FR34 / FR53. An earlier dynamic-input formulation (with the active-window UTXO count and active-window node-transfer count as accessor inputs) and a corresponding explicit UTXO saturation stall handling were briefly considered but have been reverted; the current PRD pins the fixed-fee model and removes the saturation-detection FR.
 
 ### Consequences
 #### Positive
 - Treats one of the core bounded-history tensions explicitly.
-- Supports clearer reasoning about stall conditions and capacity pressure.
+- Makes the long-run pressure-relief mechanism explicit: custodian-fee erosion gradually removes old preserved UTXOs.
 - Keeps UTXO handling aligned with `snake_chain` realities.
 - Makes the privacy-versus-throughput trade-off visible rather than hidden.
 
 #### Trade-offs
-- May reveal difficult trade-offs between privacy support and throughput.
-- Requires careful block-capacity policy design.
-- May require simulator or model-based validation before the policy is trustworthy.
-- Increases the need for explicit saturation and fallback behavior.
+- Long-lived small UTXOs are gradually consumed by preservation fees.
+- The cleanup rate depends on both the custodian-fee setting and the size distribution of preserved UTXOs.
+- Transient packing pressure can still occur even though persistent carry-forward residue is self-clearing.
 
 ### Follow-up implications
-This decision implies that later design work must define:
-- the carry-forward policy and saturation thresholds,
-- the role of custodian-fee reduction in practical pressure relief,
-- and the behavior of the system when UTXO preservation begins to dominate usable block capacity.
+This decision implies that implementation work must define:
+- the exact deterministic carry-forward construction,
+- the per-step custodian-fee application logic,
+- the chain-config-derived fixed custodian-fee value,
+- and any modeling needed to choose practical custodian-fee parameters and the carry-forward lookahead `n` for a deployment.
+
+The UTXO identity representation underpinning this strategy is defined separately in [ADR-016](./ADR-016-sequence-indexed-utxo-input-model.md): UTXO inputs use `(block_sequence, output_index)` references and spent state is tracked through per-block spent-bit vectors. Carry-forward identification at tail-drop time therefore reduces to reading the dropping block's spent-bit vector; the self-clearing custodian-fee rule of this ADR operates on top of that representation.
