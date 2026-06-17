@@ -66,7 +66,28 @@ This document explains:
 
 Use this file as the canonical reference whenever any other knowledge-base document — concept, algorithm, implementation, or ADR — cites an FR by number. Other knowledge-base files reference this document instead of restating its content, so divergence from the PRD must be treated as exact evidence of a knowledge-base inconsistency.
 
-### 5. [MoonBlokz Blockchain Algorithm Model](./moonblokz-blockchain-algorythm.md)
+### 5. [MoonBlokz Blockchain Architecture Decision Document](./moonblokz-blockchain-architecture.md) — Authoritative
+
+The authoritative source for the architecture of the `moonblokz-blockchain` crate and its sibling sub-crates (`moonblokz-mempool`, `moonblokz-vote`, `moonblokz-node-runtime`, future `moonblokz-configuration`).
+
+This document explains:
+
+- the crate-split architecture (4 new crates, 2 extended crates, 2 existing crates, 1 future crate) and how they relate,
+- the single-outcome scheduling-pull API pattern with `CallResult<OutcomeEnum> + NextCall` shape,
+- the 20-method public API surface of the `Blockchain<C, S, X, ...>` struct (3 init methods, 4 intake, 1 tick, 12 read-only),
+- the three-type model (Owned + View + Builder) for `Block` / `Transaction` and friends,
+- the 15 + 1 internal modules of `moonblokz-blockchain` (`lifecycle`, `scheduler`, `blocks`, `chain_heads`, `snake_chain`, `branch_value`, `intake`, `staged_validation`, `reconciliation`, `node_info`, `spent_bits`, `creator`, `approval`, `queries`, `emit_scratch`, + the `api.rs` surface),
+- the const-generic catalog (`MAX_NODES`, `SNAKE_CHAIN_LENGTH`, `MAX_BLOCKS`, `MAX_BRANCH_COUNT`, etc. with default values),
+- the sized data-structure catalog with bit-level layouts (`BlockEntry` 76 B padded, `ChainHeadEntry` 32 B padded, `NodeInfo` SoA, `ApprovalAccumulator` ~2 KB crypto-agnostic, `EmitScratch`, `SchedulerState`),
+- the 264 KB SRAM RAM budget verified for Schnorr (~25-29% margin) and BLS (~3-6% margin),
+- the FR1–FR69 coverage matrix showing 63 hard-covered FRs, 5 delegated to the future `moonblokz-configuration` crate, and 1 MVP-skip (FR52),
+- the `ChainConfigTrait` outline for the future chain-config crate,
+- the BLS deployment-tuning recipe with `MAX_NODES` reduction levers,
+- the consolidated 22-row decisions log, the risks list, and the implementation roadmap.
+
+Use this file as the canonical reference whenever any other knowledge-base document — concept, algorithm, or implementation — describes a chain-lib data structure, module boundary, public API method, RAM/stack budget, const-generic value, crate dependency edge, or initialization parameter. Divergence from the Architecture Decision Document must be treated as exact evidence of a knowledge-base inconsistency.
+
+### 6. [MoonBlokz Blockchain Algorithm Model](./moonblokz-blockchain-algorythm.md)
 
 A more formal, algorithm-oriented document based on Parts III, IV, and V of the MoonBlokz series.
 
@@ -85,7 +106,7 @@ This document explains:
 
 Use this file when you want the full algorithmic flow described in Parts III, IV, and V, including the detailed main blockchain data structures, without dropping to low-level implementation detail.
 
-### 6. [MoonBlokz Blockchain Implementation Notes](./moonblokz-blockchain-implementation.md)
+### 7. [MoonBlokz Blockchain Implementation Notes](./moonblokz-blockchain-implementation.md)
 
 An implementation-support document derived from Parts III, IV, and V of the MoonBlokz series.
 
@@ -102,7 +123,7 @@ This document explains:
 
 Use this file when you want implementation guidance that complements the conceptual and algorithm documents without guessing beyond the source material.
 
-### 7. [MoonBlokz Blockchain ADR Index](./blockchain-adrs/ADR-INDEX.md)
+### 8. [MoonBlokz Blockchain ADR Index](./blockchain-adrs/ADR-INDEX.md)
 
 A compact index of the accepted architecture decision records for the current `moonblokz-blockchain` design direction.
 
@@ -115,7 +136,7 @@ This document explains:
 
 Use this file when you want the shortest path into the current accepted blockchain design decisions before reading the full implementation notes or individual ADR files.
 
-### 8. [MoonBlokz Crypto Concept Model](./moonblokz-crypto-concept.md)
+### 9. [MoonBlokz Crypto Concept Model](./moonblokz-crypto-concept.md)
 
 A conceptual cryptography document grounded in the current `moonblokz-crypto-lib` codebase and aligned with the earlier Part VI direction.
 
@@ -130,7 +151,7 @@ This document explains:
 
 Use this file when you want to understand the purpose, trade-offs, and current conceptual direction of MoonBlokz cryptography before reading the formal or implementation-facing companion documents.
 
-### 9. [MoonBlokz Crypto Algorithm Model](./moonblokz-crypto-algorythm.md)
+### 10. [MoonBlokz Crypto Algorithm Model](./moonblokz-crypto-algorythm.md)
 
 A formal, algorithm-oriented cryptography document based on the current `moonblokz-crypto-lib` implementation.
 
@@ -145,7 +166,7 @@ This document explains:
 
 Use this file when you want the exact current crypto API and behavior without dropping into maintenance or evolution guidance.
 
-### 10. [MoonBlokz Crypto Implementation Notes](./moonblokz-crypto-implementation.md)
+### 11. [MoonBlokz Crypto Implementation Notes](./moonblokz-crypto-implementation.md)
 
 An implementation-support cryptography document derived from the current `moonblokz-crypto-lib` codebase.
 
@@ -160,7 +181,7 @@ This document explains:
 
 Use this file when you want engineering guidance that complements the conceptual and algorithm crypto documents while staying grounded in the actual codebase.
 
-### 11. [MoonBlokz Radio Concept Model](./moonblokz-radio-concept.md)
+### 12. [MoonBlokz Radio Concept Model](./moonblokz-radio-concept.md)
 
 A conceptual radio document grounded in the current `moonblokz-radio-lib` codebase.
 
@@ -174,7 +195,7 @@ This document explains:
 
 Use this file when you want to understand the role, design philosophy, and current conceptual boundaries of the MoonBlokz radio subsystem before reading the more formal or implementation-facing radio notes.
 
-### 12. [MoonBlokz Radio Algorithm Model](./moonblokz-radio-algorythm.md)
+### 13. [MoonBlokz Radio Algorithm Model](./moonblokz-radio-algorythm.md)
 
 A formal, algorithm-oriented radio document grounded in the current `moonblokz-radio-lib` implementation.
 
@@ -189,7 +210,7 @@ This document explains:
 
 Use this file when you want the main formal description of currently implemented MoonBlokz radio behavior.
 
-### 13. [MoonBlokz Radio Implementation Notes](./moonblokz-radio-implementation.md)
+### 14. [MoonBlokz Radio Implementation Notes](./moonblokz-radio-implementation.md)
 
 An implementation-support radio document grounded in the current `moonblokz-radio-lib` codebase.
 
@@ -204,7 +225,7 @@ This document explains:
 
 Use this file when you want practical engineering guidance for implementing or extending the documented MoonBlokz radio behavior without inventing details beyond the current sources.
 
-### 14. [MoonBlokz Simulator Concept Model](./moonblokz-simulator-concept.md)
+### 15. [MoonBlokz Simulator Concept Model](./moonblokz-simulator-concept.md)
 
 A conceptual simulator document grounded in the current `moonblokz-radio-simulator` codebase.
 
@@ -218,7 +239,7 @@ This document explains:
 
 Use this file when you want to understand what the simulator currently is and what role it plays in MoonBlokz before reading the more formal or implementation-facing companion documents.
 
-### 15. [MoonBlokz Simulator Algorithm Model](./moonblokz-simulator-algorythm.md)
+### 16. [MoonBlokz Simulator Algorithm Model](./moonblokz-simulator-algorythm.md)
 
 A formal, algorithm-oriented simulator document grounded in the current `moonblokz-radio-simulator` implementation.
 
@@ -234,7 +255,7 @@ This document explains:
 
 Use this file when you want the main formal description of the current simulator and analyzer behavior without dropping all the way to code-level maintenance detail.
 
-### 16. [MoonBlokz Simulator Implementation Notes](./moonblokz-simulator-implementation.md)
+### 17. [MoonBlokz Simulator Implementation Notes](./moonblokz-simulator-implementation.md)
 
 An implementation-support simulator document grounded in the current `moonblokz-radio-simulator` crate.
 
@@ -249,7 +270,7 @@ This document explains:
 
 Use this file when you want practical engineering guidance that complements the conceptual and algorithm simulator documents.
 
-### 17. [MoonBlokz Telemetry Concept Model](./moonblokz-telemetry-concept.md)
+### 18. [MoonBlokz Telemetry Concept Model](./moonblokz-telemetry-concept.md)
 
 A conceptual telemetry document grounded in Part VII/5 and reconciled with the current telemetry repositories.
 
@@ -264,7 +285,7 @@ This document explains:
 
 Use this file when you want to understand why the MoonBlokz telemetry system exists and how its main parts fit together before reading the more formal or implementation-facing telemetry notes.
 
-### 18. [MoonBlokz Telemetry Algorithm Model](./moonblokz-telemetry-algorythm.md)
+### 19. [MoonBlokz Telemetry Algorithm Model](./moonblokz-telemetry-algorythm.md)
 
 A formal, algorithm-oriented telemetry document grounded primarily in the reviewed telemetry repositories and aligned with Part VII/5 where still relevant.
 
@@ -278,7 +299,7 @@ This document explains:
 
 Use this file when you want the main formal description of the telemetry architecture described in the field-testing article.
 
-### 19. [MoonBlokz Telemetry Implementation Notes](./moonblokz-telemetry-implementation.md)
+### 20. [MoonBlokz Telemetry Implementation Notes](./moonblokz-telemetry-implementation.md)
 
 An implementation-support telemetry document grounded in the current telemetry repositories and used to capture deployment, configuration, repository structure, and engineering cautions.
 
@@ -293,7 +314,7 @@ This document explains:
 
 Use this file when you want implementation guidance that complements the conceptual and algorithm telemetry documents without scattering those details across the simulator files.
 
-### 20. [MoonBlokz Storage Concept Model](./moonblokz-storage-concept.md)
+### 21. [MoonBlokz Storage Concept Model](./moonblokz-storage-concept.md)
 
 A conceptual storage document grounded in the current `moonblokz-storage` and `moonblokz-chain-types` codebases.
 
@@ -308,7 +329,7 @@ This document explains:
 
 Use this file when you want to understand the role, current design philosophy, and conceptual trade-offs of MoonBlokz storage before reading the more formal or implementation-facing storage notes.
 
-### 21. [MoonBlokz Storage Algorithm Model](./moonblokz-storage-algorythm.md)
+### 22. [MoonBlokz Storage Algorithm Model](./moonblokz-storage-algorythm.md)
 
 A formal, algorithm-oriented storage document grounded in the current `moonblokz-storage` implementation and the canonical `moonblokz-chain-types` block and hash contracts.
 
@@ -324,7 +345,7 @@ This document explains:
 
 Use this file when you want the main formal description of the currently implemented MoonBlokz storage behavior.
 
-### 22. [MoonBlokz Storage Implementation Notes](./moonblokz-storage-implementation.md)
+### 23. [MoonBlokz Storage Implementation Notes](./moonblokz-storage-implementation.md)
 
 An implementation-support storage document grounded in the current `moonblokz-storage` repository and its dependency on `moonblokz-chain-types`.
 
@@ -339,7 +360,7 @@ This document explains:
 
 Use this file when you want implementation guidance that complements the conceptual and algorithm storage documents while staying grounded in the current codebase.
 
-### 23. [MoonBlokz Website Summary](./website.md)
+### 24. [MoonBlokz Website Summary](./website.md)
 
 A concise summary of the current public MoonBlokz website.
 
@@ -360,22 +381,23 @@ Use this file when you need a quick orientation to the current public web presen
 2. Continue with [MoonBlokz Technology and Architecture](./moonblokz-technology.md) to understand the implementation strategy and architectural foundation.
 3. Then read [MoonBlokz Blockchain Concept Model](./moonblokz-blockchain-concept.md) to understand the operating idea of MoonBlokz blockchain behavior.
 4. Then read [MoonBlokz Blockchain Product Requirements Document](./moonblokz-blockchain-prd.md) for the authoritative FR1–FR69 functional requirements and Non-Functional Requirements; this is the canonical anchor every other blockchain document references by FR number.
-5. Continue with [MoonBlokz Blockchain Algorithm Model](./moonblokz-blockchain-algorythm.md) for the full Parts III, IV, and V algorithmic flow and the detailed main data structures.
-6. Then read [MoonBlokz Blockchain Implementation Notes](./moonblokz-blockchain-implementation.md) for implementation-facing constraints, configuration boundaries, and cautions.
-7. Then read [MoonBlokz Blockchain ADR Index](./blockchain-adrs/ADR-INDEX.md) for the currently accepted architecture decisions and their recommended reading order before moving into adjacent subsystem documents.
-8. Continue with [MoonBlokz Crypto Concept Model](./moonblokz-crypto-concept.md) to understand the role, trade-offs, and constraints of MoonBlokz cryptography.
-9. Then read [MoonBlokz Crypto Algorithm Model](./moonblokz-crypto-algorythm.md) for the formal crypto structure, signature roles, deterministic signing and aggregation behavior, and explicit size and count limits.
-10. Continue with [MoonBlokz Crypto Implementation Notes](./moonblokz-crypto-implementation.md) for implementation-facing cryptography guidance, dependency cautions, and testing implications.
-11. Then read [MoonBlokz Radio Concept Model](./moonblokz-radio-concept.md) to understand why MoonBlokz radio behaves as a synchronization-first, bounded embedded subsystem.
-12. Continue with [MoonBlokz Radio Algorithm Model](./moonblokz-radio-algorythm.md) for the current code-grounded runtime flow of messages, packets, scheduling, relaying, and recovery.
-13. Continue with [MoonBlokz Radio Implementation Notes](./moonblokz-radio-implementation.md) for the actual API, feature model, backend behavior, and implementation-facing cautions.
-14. Then read [MoonBlokz Simulator Concept Model](./moonblokz-simulator-concept.md) to understand how MoonBlokz currently validates, observes, replays, and controls radio-network behavior through the desktop simulator application.
-15. Continue with [MoonBlokz Simulator Algorithm Model](./moonblokz-simulator-algorythm.md) for the formal simulation, analyzer, timing, and control behavior.
-16. Continue with [MoonBlokz Simulator Implementation Notes](./moonblokz-simulator-implementation.md) for the current crate structure, queue/lifetime strategy, UI modules, analyzer pipeline, and implementation cautions.
-17. Then read [MoonBlokz Telemetry Concept Model](./moonblokz-telemetry-concept.md) to understand why field testing needs a separate telemetry architecture and how the operational components fit together.
-18. Continue with [MoonBlokz Telemetry Algorithm Model](./moonblokz-telemetry-algorythm.md) for the formal flow of logs, commands, polling control, OTA, and analyzer interaction.
-19. Continue with [MoonBlokz Telemetry Implementation Notes](./moonblokz-telemetry-implementation.md) for repository-level responsibilities, update-path cautions, and telemetry-specific engineering constraints.
-20. Then read [MoonBlokz Storage Concept Model](./moonblokz-storage-concept.md) to understand why bounded blockchain persistence on flash is possible at all and how MoonBlokz separates recoverable block data from recovery-critical control data.
-21. Continue with [MoonBlokz Storage Algorithm Model](./moonblokz-storage-algorythm.md) for the formal storage-unit layout, integrity-check rules, redundancy behavior, crash recovery, and wear-lifetime model.
-22. Continue with [MoonBlokz Storage Implementation Notes](./moonblokz-storage-implementation.md) for RP2040/XIP/Embassy engineering consequences, capacity-planning cautions, and explicitly open storage design questions.
-23. Then read [MoonBlokz Website Summary](./website.md) when you need a compact summary of the public website, its location, current public-facing structure, and deployment form.
+5. Then read [MoonBlokz Blockchain Architecture Decision Document](./moonblokz-blockchain-architecture.md) for the authoritative crate-split, public API, internal modules, data-structure layouts, RAM budget, and decisions log; this is the canonical anchor every other blockchain document references for chain-lib implementation shape.
+6. Continue with [MoonBlokz Blockchain Algorithm Model](./moonblokz-blockchain-algorythm.md) for the full Parts III, IV, and V algorithmic flow and the detailed main data structures.
+7. Then read [MoonBlokz Blockchain Implementation Notes](./moonblokz-blockchain-implementation.md) for implementation-facing constraints, configuration boundaries, and cautions.
+8. Then read [MoonBlokz Blockchain ADR Index](./blockchain-adrs/ADR-INDEX.md) for the currently accepted architecture decisions and their recommended reading order before moving into adjacent subsystem documents.
+9. Continue with [MoonBlokz Crypto Concept Model](./moonblokz-crypto-concept.md) to understand the role, trade-offs, and constraints of MoonBlokz cryptography.
+10. Then read [MoonBlokz Crypto Algorithm Model](./moonblokz-crypto-algorythm.md) for the formal crypto structure, signature roles, deterministic signing and aggregation behavior, and explicit size and count limits.
+11. Continue with [MoonBlokz Crypto Implementation Notes](./moonblokz-crypto-implementation.md) for implementation-facing cryptography guidance, dependency cautions, and testing implications.
+12. Then read [MoonBlokz Radio Concept Model](./moonblokz-radio-concept.md) to understand why MoonBlokz radio behaves as a synchronization-first, bounded embedded subsystem.
+13. Continue with [MoonBlokz Radio Algorithm Model](./moonblokz-radio-algorythm.md) for the current code-grounded runtime flow of messages, packets, scheduling, relaying, and recovery.
+14. Continue with [MoonBlokz Radio Implementation Notes](./moonblokz-radio-implementation.md) for the actual API, feature model, backend behavior, and implementation-facing cautions.
+15. Then read [MoonBlokz Simulator Concept Model](./moonblokz-simulator-concept.md) to understand how MoonBlokz currently validates, observes, replays, and controls radio-network behavior through the desktop simulator application.
+16. Continue with [MoonBlokz Simulator Algorithm Model](./moonblokz-simulator-algorythm.md) for the formal simulation, analyzer, timing, and control behavior.
+17. Continue with [MoonBlokz Simulator Implementation Notes](./moonblokz-simulator-implementation.md) for the current crate structure, queue/lifetime strategy, UI modules, analyzer pipeline, and implementation cautions.
+18. Then read [MoonBlokz Telemetry Concept Model](./moonblokz-telemetry-concept.md) to understand why field testing needs a separate telemetry architecture and how the operational components fit together.
+19. Continue with [MoonBlokz Telemetry Algorithm Model](./moonblokz-telemetry-algorythm.md) for the formal flow of logs, commands, polling control, OTA, and analyzer interaction.
+20. Continue with [MoonBlokz Telemetry Implementation Notes](./moonblokz-telemetry-implementation.md) for repository-level responsibilities, update-path cautions, and telemetry-specific engineering constraints.
+21. Then read [MoonBlokz Storage Concept Model](./moonblokz-storage-concept.md) to understand why bounded blockchain persistence on flash is possible at all and how MoonBlokz separates recoverable block data from recovery-critical control data.
+22. Continue with [MoonBlokz Storage Algorithm Model](./moonblokz-storage-algorythm.md) for the formal storage-unit layout, integrity-check rules, redundancy behavior, crash recovery, and wear-lifetime model.
+23. Continue with [MoonBlokz Storage Implementation Notes](./moonblokz-storage-implementation.md) for RP2040/XIP/Embassy engineering consequences, capacity-planning cautions, and explicitly open storage design questions.
+24. Then read [MoonBlokz Website Summary](./website.md) when you need a compact summary of the public website, its location, current public-facing structure, and deployment form.

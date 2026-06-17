@@ -1,0 +1,960 @@
+# MoonBlokz Blockchain Architecture Decision Document
+
+## Authoritative Source Notice
+
+This document is the **authoritative source** for the architecture of the `moonblokz-blockchain` crate and its sibling sub-crates (`moonblokz-mempool`, `moonblokz-vote`, `moonblokz-node-runtime`, and the future `moonblokz-configuration`).
+
+When other knowledge-base files (concept, algorithm, implementation, ADR) describe data structures, module boundaries, public API surfaces, RAM/stack budgets, the const-generic catalog, or the crate-split layout, the canonical wording lives in this file. If any other knowledge-base text appears to diverge from the content here, the divergence must be flagged explicitly per the rule in [`AGENTS.md`](./AGENTS.md), and resolution must be left to the user.
+
+The behavioral requirements (FR1–FR69) remain anchored in [`moonblokz-blockchain-prd.md`](./moonblokz-blockchain-prd.md); this architecture document specifies how those requirements are realized in code shape.
+
+## Provenance
+
+- Originating workflow: BMAD `bmad-create-architecture`, eight steps completed (Steps 1–8) between 2026-05-19 and 2026-06-17.
+- Source artifact: `_bmad-output/planning-artifacts/architecture.md`.
+- Imported into the `moonblokz-info` knowledge base on 2026-06-17.
+- Frontmatter from the originating workflow output was stripped during import; the body below is otherwise byte-identical to the source artifact at import time.
+
+## Working Artifacts (Iteration History)
+
+The step-by-step iteration HTML outputs are preserved at the repository root and provide the full Mermaid diagrams, bit-level data layout tables, and intermediate reasoning across the architecture work:
+
+- `step5-architecture.html` — crate-split architecture, mempool/vote API, PRNG hierarchy, sequence diagrams (FR14, FR45, FR23, FR43).
+- `step6-architecture.html` — internal module structure (15 + 1 modules), const generic catalog, sized data structure catalog, RAM budget, stack-frame analysis.
+- `step7-architecture.html` — FR1–FR69 coverage matrix, gap analysis, RAM-budget verification, FR62 simulator-compatibility check.
+
+These HTMLs are the iteration history; this `moonblokz-blockchain-architecture.md` is the consolidated normative reference.
+
+## Related Knowledge-Base Documents
+
+- [`moonblokz-blockchain-prd.md`](./moonblokz-blockchain-prd.md) — authoritative FR1–FR69 functional requirements and Non-Functional Requirements that this architecture realizes.
+- [`moonblokz-blockchain-concept.md`](./moonblokz-blockchain-concept.md) — operating-model background and conceptual framing.
+- [`moonblokz-blockchain-algorythm.md`](./moonblokz-blockchain-algorythm.md) — formal algorithm description that this architecture implements.
+- [`moonblokz-blockchain-implementation.md`](./moonblokz-blockchain-implementation.md) — supplementary engineering cautions, source-article bridging notes, and items deferred to later design work. This document defers to `moonblokz-blockchain-architecture.md` for all data-structure, module-boundary, public API, and RAM/stack-budget specifics.
+- [`blockchain-adrs/ADR-INDEX.md`](./blockchain-adrs/ADR-INDEX.md) — architecture decisions consumed by this architecture document.
+
+---
+
+# Architecture Decision Document — `moonblokz-blockchain` and Related Crates
+
+_Workflow: BMAD `bmad-create-architecture`. Steps 1-8 complete (2026-05-19 → 2026-06-17). Step-by-step working artifacts preserved at `step5-architecture.html`, `step6-architecture.html`, `step7-architecture.html`._
+
+## Workflow Inputs Summary
+
+**Project:** moonblokz — `moonblokz-blockchain` Rust crate as the authoritative blockchain interpretation boundary under constrained embedded and radio-network conditions.
+
+**Source PRD frontmatter:** `projectType: developer_tool`, `domain: fintech`, `complexity: high`, `projectContext: greenfield`.
+
+**Authoritative knowledge base:** `moonblokz-info/` (per WORKING-ARTIFACTS-MAP, this is the integrated KB; `_bmad-output/adr-drafts/separate/` are older drafts and are superseded). The KB contains 16 accepted ADRs covering 6 subsystems: blockchain, crypto, radio, storage, simulator, telemetry.
+
+**Anchoring constraints carried in from inputs:**
+- Constrained embedded environment (microcontroller-class, RP2040-grade), bounded memory and storage
+- Best-effort, low-bandwidth radio network with delayed/partial/conflicting block delivery
+- No global time assumptions
+- Snake-chain bounded retention; chain switches are rare but mandatory
+- Single-threaded, synchronous, deterministic core (ADR-006)
+- Same crate semantics for runtime AND simulator embedding (host + embedded)
+- Compile-time backend selection across crypto / storage / radio backends
+- Out-of-band telemetry (logs, commands, OTA) must NOT distort the LoRa mesh
+- Bounded aggregation: `MAX_AGGREGATED_SIGNATURES = 50` (Schnorr default); affects approval subgroup sizing per ADR-015
+
+**Subsystem boundary picture (from KB):**
+- `moonblokz-blockchain` (this crate) — semantic event state machine, owns chain truth
+- `moonblokz-crypto-lib` — replaceable signature backends (Schnorr default, BLS alt)
+- `moonblokz-radio-lib` — bounded best-effort LoRa propagation with stateful relay
+- `moonblokz-storage` + `moonblokz-chain-types` — narrow indexed persistence contract
+- `moonblokz-radio-simulator` — multi-mode desktop tool reusing the real radio + blockchain libs
+- Telemetry stack (Probe, HUB, Collector, CLI, Update Server) — out-of-band ops surface
+
+---
+
+## 1. Framework & Hard Constraints (Steps 1-4)
+
+### 1.1 User-declared hard constraints
+
+The architecture work was reframed from the BMAD default deliverables (generic technology choices, scalable patterns, service diagrams) to a focused set of 4 deliverables driven by the constrained-embedded reality:
+
+- **`no_std` Rust without `alloc`** — every collection must be fixed-capacity (heapless / arrays / const-generic). No `Box`, `Vec`, `String`, `BTreeMap`.
+- **Already-given dependencies** that the crate must consume, not reinvent: `moonblokz-crypto-lib`, `moonblokz-storage`, `moonblokz-chain-types`, `moonblokz-radio-lib`. All `no_std`, already shipping.
+- **Target: RP2040-LoRa.** When sized properly, the binding constraint is **RAM**, not flash or CPU (264 KB SRAM, shared with crypto buffers, radio queues, storage page buffer, Embassy task stacks).
+- **Fully synchronous core** — the public API exposes only synchronous methods callable from radio task / local API / timer handler. The radio crate owns the async runtime; the blockchain crate is pure functions.
+
+### 1.2 Architecture deliverables (4 items)
+
+1. **Public API definition** (sync, narrow) — see §2.
+2. **In-memory data structure budget** — sized for ~600 durable blocks (RP2040 figure: 2 MB flash − code − control plane ÷ 4 KB page × 2 slots/page) and up to ~1000 nodes — see §3 + §4.
+3. **Internal module structure** — see §5.
+4. **Vote management and mempool extracted into separate library crates** alongside `moonblokz-chain-lib` — see §2.
+
+### 1.3 The single-outcome scheduling-pull API pattern
+
+Every state-changing call returns **at most ONE outcome** (one semantic effect: one outbound, one classification, one phase transition) and a `NextCall` deadline (`Immediate` / `At(absolute_monotonic_ms)` / `Idle`) telling the bridge layer when to call back.
+
+If the blockchain has more work pending (e.g., a queued parent-recovery request after relaying a block), it returns `NextCall::Immediate` and emits the second outcome on the next call. Read-only queries do **not** change scheduling and do **not** carry a `NextCall`.
+
+**Why:**
+1. Radio outgoing queue overflow prevention — many FRs specify required delays between protocol actions; one-outcome-per-call lets the blockchain self-regulate its outbound rate naturally.
+2. Simpler API surface — no `BoundedOutboundList`, no batch-drain helpers, no list-of-effects enum variants.
+3. Bridge layer simplicity — the bridge's `embassy::select` loop only needs one `Timer::at(next_due)` arm.
+
+### 1.4 Bridge layer = `moonblokz-node-runtime`
+
+The radio↔blockchain integration lives in a **separate bridge crate** (`moonblokz-node-runtime`), not inside the blockchain. The bridge owns the embassy async runtime and handles:
+- Translating `RadioMessage` enum variants (from `moonblokz-radio-lib`) into chain-lib semantic calls (`receive_block`, `receive_transaction`, `receive_support`).
+- Translating outcome variants back into radio outgoing messages via `MessageProcessingResult` (radio crate's existing enum, FR66).
+- Scheduling: a single `embassy::select` loop with one `Timer::at(NextCall)` arm.
+- Two-core split: Core 0 hosts real-time radio + local-UI tasks; Core 1 hosts the blockchain task **including the `moonblokz-blockchain` crate, the `moonblokz-mempool` sub-crate, the `moonblokz-vote` sub-crate, and the `moonblokz-configuration` sub-crate** — all sync, no-alloc state lives on Core 1. Embassy channels bridge cores.
+
+### 1.5 Local clock assumption
+
+Across the mesh, no shared epoch is assumed, but local clocks tick at **approximately the same rate**. All FR-defined timing (block-creation intervals, grace-period windows, parent-recovery retries) operates on local monotonic `u64` ms. This assumption is required for all timing-driven protocols to converge.
+
+---
+
+## 2. Crate-split architecture (Step 5)
+
+### 2.1 Final crate structure
+
+```mermaid
+graph TB
+    subgraph ChainLib["moonblokz-blockchain (this crate)"]
+        BC["Blockchain&lt;C, S, X, const generics...&gt;"]
+    end
+    subgraph Mempool["moonblokz-mempool (new sub-crate)"]
+        MP["Mempool&lt;COMPACT_BYTES, MAX_ENTRIES, MAX_NODES&gt;"]
+    end
+    subgraph Vote["moonblokz-vote (new sub-crate)"]
+        VE["VoteEngine&lt;MAX_NODES&gt;"]
+    end
+    subgraph Runtime["moonblokz-node-runtime (new bridge crate)"]
+        BR["select! { radio_msg | timer | local_api }"]
+    end
+    subgraph Types["moonblokz-chain-types (extended)"]
+        T1["Block (Owned)"]
+        T2["BlockView&lt;'_&gt; (borrow)"]
+        T3["BlockBuilder (mut)"]
+        T4["Transaction / TransactionView / TransactionBuilder"]
+    end
+    subgraph Existing["Existing dependencies"]
+        Crypto["moonblokz-crypto-lib (Schnorr 32B / BLS 96B PK)"]
+        Storage["moonblokz-storage (flash page management)"]
+        Radio["moonblokz-radio-lib (LoRa mesh, M.P.R. enum)"]
+        Config["moonblokz-configuration (FUTURE — not yet scaffolded)"]
+    end
+
+    BC --> MP
+    BC --> VE
+    BC --> Types
+    BC -.trait.-> Crypto
+    BC -.trait.-> Storage
+    BC -.trait.-> Config
+    BR --> BC
+    BR --> Radio
+    BR --> Types
+```
+
+**New crates introduced by this architecture:**
+1. `moonblokz-mempool` — extracted from chain-lib per FR30 (mempool is separate module)
+2. `moonblokz-vote` — extracted per ADR-007 (vote engine is its own concern)
+3. `moonblokz-node-runtime` — bridge layer, hosts embassy async + radio↔blockchain glue
+4. `moonblokz-configuration` — future, separate BMAD; holds chain-config state with mini-VM capability per FR56
+
+**Extensions to existing crates:**
+- `moonblokz-chain-types` — adds the three-type model (Owned / View / Builder) per FR61 and the Step 5 refactor
+- `moonblokz-radio-lib` — getter API additions to expose radio-derived score input cleanly to vote crate (ADR-007)
+
+### 2.2 Three-type model (Owned + View + Builder)
+
+For every wire-format payload (Block, Transaction, Support, … ) `moonblokz-chain-types` exposes:
+
+| Type | Purpose | Lifetime | Size |
+|---|---|---|---|
+| `Block` (Owned) | Returned by storage reads; passes through hot paths by value (NRVO-friendly) | `'static` | ~2 KB on stack |
+| `BlockView<'_>` | Borrow into existing bytes (radio buffer / emit scratch / storage page) | bound to source | ~16 B (pointer + len) |
+| `BlockBuilder` | Mutation surface for block construction (FR45 creator) | scope of construction | ~2 KB internal buffer |
+
+Outcomes use `BlockView<'_>` to keep enum variants small (~16 B borrow), not 2 KB owned. The `emit_scratch.block_buffer` in chain-lib state owns the bytes; the view borrows them.
+
+### 2.3 PRNG sub-seed derivation hierarchy (FR43)
+
+```mermaid
+graph TB
+    Root["Blockchain root PRNG (WyRand u64)<br/>Seeded from initial node_id + restart timestamp"]
+    Mempool["Mempool sub-seed<br/>FR43 random eviction"]
+    Vote["Vote engine sub-seed<br/>FR38 next-creator ordering"]
+    Replay["Snake_chain replay sub-seed<br/>FR50 seed-source selection"]
+
+    Root -->|"derive_subseed('mempool')"| Mempool
+    Root -->|"derive_subseed('vote')"| Vote
+    Root -->|"derive_subseed('replay')"| Replay
+```
+
+Each sub-crate (mempool, vote) receives a sub-seed during initialization; the chain-lib retains the root. This ensures deterministic, reproducible PRNG behavior across the system without coupling the sub-crates to each other.
+
+### 2.4 Sequence diagrams (illustrative)
+
+The full Step 5 HTML contains 4 sequence diagrams for FR14 (transaction intake), FR45 (block creation), FR23 (chain-switch), FR43 (mempool replenishment). All four are preserved at `step5-architecture.html` §2.
+
+---
+
+## 3. Public API (Step 5)
+
+### 3.1 `Blockchain<C, S, X, ...>` struct + 20 public methods
+
+```rust
+pub struct Blockchain<
+    C: CryptoTrait,
+    S: StorageTrait,
+    X: ChainConfigTrait,
+    const MAX_NODES: usize,                  // 1000
+    const SNAKE_CHAIN_LENGTH: usize,         // 500
+    const VERIFICATION_HORIZON: usize,       // 20
+    const MAX_BLOCKS: usize,                 // 600
+    const MAX_BRANCH_COUNT: usize,           // 40
+    const MAX_BLOCK_UTXO_OUTPUT: usize,      // 256
+    // ... PUBLIC_KEY_SIZE, SIGNATURE_SIZE derived from crypto feature
+> { /* see §4 for fields */ }
+
+impl<...> Blockchain<...> {
+    // === Lifecycle / init (3) — see §3.6 ===
+
+    /// FR54 — Initialize as the first node in the network (node #0).
+    /// Creates Block #0 (own registration + initial self-transfer for
+    /// `initial_total_network_currency`); Block #1 (chain-config) is
+    /// emitted on the next `on_tick` (TickOutcome::GenesisChainConfigCreated).
+    /// Only callable when storage is empty.
+    pub fn initialize_genesis(
+        node_zero_pk: &[u8],
+        crypto: C, storage: S, chain_config: X,
+        initial_total_network_currency: u64,
+        initial_chain_config_bytes: &[u8],
+        prng_seed: u64,
+        now: u64,
+    ) -> CallResult<InitGenesisOutcome>;
+
+    /// Initialize as a new node joining an existing network.
+    /// Starts in `Collecting` phase; chain truth is acquired from the mesh.
+    /// `own_node_id` is provisional until FR6 registration is accepted.
+    pub fn initialize_join(
+        own_node_id: u32,
+        node_zero_pk: &[u8],
+        crypto: C, storage: S, chain_config: X,
+        prng_seed: u64,
+        now: u64,
+    ) -> CallResult<InitJoinOutcome>;
+
+    /// FR59 — Restart from durable storage after a power cycle.
+    /// Reads `own_node_id` + `node_zero_pk` from storage; resumes
+    /// the previously persisted lifecycle phase (Processing → Ready).
+    pub fn initialize_from_storage(
+        crypto: C, storage: S, chain_config: X,
+        prng_seed: u64,
+        now: u64,
+    ) -> CallResult<InitRestartOutcome>;
+
+    // === Intake (state-changing) (4) ===
+    pub fn receive_block(&mut self, block: BlockView<'_>, now: u64)
+        -> CallResult<ReceiveBlockOutcome>;
+    pub fn receive_transaction(&mut self, tx: TransactionView<'_>, now: u64)
+        -> CallResult<ReceiveTransactionOutcome>;
+    pub fn receive_support(&mut self, s: SupportView<'_>, now: u64)
+        -> CallResult<ReceiveSupportOutcome>;
+    pub fn submit_local_transaction(&mut self, tx: TransactionView<'_>, now: u64)
+        -> CallResult<ReceiveTransactionOutcome>;
+
+    // === Tick (1) ===
+    pub fn on_tick(&mut self, now: u64) -> CallResult<TickOutcome>;
+
+    // === Read-only (12) — no NextCall ===
+    pub fn serve_block_by_hash(&self, hash: &[u8; 32]) -> Option<BlockView<'_>>;
+    pub fn serve_block_by_sequence(&self, seq: u32) -> Option<BlockView<'_>>;
+    pub fn serve_transaction_by_hash(&self, hash: &[u8; 32]) -> Option<TransactionView<'_>>;
+    pub fn query_balance(&self, node_id: u32) -> u64;
+    pub fn query_top_mempool_items(&self) -> impl Iterator<Item = TransactionView<'_>> + '_;
+    pub fn is_block_known(&self, hash: &[u8; 32]) -> bool;
+    pub fn is_transaction_known(&self, hash: &[u8; 32]) -> bool;
+    pub fn current_phase(&self) -> LifecyclePhase;
+    pub fn current_active_head(&self) -> Option<u32>;
+    pub fn snake_chain_tail_sequence(&self) -> Option<u32>;
+    // ... + 2 introspection getters (feature-gated, see §3.5)
+}
+```
+
+### 3.2 Outcome enums (single-outcome pattern)
+
+Every state-changing method returns `CallResult<OutcomeEnum>` where `CallResult<T> = (T, NextCall)`. Each outcome enum has at most ONE variant active per call:
+
+```rust
+pub enum NextCall {
+    Immediate,            // call back ASAP — pending internal work
+    At(u64),              // absolute monotonic ms
+    Idle,                 // nothing scheduled
+}
+
+pub enum ReceiveBlockOutcome<'a> {
+    DuplicateKnown,                                                   // FR11
+    Rejected(RejectReason),                                           // FR9 tier failure
+    AcceptedSilently,                                                 // FR16 storage-only
+    AcceptedAndSendBlock(BlockView<'a>),                              // FR26 relay
+    AcceptedAndSendSupport(SupportView<'a>),                          // FR12 deviance support
+    AcceptedAndSendParentRecoveryRequest(ParentRecoveryRequest),      // FR19 missing parent
+    // ... one per FR-defined effect, exactly one variant per call
+}
+
+// Similar for ReceiveTransactionOutcome, ReceiveSupportOutcome, TickOutcome, InitOutcome
+```
+
+### 3.3 Mempool sub-crate API (10 method-groups)
+
+```rust
+pub struct Mempool<
+    const COMPACT_BYTES: usize,    // 20160
+    const MAX_ENTRIES: usize,      // 128
+    const MAX_NODES: usize,        // 1000
+> { /* compact_buffer + index + sub-seed PRNG */ }
+
+impl<...> Mempool<...> {
+    pub fn new(sub_seed: u64, own_node_id: u32) -> Self;
+    pub fn try_add(&mut self, tx: TransactionView<'_>, is_deferred: bool) -> AddResult;
+    pub fn get_by_hash(&self, hash: &[u8; 32]) -> Option<TransactionView<'_>>;
+    pub fn contains(&self, hash: &[u8; 32]) -> bool;
+    pub fn confirm_by_block_acceptance(&mut self, accepted: &impl Iterator<Item = [u8; 32]>);
+    pub fn recheck_eligibility(&mut self, balance_check: impl Fn(u32) -> u64);
+    pub fn eligible_iter(&self) -> impl Iterator<Item = TransactionView<'_>> + '_;
+    pub fn top_n_for_exchange(&self, n: usize) -> impl Iterator<Item = TransactionView<'_>> + '_;
+    pub fn entry_count(&self) -> u8;
+    pub fn capacity_pressure(&self) -> CapacityPressure;
+
+    // Feature-gated introspection (FR65 #[cfg(feature = "introspection")])
+    #[cfg(feature = "introspection")]
+    pub fn current_capacity_bytes(&self) -> u16;
+    #[cfg(feature = "introspection")]
+    pub fn max_capacity_bytes(&self) -> u16;
+}
+```
+
+### 3.4 Vote sub-crate API
+
+```rust
+pub struct VoteEngine<const MAX_NODES: usize> {
+    vote_score: [u32; MAX_NODES],      // 4 KB on 1000-node default
+    cached_top_creator: Option<u32>,
+    sub_seed_prng: WyRand,
+}
+
+impl<const MAX_NODES: usize> VoteEngine<MAX_NODES> {
+    pub fn new(sub_seed: u64) -> Self;
+    pub fn apply_block(&mut self, block: BlockView<'_>);                  // FR37 forward
+    pub fn undo_block(&mut self, block: BlockView<'_>);                   // FR23 backward
+    pub fn seed_from_balance_block(&mut self, block: BlockView<'_>);      // FR50 seed source
+    pub fn top_creator(&self, deadline_seq: u32, now: u64) -> Option<u32>; // FR38
+    pub fn vote_scale(&self, node_id: u32) -> u32;                        // vote_score raw
+    pub fn vote_interest(&self, node_id: u32) -> u32;                     // weighted by recency
+}
+```
+
+### 3.5 Introspection (FR65)
+
+The introspection getters (`current_capacity_bytes`, `max_capacity_bytes`, similar mempool/vote/blocks accessors) are **feature-gated** behind `#[cfg(feature = "introspection")]`. Default build excludes them. The simulator + telemetry CLI enable the feature for observability; production firmware excludes them to minimize binary size.
+
+### 3.6 Three init methods — genesis / join / restart
+
+FR54 (Genesis) and FR59 (restart) are distinct use-cases with different invariants; combining them into a single `initialize(...)` method with a mode enum would obscure the precondition contracts. The architecture exposes **three separate `initialize_*` constructors**:
+
+| Method | Use-case | Precondition | Phase after init |
+|---|---|---|---|
+| `initialize_genesis(...)` | First node in the network (node #0) creates Blocks #0 + #1 | Storage is empty; caller is the node-zero key holder | `Ready` (after Block #1 emit) |
+| `initialize_join(...)` | New node joining an existing network | Storage is empty; `node_zero_pk` known a priori (trust anchor) | `Collecting` |
+| `initialize_from_storage(...)` | Power-cycle restart of an established node | Storage non-empty; previous lifecycle phase persisted | `Processing` (FR3 forward traversal) → `Ready` |
+
+**Genesis two-block bootstrap** (per `moonblokz-info` Part IV):
+- **Block #0** — transaction block: node #0's own registration + an initial self-transfer of `initial_total_network_currency`. Emitted as the outcome of `initialize_genesis(...)`.
+- **Block #1** — chain-config block: encodes `initial_chain_config_bytes`. Emitted by the next `on_tick(...)` call as `TickOutcome::GenesisChainConfigCreated(BlockView)`. The single-outcome scheduling-pull pattern means the genesis init returns Block #0 + `NextCall::Immediate`; the bridge calls back and gets Block #1.
+
+```rust
+pub enum InitGenesisOutcome<'a> {
+    Created(BlockView<'a>),                            // Block #0 — broadcast it
+    Rejected(GenesisRejectReason),                     // storage not empty, etc.
+}
+
+pub enum InitJoinOutcome {
+    StartedCollecting,                                 // phase = Collecting; await mesh blocks
+    Rejected(JoinRejectReason),
+}
+
+pub enum InitRestartOutcome {
+    ResumedProcessing,                                 // needs FR3 forward traversal first
+    ResumedReady,                                      // already in Ready
+    Rejected(RestartRejectReason),                     // storage corruption, etc.
+}
+
+// TickOutcome — new variant for genesis bootstrap second block:
+pub enum TickOutcome<'a> {
+    // ... existing variants
+    GenesisChainConfigCreated(BlockView<'a>),          // FR54 — Block #1
+}
+```
+
+**Why three methods, not one with a mode enum:**
+- Different precondition contracts (storage empty vs. populated vs. specifically node-zero) are clearer as three signatures.
+- Different parameter shapes — genesis needs `initial_total_network_currency` + `initial_chain_config_bytes`; the other two don't.
+- Different outcome enum types reflect distinct effect spaces.
+- The bridge layer code that calls `initialize_*` is structured around the boot-mode decision anyway (e.g., a CLI flag or stored-state probe); a single method would just push the dispatch one level deeper.
+
+**Init parameter rationale (rögzített döntések):**
+
+| # | Kérdés | Döntés | Indok |
+|---|---|---|---|
+| 1 | `node_zero_pk` minden init-ben paraméter? | **Igen** — mind a 3 init-ben | Kód-szintű védelem (bootstrap of trust): a stored chain validáció során a node_zero_pk-nak out-of-band megbízható forrásból kell jönnie (pl. firmware-be sütve), különben egy sérült storage hamis trust anchor-t adhatna. |
+| 2 | Entrópia-forrás trait vagy egyszerű `prng_seed: u64`? | **`prng_seed: u64`** | A bridge layer felelős értelmes seed előállításáért (RP2040: ROSC-jitter; own_node_id × restart_count hash; stb.). A chain-lib egyszerűen elfogadja az u64-et. |
+| 3 | `own_node_id` paraméter a `initialize_genesis`-nél is? | **Implicit 0**, nem paraméter | A genesis kontextusa eleve "én vagyok a node #0"; a típus-szignatúra maga a contract. Az `own_pk` paraméter egyúttal `node_zero_pk` szerepű. |
+| 4 | `chain_config: X` állapota a genesis-nél? | **Üres-state implementor**; az `initial_chain_config_bytes` a Block #1 emit-kor kerül durable-locked állapotba | A chain_config struktúrának a Block #1 acceptance pillanatában válik authoritatív tartalommá. |
+| 5 | `storage: S` preconditions a 3 esetben | genesis: **üres**; join: **üres**; restart: **non-empty + well-formed** | Az init metódus `Rejected` outcome-mal tér vissza, ha a precondition nem teljesül; nem panic. |
+
+---
+
+## 4. Internal module structure (Step 6 §1, §4)
+
+### 4.1 15 internal modules + `api.rs`
+
+```mermaid
+graph TB
+    PublicAPI["api.rs<br/>(public Blockchain&lt;...&gt; struct + 18 methods)"]
+
+    subgraph CoreOrch["Core orchestration"]
+        Lifecycle["lifecycle.rs<br/>FR1-FR8, FR54, FR59"]
+        Scheduler["scheduler.rs<br/>NextCall + 4 conditional deadlines"]
+    end
+
+    subgraph BlocksAndChain["Blocks & chain state"]
+        Blocks["blocks.rs<br/>FR18 BlockTable"]
+        ChainHeads["chain_heads.rs<br/>FR19 chain_heads"]
+        SnakeChain["snake_chain.rs<br/>FR48-FR53"]
+        BranchValue["branch_value.rs<br/>FR21"]
+    end
+
+    subgraph Validation["Validation & intake"]
+        Intake["intake.rs<br/>FR10/FR14/FR26/FR16"]
+        StagedValidation["staged_validation.rs<br/>FR9 Tier 1/2/3"]
+        Reconciliation["reconciliation.rs<br/>FR23, FR58"]
+    end
+
+    subgraph DerivedState["Derived state"]
+        NodeInfo["node_info.rs<br/>SoA per-node state"]
+        SpentBits["spent_bits.rs<br/>ADR-016 per-block UTXO"]
+    end
+
+    subgraph CreationQueries["Creation & queries"]
+        Creator["creator.rs<br/>FR44/FR45/FR47"]
+        Approval["approval.rs<br/>FR12/FR15/FR27"]
+        Queries["queries.rs<br/>FR40-FR43"]
+    end
+
+    EmitScratch["emit_scratch.rs<br/>BlockView outcome source"]
+
+    PublicAPI --> Lifecycle
+    PublicAPI --> Intake
+    PublicAPI --> Queries
+    PublicAPI --> Creator
+    PublicAPI --> Scheduler
+    Intake --> StagedValidation
+    Intake --> Blocks
+    Intake --> ChainHeads
+    StagedValidation --> Blocks
+    StagedValidation --> NodeInfo
+    StagedValidation --> SpentBits
+    Reconciliation --> Blocks
+    Reconciliation --> SnakeChain
+    Reconciliation --> SpentBits
+    Reconciliation --> NodeInfo
+    Creator --> Blocks
+    Creator --> SnakeChain
+    Creator --> EmitScratch
+    Approval --> Blocks
+    Approval --> EmitScratch
+    Queries --> Blocks
+    Queries --> NodeInfo
+    Queries --> SpentBits
+```
+
+### 4.2 Module-by-module summary
+
+The full per-module breakdown (folyamatok / adatstruktúrák / kapcsolatok / API) is in `step6-architecture.html` §4. Brief summary:
+
+| Module | Primary FR | Owns / mutates |
+|---|---|---|
+| `lifecycle.rs` | FR1-FR8, FR54, FR59 | `lifecycle_phase: LifecyclePhase` (1 B on Blockchain) |
+| `scheduler.rs` | FR46 | `SchedulerState` (~72 B) |
+| `blocks.rs` | FR18 | `BlockTable { blocks: [BlockEntry; 600] }` (44.5 KB) |
+| `chain_heads.rs` | FR19 | `ChainHeadsTable { heads: [ChainHeadEntry; 40] }` (1.28 KB) |
+| `snake_chain.rs` | FR48-FR53 | 2 u32 fields on Blockchain (8 B) |
+| `branch_value.rs` | FR21 | (stateless; operates on `ChainHeadEntry.branch_value`) |
+| `intake.rs` | FR10/FR14/FR16/FR26 | (stateless dispatcher) |
+| `staged_validation.rs` | FR9 | (stateless tier 1/2/3 checks) |
+| `reconciliation.rs` | FR23, FR58 | (stateless backward/forward walk) |
+| `node_info.rs` | FR6, FR50, FR67/FR69 | 4 parallel arrays SoA (~44 KB Schnorr / ~108 KB BLS) |
+| `spent_bits.rs` | ADR-016, FR3, FR51 | (operates on `BlockEntry.spent_bits` co-located) |
+| `creator.rs` | FR44/FR45/FR47 | (stateless; uses `bc.crypto.sign`) |
+| `approval.rs` | FR12/FR15/FR27 | `ApprovalAccumulator` (~2 KB, crypto-agnostic — MAX_BLOCK_SIZE buffer) |
+| `queries.rs` | FR40-FR43 | (stateless) |
+| `emit_scratch.rs` | (FR45/FR27 emit source) | `EmitScratch { block_buffer: [u8; MAX_BLOCK_SIZE] }` (~2 KB) |
+
+---
+
+## 5. Const generic catalog (Step 6 §2)
+
+| Const generic | Default | Source / rationale |
+|---|---|---|
+| `MAX_NODES` | 1000 | user-set; per-node arrays |
+| `SNAKE_CHAIN_LENGTH` (W) | 500 | user-set; active chain window |
+| `VERIFICATION_HORIZON` (H) | 20 | user-set; FR58 cheap-zone boundary |
+| `MAX_BLOCKS` | 600 | RP2040 flash storage capacity 1:1 |
+| `MAX_BRANCH_COUNT` (chain_heads_max_capacity) | 40 | collecting-state branch headroom |
+| `MEMPOOL_COMPACT_BYTES` | 20160 | ~10 × MAX_BLOCK_SIZE |
+| `MEMPOOL_MAX_ENTRIES` | 128 | conservative |
+| `MAX_TX_PER_BLOCK` | ~64 | derived; FR45 included_keys gathering |
+| `MAX_BLOCK_UTXO_OUTPUT` | 256 | FR56 chain-config-derived; per-block spent-bit vector size |
+| `MAX_AGGREGATED_SIGNATURES` | 50 | ADR-015; approval subgroup sizing |
+| `PUBLIC_KEY_SIZE` | 32 (Schnorr) / 96 (BLS) | crypto feature flag |
+| `SIGNATURE_SIZE` | derived from crypto feature | varies |
+
+---
+
+## 6. Sized data structure catalog (Step 6 §3)
+
+### 6.1 `NodeInfo` — per-node SoA state
+
+```rust
+pub(crate) struct NodeInfo<const MAX_NODES: usize, const PUBLIC_KEY_SIZE: usize> {
+    public_keys:       [[u8; PUBLIC_KEY_SIZE]; MAX_NODES],  // 32 KB Schnorr / 96 KB BLS
+    balances:          [u64; MAX_NODES],                    // 8 KB
+    seed_source_idx:   [u32; MAX_NODES],                    // 4 KB  FR50 per-node projection
+    max_known_node_id: u32,                                 // 4 B
+}
+```
+
+Empty slot sentinel: `public_keys[i] == [0u8; PUBLIC_KEY_SIZE]` (FR67/FR69 trust anchor occupies slot 0 — non-zero).
+
+### 6.2 `BlockEntry` — in-memory block metadata
+
+```rust
+pub(crate) struct BlockEntry {
+    hash: [u8; 32],                                // 32 B   FR11 duplicate-detection key
+    parent_ref: u32,                               //  4 B   index into blocks (u32::MAX = no parent)
+    sequence: u32,                                 //  4 B   FR21/FR19 tie-break (u32::MAX = empty slot)
+    spent_bits: [u8; MAX_BLOCK_UTXO_OUTPUT / 8],   // 32 B   ADR-016 co-located
+    head_ref_count: u8,                            //  1 B   FR19 eviction
+    flags: u8,                                     //  1 B   status (Stored/Connected/Active) + is_on_active_chain
+}
+// effective 74 B, aligned to 4 → padded 76 B; total 600 × 76 B = 45 600 B
+```
+
+**Key decisions** (Step 6):
+- No `storage_index` field — `blocks[i] ⟷ storage_index = i` 1:1 mapping
+- Spent-bits **co-located** in BlockEntry per ADR-016 (no separate `SpentBitTable`)
+- Empty slot sentinel: `sequence == u32::MAX` (FR53 rejects u32::MAX-based chain extension in MVP)
+- Side-branch blocks have spent_bits = all zeros (~3 KB harmless waste, absorbed by Schnorr margin)
+
+### 6.3 `ChainHeadEntry` — FR19 chain_heads table
+
+```rust
+pub(crate) struct ChainHeadEntry {
+    head_idx: u32,                  //  4 B   index into blocks (u32::MAX = empty slot)
+    tail_or_connection_idx: u32,    //  4 B   Stored → tail-point; Connected/Active → connection-point
+    last_request_timestamp: u64,    //  8 B   FR19 parent-recovery scheduling
+    branch_value: u64,              //  8 B   FR21 cumulative (Connected/Active only)
+    flags: u8,                      //  1 B   state (Stored/Connected/Active)
+}
+// effective 25 B, aligned to 8 → padded 32 B; total 40 × 32 B = 1 280 B
+```
+
+**Key decisions:**
+- `head_idx: u32` (not 32 B hash) → saves 1.1 KB vs. hash storage
+- No `head_sequence` cache → resolved via `blocks[head_idx].sequence` (single deref, padding makes the cache free-of-charge anyway)
+- `tail_or_connection_idx` overlaid (state-dependent semantics) → saves 480 B
+- Empty slot sentinel: `head_idx == u32::MAX`
+
+### 6.4 Snake_chain fields (directly on Blockchain)
+
+```rust
+// Blockchain struct fields:
+active_chain_head_idx: u32,    // 4 B   index into blocks
+snake_chain_tail_idx:  u32,    // 4 B   index into blocks (W blocks behind head)
+```
+
+No standalone struct — only 2 u32 fields. `snake_chain.rs` module remains as operations container.
+
+### 6.5 `ApprovalAccumulator` — FR27 proposer-mode evidence
+
+```rust
+pub(crate) struct ApprovalAccumulator {
+    // Evidence block in-place builder. A buffer kapacitása = MAX_BLOCK_SIZE;
+    // ennél több supporter nem fér bele függetlenül a crypto backend-től.
+    // Crypto-AGNOSTIC: ~2 KB mind Schnorr-on, mind BLS-en.
+    block_buffer: [u8; MAX_BLOCK_SIZE],          // ~2 KB
+    block_len: u16,
+    deviation_sequence: u32,
+    deviation_block_hash: [u8; 32],
+    accumulated_count: u8,
+}
+// total: ~2 KB + ~40 B metadata = ~2 KB
+```
+
+**Crypto-aware per-supporter cost a 2 KB buffer-en belül:**
+- **Schnorr**: új supporter növekedés = node_id (4 B) + signature (~32 B) ≈ **36 B / supporter** → 50 supporter ≈ 1.8 KB (közel a 2 KB-os limithez).
+- **BLS**: új supporter növekedés = node_id (4 B) only; a signature **egyetlen 96 B-os aggregated signature slotban** él, ami nem nő a supporter-szám-mal. ≈ **4 B / supporter** → 50 supporter ≈ 296 B (bőven férőhely).
+
+BLS itt jelentősen **hatékonyabb** a Schnorr-nál: ugyanaz a 2 KB buffer 5-10× több supporter-t tud befogadni. Az allokált memória azonban változatlan ~2 KB mindkét variantnál.
+
+### 6.6 `EmitScratch` — outcome view source
+
+```rust
+pub(crate) struct EmitScratch {
+    block_buffer: [u8; MAX_BLOCK_SIZE],   // ~2 KB
+    block_len: usize,
+}
+```
+
+Outcome enum variants (`CreatedBlock`, `AcceptedAndSendBlock`, FR27 evidence) borrow `BlockView<'_>` from this buffer → outcome size ~16 B, not 2 KB owned. Transaction outcomes borrow from the mempool compact buffer (no separate `emit_tx_buffer`).
+
+### 6.7 `SchedulerState` — 4 conditional deadlines
+
+```rust
+pub(crate) struct SchedulerState {
+    next_block_creation_deadline_ms:    Option<u64>,  // FR45 (b) — network-wide-consistent
+    next_grace_period_expiry_ms:        Option<u64>,  // FR47 — network-wide-consistent
+    next_parent_recovery_tick_ms:       Option<u64>,  // FR19/FR46 — local
+    next_replenishment_tick_ms:         Option<u64>,  // FR43/FR46 — local
+    last_parent_request_emit_timestamp: u64,
+}
+// ~72 B
+```
+
+**Critical invariant:** `next_block_creation_deadline_ms` and `next_grace_period_expiry_ms` are **computed identically on all nodes** from chain-config-derived params + previous block arrival timestamp — both deadlines are typically `Some` simultaneously on every node in ready state. Trigger action differs by local role (creator vs. fallback eligibility), but deadline state is network-wide-consistent. The other two deadlines are local-state-dependent.
+
+### 6.8 Mempool internals (recap)
+
+```rust
+pub struct Mempool<const COMPACT_BYTES: usize, const MAX_ENTRIES: usize, const MAX_NODES: usize> {
+    compact_buffer: [u8; COMPACT_BYTES],                // 20 160 B
+    index: [Option<IndexEntry>; MAX_ENTRIES],           // 128 × ~10 B ≈ 1.28 KB
+    prng: WyRand,                                        // 8 B sub-seed
+    byte_usage: u16,
+    entry_count: u8,
+}
+// total ~21.5 KB
+```
+
+### 6.9 Vote engine internals (recap)
+
+```rust
+pub struct VoteEngine<const MAX_NODES: usize> {
+    vote_score: [u32; MAX_NODES],     // 4 KB
+    cached_top_creator: Option<u32>,  // ~8 B
+    sub_seed_prng: WyRand,            // 8 B
+}
+// total ~4 KB
+```
+
+---
+
+## 7. RAM budget verification (Steps 6 §4 + 7 §3)
+
+### 7.1 Chain-lib subtotal — Schnorr (default) — ~95 KB
+
+| Component | Calculation | Bytes |
+|---|---:|---:|
+| NodeInfo.public_keys | 1000 × 32 B | 32 000 |
+| NodeInfo.balances | 1000 × 8 B | 8 000 |
+| NodeInfo.seed_source_idx | 1000 × 4 B | 4 000 |
+| NodeInfo.max_known_node_id | 4 B | 4 |
+| BlockTable | 600 × 76 B | 45 600 |
+| ChainHeadsTable | 40 × 32 B | 1 280 |
+| snake_chain fields | 2 × 4 B | 8 |
+| ApprovalAccumulator | MAX_BLOCK_SIZE buffer (crypto-agnostic) | ~2 048 |
+| EmitScratch.block_buffer | MAX_BLOCK_SIZE | ~2 000 |
+| lifecycle_phase | u8 | 1 |
+| SchedulerState | 4 × Option\<u64\> + u64 | 72 |
+| PRNG root | u64 | 8 |
+| **Subtotal (Schnorr)** | | **~95 021** |
+
+### 7.2 Chain-lib subtotal — BLS — ~159 KB
+
+| Component | Calculation | Bytes |
+|---|---:|---:|
+| NodeInfo.public_keys | 1000 × 96 B | 96 000 |
+| NodeInfo.balances + seed_source_idx + max_known | 12 004 | 12 004 |
+| BlockTable | 600 × 76 B | 45 600 |
+| ChainHeadsTable | 40 × 32 B | 1 280 |
+| snake_chain fields | 8 | 8 |
+| ApprovalAccumulator | MAX_BLOCK_SIZE buffer (crypto-agnostic) | ~2 048 |
+| EmitScratch + lifecycle + scheduler + PRNG | ~2 081 | 2 081 |
+| **Subtotal (BLS)** | | **~159 021** |
+
+**Note:** Earlier Step 7 validation incorrectly assumed BLS ApprovalAccumulator was ~6 KB (per-supporter signature × MAX_AGGREGATED_SIGNATURES). The correct model is: ApprovalAccumulator holds a fixed MAX_BLOCK_SIZE buffer (~2 KB) for in-place evidence-block construction. BLS aggregation packs more supporters into the same buffer (~4 B per supporter) than Schnorr (~36 B per supporter), so BLS is actually *more efficient* per supporter — but the allocated memory is identical.
+
+### 7.3 264 KB SRAM full allocation
+
+| Consumer | Schnorr | BLS |
+|---|---:|---:|
+| moonblokz-blockchain + mempool + vote | ~121 KB | ~185 KB |
+| moonblokz-radio-lib (memory-config-medium) | ~30-40 KB | ~30-40 KB |
+| moonblokz-crypto-lib scratch | ~4 KB | ~4 KB |
+| moonblokz-storage page buffer | ~4 KB | ~4 KB |
+| Embassy task stacks (5-6 tasks × 4-6 KB) | ~24 KB | ~24 KB |
+| Embassy executor + statics | ~4 KB | ~4 KB |
+| **Subtotal allocated** | **~187-197 KB** | **~247-257 KB** |
+| **Margin** (264 KB − allocated) | **~67-77 KB** (~25-29%) ✅ | **~7-17 KB** (~3-6%) ⚠️ |
+
+### 7.4 Verdict
+
+- **Schnorr build**: comfortable margin, MVP-ready.
+- **BLS build**: tight, but feasible without const-generic tuning at the 1000-node default. The earlier "~3-13 KB margin" figure relied on an incorrect ApprovalAccumulator sizing; the corrected figure is **~7-17 KB margin**. Tuning (see §11) is recommended for headroom but not strictly mandatory.
+
+---
+
+## 8. Stack frame analysis (Steps 6 §5 + 7 §4)
+
+| Scenario | Call depth | Peak | Note |
+|---|---|---:|---|
+| (1) `receive_block` hash-already-known | api → intake → blocks.find_by_hash | ~250 B | Tier 1 fast-path |
+| (2) `receive_block` Tier 3 validation | api → intake → staged_validation → reconciliation | ~1.5 KB | local view refs |
+| (3) **FR45 block creation** | on_tick → creator.try_create_block → BlockBuilder (~2 KB) → bc.crypto.sign → emit_scratch | **~4 KB** | BlockBuilder is the hot spot |
+| (4) FR23 chain-switch backward walk | reconciliation loop { storage.read_block (~2 KB) → undo } | ~2.2 KB | one Block on stack per iter |
+| (5) FR23 forward walk peak | reconciliation forward → mempool.recheck_eligibility | ~3 KB | accumulated locals |
+| (6) FR59 restart | lifecycle.restart_from_storage → reconciliation.reconstruct loop | ~3 KB | same iter pattern as FR23 |
+
+**Decision:** the `moonblokz-node-runtime` bridge layer must declare the chain-lib hosting embassy task with a **6 KB stack** (not the 4 KB default). Other embassy tasks (radio, USB console) can remain 4 KB.
+
+---
+
+## 9. FR-coverage validation (Step 7 §1, §2)
+
+### 9.1 Summary
+
+| Status | Count | FRs |
+|---|---:|---|
+| ✓ Hard-covered | **63** | FR1-FR6, FR9-FR16, FR18-FR48, FR50, FR51, FR53-FR55, FR57-FR67, FR68, FR69 |
+| →ext External crate | **5** | FR7, FR8, FR17, FR49, FR56 (all chain-config — `moonblokz-configuration`) |
+| MVP skip | **1** | FR52 (no explicit UTXO saturation detection — design decision) |
+| Gap | **0** | — |
+
+### 9.2 Selected coverage highlights
+
+- **FR9 Tier 1/2/3** → `staged_validation.rs` with crypto handle through `bc.crypto.verify`
+- **FR19 chain_heads** → `chain_heads.rs` + `scheduler.next_parent_recovery_tick_ms`
+- **FR23 chain-switch** → `reconciliation.reconcile_to_new_head` (backward + forward walk)
+- **FR45 block creation** → `creator.try_create_block` (`bc.crypto.sign` inside chain-lib)
+- **FR50 balance replay coverage** → `node_info.seed_source_idx` per-node SoA projection
+- **FR62 simulator compat** → no_std + no_alloc + sync core (see §10)
+- **FR65 no_std public API** → entire crate stack is `#![no_std]`
+- **FR68 no local signing key** → chain-lib holds `CryptoTrait` handle, never raw key bytes; sign happens inside chain-lib via `bc.crypto.sign(...)`
+
+The full FR1-FR69 coverage matrix (per-FR row with primary + support modules) is in `step7-architecture.html` §1.1-1.8.
+
+### 9.3 FR52 — explicit MVP-skip rationale
+
+FR52 ("no explicit UTXO saturation detection") is itself a "doing nothing" requirement: MVP has no admission control / backpressure on the UTXO space. The snake_chain bounded retention (FR48) + spent-bit vector (ADR-016) + `MAX_BLOCK_UTXO_OUTPUT = 256` per-block limit already cap memory growth. Direct admission control is post-MVP.
+
+---
+
+## 10. FR62 simulator compatibility (Step 7 §5)
+
+The chain-lib design is **fully compatible** with the existing `moonblokz-radio-simulator` (std host, multi-node, eframe/egui-based desktop tool):
+
+| Requirement | Step 5/6 design | Status |
+|---|---|---|
+| `no_std` | All three new crates (`moonblokz-blockchain`, `moonblokz-mempool`, `moonblokz-vote`) are `#![no_std]` | ✓ |
+| Runs on std host | no_std crates compile on std targets if no `alloc` dependency | ✓ |
+| No `'static` requirement | Sync API + owned `Blockchain` instance — no `'static` queues, no globals | ✓ |
+| Multiple parallel instances | Const-generic + owned struct — independent `Blockchain::<...>::new(...)` per simulated node | ✓ |
+| No alloc dependency | heapless / array / const-generic everywhere | ✓ |
+| External crates (crypto, storage) trait-based | Simulator can supply mock implementations | ✓ |
+| Deterministic sync execution | Sync API + monotonic `now: u64` input → replay-friendly (FR63) | ✓ |
+| Compile-time backend variability | Const-generic params + crypto feature flag | ✓ |
+
+**Integration sketch** (post-Step 8, not in scope for this architecture):
+
+```rust
+// moonblokz-radio-simulator (std host)
+struct SimNode {
+    blockchain: Blockchain<MockCrypto, MockStorage, MockChainConfig, MAX_NODES_SIM, ...>,
+    mempool:    Mempool<...>,
+    vote:       VoteEngine<MAX_NODES_SIM>,
+}
+
+async fn node_task(mut node: SimNode, mut rx: Receiver<Event>) {
+    loop {
+        match select(rx.next(), Timer::at(next_due)).await {
+            Either::First(ev) => handle_outcome(node.blockchain.receive_block(ev.view(), now), &mut node).await,
+            Either::Second(_) => handle_outcome(node.blockchain.on_tick(now), &mut node).await,
+        }
+    }
+}
+```
+
+**Critical**: the chain-lib never requires `'static` queues, so no `Box::leak()` is needed on the chain-lib state (the simulator already uses `Box::leak()` for radio queues — that's a radio-lib requirement, not a chain-lib one).
+
+---
+
+## 11. `ChainConfigTrait` outline (Step 8 — new)
+
+The 5 delegated FRs (FR7, FR8, FR17, FR49, FR56) live in a separate `moonblokz-configuration` crate (future, separate BMAD). The chain-lib accesses chain-config via this trait:
+
+```rust
+pub trait ChainConfigTrait {
+    // FR7 — signature validation against node-zero PK
+    fn validate_signature(&self, content: &[u8], sig: &[u8], node_zero_pk: &[u8]) -> bool;
+
+    // Active config parameter accessors (chain-config-derived numbers)
+    fn current_inter_block_interval_ms(&self) -> u64;       // FR45 (b)
+    fn current_grace_period_window_ms(&self) -> u64;        // FR47
+    fn current_block_size_limit(&self) -> u16;
+    fn current_max_utxo_outputs(&self) -> u8;
+    fn current_max_aggregated_signatures(&self) -> u8;
+    fn current_initial_total_network_currency(&self) -> u64;
+
+    // FR8 tentative/durable transitions
+    fn is_durable_locked(&self) -> bool;
+    fn try_propose_change(&mut self, change: ConfigChangeView<'_>) -> ProposeResult;
+    fn promote_tentative_to_durable(&mut self) -> Result<(), Error>;
+
+    // FR17 lock + discard
+    fn discard_pending_tentative(&mut self);
+
+    // FR49 replay handling (chain-config blocks must be replayed before window drop)
+    fn handle_window_drop_replay(&mut self, replay_view: ChainConfigReplayView<'_>);
+
+    // FR56 mini-VM capability (future — opaque to chain-lib)
+    fn supports_vm_extension(&self) -> bool;
+}
+```
+
+**Why a trait, not direct ownership in chain-lib:**
+- The chain-config crate will eventually carry a mini-VM (FR56) for programmable governance — a domain-specific capability that does not belong in the core blockchain logic.
+- The chain-lib must remain `no_std no-alloc` and minimal; pushing VM execution to a separate crate keeps the chain-lib lean.
+- Trait-based decoupling lets the simulator and tests inject mock chain-configs trivially.
+
+**Owned by Blockchain via generic param:** `X: ChainConfigTrait` (see §3.1 Blockchain struct definition). The chain-lib calls `bc.chain_config.current_inter_block_interval_ms()` etc.
+
+---
+
+## 12. BLS deployment-tuning recipe (Step 8 — new)
+
+When a deployment selects the BLS crypto backend, the default const-generic values (1000 nodes, 500 snake-chain window) leave ~7-17 KB margin against the 264 KB SRAM ceiling — feasible but tight. The chain-lib code does NOT need to change — tuning happens at the deployment binary's const-generic instantiation site if more headroom is needed.
+
+### 12.1 Tuning levers (most impactful first)
+
+| Lever | Default → Tuned | RAM saved | Functional impact |
+|---|---|---:|---|
+| `MAX_NODES` | 1000 → 500 | −56 KB | Halves node-roster capacity. Network size cap. |
+| `MAX_NODES` | 1000 → 250 | −84 KB | Quarter capacity. Suitable for small deployments. |
+| `SNAKE_CHAIN_LENGTH` | 500 → 300 | −6.4 KB (spent-bits) | Shorter active history; deeper-zone events more frequent. |
+| `MAX_BRANCH_COUNT` | 40 → 20 | −640 B | Less branch headroom; collecting-state may need quicker convergence. |
+| `MAX_AGGREGATED_SIGNATURES` | 50 → 30 | **Schnorr: −0.7 KB** in ApprovalAccumulator. **BLS: ~0 KB** (signature is single aggregated slot, only `supporter_node_ids` shrinks). Per ADR-015, must verify subgroup robustness. |
+| `MEMPOOL_COMPACT_BYTES` | 20160 → 12000 | −8 KB | Smaller mempool capacity; more frequent replenishment. |
+
+**Note:** `MAX_AGGREGATED_SIGNATURES` tuning saves more on Schnorr than on BLS, because Schnorr accumulates per-supporter signatures (~32 B each) while BLS aggregates them into a single 96 B slot. BLS deployments should prefer `MAX_NODES` or `MEMPOOL_COMPACT_BYTES` tuning instead.
+
+### 12.2 Recommended BLS deployment profiles
+
+| Profile | MAX_NODES | SNAKE_CHAIN | Margin (BLS, 264 KB) |
+|---|---:|---:|---:|
+| BLS-large | 1000 | 500 | ~7-17 KB (default — feasible but tight) |
+| BLS-medium | 500 | 500 | ~63-73 KB ✅ |
+| BLS-small | 250 | 300 | ~89-99 KB ✅ |
+
+### 12.3 Future optimization (NOT MVP)
+
+A future architectural enhancement: **LRU public key cache**. Hot nodes' public keys stay in a small RAM cache (e.g. 100-200 slots = ~10-20 KB BLS), cold nodes only hold a reference to the block where the key lives. Storage read on cache miss. Could save ~70-80 KB on BLS deployments. Tracked as a follow-up, not in MVP.
+
+---
+
+## 13. Refactor / implementation task list (Step 8 — finalized)
+
+Tasks to bring the empty `moonblokz-chain-lib` directory and the existing dependencies in line with this architecture:
+
+| # | Task | Crate / location | Notes |
+|---|---|---|---|
+| 1 | Rename empty `moonblokz-chain-lib/` to `moonblokz-blockchain/` | filesystem | The existing dir is empty; safe rename. |
+| 2 | Scaffold `moonblokz-mempool/` crate (new sibling) | filesystem | See §3.3 API surface. |
+| 3 | Scaffold `moonblokz-vote/` crate (new sibling) | filesystem | See §3.4 API surface. |
+| 4 | Scaffold `moonblokz-node-runtime/` bridge crate | filesystem | embassy::select loop + radio↔chain-lib glue. |
+| 5 | Add three-type model to `moonblokz-chain-types` | existing crate | `Block` (Owned) + `BlockView<'_>` + `BlockBuilder` per FR61. Also Transaction triplet. |
+| 6 | Rename `Block` → `BlockView` where applicable in chain-types | existing crate | Per Step 5 user directive: current `Block` is actually a view. |
+| 7 | Radio-lib getter API additions | `moonblokz-radio-lib` | Expose radio-derived score input cleanly for vote sub-crate (per ADR-007). |
+| 8 | Set `moonblokz-node-runtime` chain-lib task stack to 6 KB | `moonblokz-node-runtime/src/main.rs` | Per §8 stack analysis. Other tasks remain 4 KB. |
+| 9 | Initial scaffold for `moonblokz-configuration` crate | filesystem (placeholder) | Trait stub per §11 only; full BMAD later. |
+| 10 | Wire all 4 new crates into `moonblokz-node/Cargo.toml` | existing | Replace chain-lib path dep with blockchain + add mempool + vote + node-runtime. |
+
+---
+
+## 14. Decisions log (consolidated)
+
+Selected high-impact decisions from the Step 5 + Step 6 + Step 7 iterations:
+
+| # | Decision | Rationale |
+|---|---|---|
+| 1 | Single-outcome scheduling-pull API pattern | Radio queue overflow prevention; FR-defined delays self-rate-limit |
+| 2 | Bridge layer as separate `moonblokz-node-runtime` crate | Embassy runtime ownership separation; chain-lib stays sync no_std |
+| 3 | Three-type model (Owned / View / Builder) for Block + Transaction | Outcome enums stay ~16 B (borrow) not 2 KB (owned) |
+| 4 | Mempool + vote extracted into separate sub-crates | FR30 + ADR-007; clean concern separation |
+| 5 | Const-generic Blockchain\<C, S, X, MAX_NODES, ...\> | Compile-time configuration without alloc |
+| 6 | Crypto handle stored on Blockchain, sign happens inside chain-lib | FR68 — chain-lib holds trait handle, never raw key bytes |
+| 7 | BlockEntry array of structs (AoS) with co-located spent_bits | ADR-016 alignment; lifecycle coupling; ~3 KB harmless side-branch waste |
+| 8 | No `storage_index` field in BlockEntry | `blocks[i] ⟷ storage_index = i` 1:1 |
+| 9 | `head_idx == u32::MAX` / `sequence == u32::MAX` as empty-slot sentinels | Saves count field; FR53 already rejects u32::MAX-based chain extension |
+| 10 | `tail_or_connection_idx` overlaid in ChainHeadEntry | State-dependent semantics; saves 480 B / 40 entries |
+| 11 | NodeInfo SoA layout | Saves ~4 KB padding vs. AoS; consistent with vote crate |
+| 12 | Lifecycle phase as 1-byte field directly on Blockchain | No separate LifecycleState struct (single field doesn't justify it) |
+| 13 | SchedulerState 4 conditional deadlines as `Option<u64>` | FR46 explicit "not scheduled" states; `filter_map(min)` for NextCall |
+| 14 | Block-creation + grace-period deadlines network-wide-consistent | Critical consensus invariant; both `Some` on every node, role-differentiated triggers |
+| 15 | `moonblokz-configuration` as separate future crate | FR56 mini-VM capability doesn't belong in core chain-lib |
+| 16 | Chain-lib hosting embassy task gets 6 KB stack (not 4 KB) | §8 FR45 block creation peak ~4 KB |
+| 17 | Feature-gated introspection getters (`#[cfg(feature = "introspection")]`) | FR65 production binary minimal; simulator/CLI enable for observability |
+| 18 | Three separate `initialize_*` constructors (genesis / join / restart), not one with a mode enum | Distinct precondition contracts, parameter shapes, and outcome enum types; bridge dispatches on boot-mode anyway |
+| 19 | Genesis two-block bootstrap split across `initialize_genesis` + next `on_tick` | Single-outcome scheduling-pull: init returns Block #0 + `NextCall::Immediate`; tick emits Block #1 (`GenesisChainConfigCreated`) |
+| 20 | `node_zero_pk` mind a 3 init-ben paraméter | Bootstrap of trust: out-of-band megbízható forrásból (firmware-be sütve) kell jönnie; sérült storage nem hamisíthat trust anchor-t |
+| 21 | Entrópia: egyszerű `prng_seed: u64` paraméter | Bridge layer felelős a seed előállításáért (RP2040 ROSC-jitter, restart_count hash); chain-lib egyszerűen elfogadja |
+| 22 | ApprovalAccumulator fix MAX_BLOCK_SIZE buffer (~2 KB), crypto-agnostic | BLS in-place aggregation hatékonyabb (~4 B/supporter vs. Schnorr ~36 B/supporter), de az allokált memória mérete a max blokk-méret mindkét variantnál |
+
+---
+
+## 15. Risks & open items
+
+| Risk | Severity | Mitigation |
+|---|---|---|
+| BLS build margin ~7-17 KB on 1000-node default | Low-Medium | §12 BLS tuning recipe; feasible at default but tuning recommended for headroom |
+| `moonblokz-configuration` crate not yet scaffolded | Medium | Trait stub per §11; full BMAD as a follow-up |
+| FR45 block creation stack peak (~4 KB) close to default | Low | §13 task #8: 6 KB stack for chain-lib task |
+| `MAX_AGGREGATED_SIGNATURES` / `MULTI_SIGNATURE_SIZE` const values not yet ratified beyond ADR-015 default 50 | Low | Step 9 (implementation kickoff) confirms with crypto-lib test vectors |
+| Simulator chain-lib integration not yet implemented | Out-of-scope (post-MVP) | §10 confirms architectural compatibility; integration is separate work |
+
+---
+
+## 16. Next steps (post-Step 8)
+
+1. Execute §13 refactor task list (10 items). Each task can be done independently except #5/#6 (chain-types changes block #4, #2, #3).
+2. Begin `moonblokz-blockchain` implementation from the §3-§6 spec. Recommended starting order:
+   - Scaffold const-generic Blockchain struct + outcome enums (§3)
+   - Implement `blocks.rs` + `chain_heads.rs` (data layer)
+   - Implement `lifecycle.rs` + `scheduler.rs` (orchestration)
+   - Implement `intake.rs` + `staged_validation.rs` (Tier 1 first, then 2, then 3)
+   - Implement `reconciliation.rs` (most complex; depends on all of the above)
+   - Implement `creator.rs` + `approval.rs` + `queries.rs`
+3. Schedule a separate BMAD for `moonblokz-configuration` crate covering FR7, FR8, FR17, FR49, FR56 in depth.
+4. Plan `moonblokz-radio-simulator` chain-lib integration as a separate workstream once node firmware is functional.
+
+_(PRD reconciliation tasks for FR10, FR43, FR64 were completed on 2026-06-17 — both `_bmad-output/planning-artifacts/prd.md` and `moonblokz-info/moonblokz-blockchain-prd.md` now carry `Implementation annotation (architecture 2026-06-17)` paragraphs at the three FRs.)_
+
+---
+
+## Appendix A — Working artifacts (preserved)
+
+| Artifact | Content |
+|---|---|
+| `step5-architecture.html` | Crate-split architecture, mempool API (10 sections), vote API, PRNG hierarchy, 4 sequence diagrams (FR14, FR45, FR23, FR43), Step 5 refactor task table |
+| `step6-architecture.html` | Internal module structure (15+1 modules), const generic catalog, full sized data structure catalog (10 sub-sections with bit-level layouts), per-module detail with API signatures, 264 KB SRAM budget breakdown, stack frame analysis, Step 6 decisions table |
+| `step7-architecture.html` | FR1-FR69 coverage matrix (8 sub-tables), gap analysis, RAM-budget recheck with arithmetic verification, stack-frame scenario analysis, FR62 simulator-compatibility check, risks & Step 8 prep |
+
+These HTML artifacts contain the full Mermaid diagrams, data-layout tables, and intermediate reasoning preserved across the architecture iteration. This `architecture.md` is the consolidated reference; the HTMLs are the iteration history.

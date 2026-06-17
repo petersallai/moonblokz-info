@@ -5,6 +5,7 @@
 This document captures implementation-facing implications of the MoonBlokz blockchain model introduced in Part III and extended in Part IV and Part V of the MoonBlokz series. It is not a full implementation specification. Instead, it complements the conceptual and algorithm documents by identifying what an implementation will need to track, where configuration boundaries exist, how compact binary structures affect engineering choices, and which details must remain open until later articles or repository decisions define them.
 
 - Use [`moonblokz-blockchain-prd.md`](./moonblokz-blockchain-prd.md) as the **authoritative source** for every FR-numbered functional requirement and Non-Functional Requirement cited in this document; FR references in the implementation guidance resolve to the canonical wording in the PRD.
+- Use [`moonblokz-blockchain-architecture.md`](./moonblokz-blockchain-architecture.md) as the **authoritative source** for the chain-lib crate-split, public API, internal modules, sized data-structure layouts, RAM budget, stack-frame analysis, FR-coverage matrix, and decisions log. This document defers to the Architecture Decision Document for all concrete implementation-shape specifics.
 - Use [`moonblokz-blockchain-concept.md`](./moonblokz-blockchain-concept.md) for the conceptual description.
 - Use [`moonblokz-blockchain-algorythm.md`](./moonblokz-blockchain-algorythm.md) for the algorithm model and the detailed main data structures.
 - Use [`blockchain-adrs/ADR-INDEX.md`](./blockchain-adrs/ADR-INDEX.md) for the current accepted blockchain architecture decision set and its reading order.
@@ -34,42 +35,11 @@ Part II established that MoonBlokz is built around a portable core library with 
 
 ## Current Module Boundary Direction
 
-The current MoonBlokz design direction sharpens the blockchain module boundary beyond the original article-era framing.
+`moonblokz-blockchain` is a **single-threaded, synchronous, stateful semantic event state machine** with the responsibility partition between owned concerns (blockchain decisions, staged validation, block-tree state, active-chain selection, mempool, vote, query answers) and explicitly non-owned concerns (radio transport, fragment handling, wire-format serialization adapters, scoring-module input, storage mechanics, cryptographic backend implementation).
 
-`moonblokz-blockchain` is best treated as a **single-threaded, synchronous, stateful semantic event state machine**.
+The authoritative definition of this boundary — including the trait-based handles for crypto / storage / chain-config, the bridge layer (`moonblokz-node-runtime`), the two-core split on RP2040, the crate-split into `moonblokz-blockchain` + `moonblokz-mempool` + `moonblokz-vote`, and the single-outcome scheduling-pull API pattern — lives in [`moonblokz-blockchain-architecture.md`](./moonblokz-blockchain-architecture.md) §1 (framework) and §2 (crate-split).
 
-It should own:
-
-- blockchain decisions,
-- staged validation logic,
-- known-block and branch knowledge,
-- active-chain selection,
-- runtime mempool handling,
-- vote / next-creator state,
-- and local blockchain-facing query answers.
-
-It should not own:
-
-- communication transport,
-- fragment handling,
-- serialization / deserialization adapters,
-- the scoring module used as creator-selection input,
-- storage implementation mechanics,
-- or cryptographic backend implementation.
-
-For implementation planning, this means:
-
-- block-tree, branch selection, and `snake_chain` retention logic belong in the portable blockchain core,
-- communication-specific delivery and missing-block requests must stay aligned with the communication boundary,
-- storage behavior must reflect the persistence abstraction from Part II,
-- serialization rules must remain deterministic across platforms,
-- processing-phase crash behavior must be explicit rather than accidental,
-- active-chain-switch recomputation must be treated as first-class implementation work,
-- pruning cost and retained-history tradeoffs must influence storage design,
-- formula-execution boundaries must remain tightly controlled if chain configuration later becomes more expressive,
-- implementation choices must preserve best-effort, bounded, embedded-friendly behavior.
-
-Part V makes this stronger still: compact binary structure is not merely a wire concern. It affects hashing, signing, fee calculation, fragmentation, cache design, and flash-write strategy.
+The implementation-facing consequences below remain relevant where they capture engineering cautions and source-article bridging that the Architecture Decision Document does not restate.
 
 ## Implementation-Relevant Constraints from Part V
 
@@ -120,10 +90,6 @@ Discarding the working-set in full is preferred for atomicity and simplicity: wo
 
 This recovery path is distinct from the intake-time persistence threshold of ADR-004: intake remains permissive, and durable deletion here is authorized only by the processing-phase "proven invalid" evidence produced by the re-execution itself.
 
-## Implementation-Relevant State
-
-Even without a final storage schema, Parts III, IV, and V imply that an implementation will need access to several categories of state.
-
 ## Authoritative Versus Derived State
 
 The current module design direction keeps the authoritative state deliberately small.
@@ -132,99 +98,26 @@ The canonical conceptual explanation of authoritative versus derived blockchain 
 
 From an implementation perspective, the key consequence is that restart, persistence, and recovery behavior should be anchored in a compact authoritative base, while selected active-chain state, balance / UTXO truth, and vote / next-creator state should be engineered as maintained operational views that can be corrected or recomputed when necessary.
 
-## Internal Logical Structure
+## In-Memory State Categories
 
-A practical implementation can be understood as four tightly related internal logical areas:
+The concrete in-memory layouts, field-by-field sizes, alignment, sentinels, and module-by-module owner of every authoritative and derived state category are defined in [`moonblokz-blockchain-architecture.md`](./moonblokz-blockchain-architecture.md):
 
-1. **Chain Knowledge Core** — known blocks, branch knowledge, active-chain selection, operating mode, and the embedded recovery / approval / `snake_chain` consequences.
-2. **Derived Economic State Cache** — incrementally maintained balance and UTXO truth derived from the active chain.
-3. **Mempool Registry** — pending transaction registry and block-proposal source, subject to chain-driven correction.
-4. **Vote Module** — tracks per-node accumulated vote counts and determines the next block creator from that state, using vote targets supplied by the scoring module at transaction-creation time.
+- **Block-tree metadata** → architecture §4.2 (`blocks.rs`) and §6.2 (`BlockEntry` 76 B padded × `MAX_BLOCKS`, co-located ADR-016 spent-bit vector).
+- **Active-chain window state** → architecture §4.2 (`snake_chain.rs`) and §6.4 (two `u32` fields directly on `Blockchain<...>`).
+- **Branch / chain-heads tracking** → architecture §4.2 (`chain_heads.rs`) and §6.3 (`ChainHeadEntry` 32 B padded × `MAX_BRANCH_COUNT`).
+- **Per-node SoA state (public keys, balances, FR50 seed-source projection, max_known_node_id)** → architecture §4.2 (`node_info.rs`) and §6.1.
+- **UTXO spent-bit projection** → architecture §4.2 (`spent_bits.rs`) and §6.2 (co-located in `BlockEntry`).
+- **Approval evidence accumulation** → architecture §4.2 (`approval.rs`) and §6.5 (`ApprovalAccumulator` ~2 KB crypto-agnostic MAX_BLOCK_SIZE buffer).
+- **Mempool** → architecture §3.3 (sub-crate API) and §6.8 (internals).
+- **Vote engine** → architecture §3.4 (sub-crate API) and §6.9 (internals).
+- **Scheduler / `NextCall` deadlines** → architecture §4.2 (`scheduler.rs`) and §6.7 (`SchedulerState` ~72 B with `Option<u64>` deadlines).
+- **Emit scratch / outcome view source** → architecture §4.2 (`emit_scratch.rs`) and §6.6.
 
-### 1. Block storage state
+The bridging principle that ADR-004 establishes — that durable storage is permissive during collection and processing and remains permissive in ready state except when intake-time exact evidence is already present — is preserved verbatim in the architecture's intake module (§4.2 `intake.rs`). The intake-time exact-evidence forms (parsing failure; direct-active-extension creator-signature invalidity when `previous_hash = active_chain_head_hash` and the creator key is derivable from the current active chain; chain-config content-signature invalidity against `node_zero_public_key`; configuration-module rejection of chain-config content; ready-state chain-config content mismatch against the durable-locked configuration; deviation-branch creator-exclusivity violation; FR69 node-zero trust-anchor mismatches on node-`#0` registration, balance-block NodeInfo, or chain-config signature material) map onto `Rejected(RejectReason)` variants of the `ReceiveBlockOutcome` enum per PRD FR10's Implementation annotation.
 
-The implementation must be able to retain:
+The scoring-module boundary remains an external concern: the blockchain module does not compute vote targets from raw radio observation. The scoring module supplies the vote target written into the locally assembled signed transaction before the blockchain module sees it; the chain-lib vote sub-crate (`moonblokz-vote`, architecture §3.4) owns only the per-node accumulated vote count, the per-acceptance `vote_scale` credit rule, the integer anti-capture growth `score += floor(score × vote_interest / vote_scale)`, the creator reset on successful block creation, the grace-period reset policy, and the next-creator determination.
 
-- every received block for which the module has no exact evidence of unacceptability,
-- disconnected blocks whose parents are not yet available,
-- blocks whose creator key is not yet known and whose signature therefore cannot be verified yet,
-- block types,
-- serialized block bytes or a lossless reconstruction path,
-- verification-stage markers so that stored-but-unverified, signature-valid, and active-chain-selected blocks can be distinguished,
-- and enough metadata to compare branches later.
-
-At current design level (see [ADR-004](./blockchain-adrs/ADR-004-durable-blockchain-storage-persistence-threshold.md)), the durable storage boundary is permissive during collection and processing and remains permissive in ready state except when intake-time exact evidence is already present. The intake-time exact-evidence forms are: parsing failure; ready-state direct-active-chain-extension creator-signature invalidity when `previous_hash = active_chain_head_hash` and the creator key is derivable from the current active chain; chain-config content-signature invalidity against `node_zero_public_key`; configuration-module rejection of chain-config content; ready-state chain-config content mismatch against the durable-locked configuration; deviation-branch creator-exclusivity violation; and the FR74 node-zero trust-anchor mismatches on node-`#0` registration, balance-block NodeInfo, or chain-config signature material. Outside the narrow direct-active-extension case and those explicit trust-anchor / chain-config exact-evidence forms, a block whose creator signature later turns out to be invalid against the candidate-side public-key projection during chain-switch reconciliation (blockchain module PRD FR9 Tier 3) or during processing-pass re-execution (blockchain module PRD FR3 / blockchain module PRD FR5) must be removed from durable storage through the explicit deferred-rejection path defined for that reconciliation event; the intake-time signature check outside the direct-extension exception (blockchain module PRD FR9 Tier 1 opportunistic side effect) primes the signature-verification cache against the active-chain projection but does not by itself reject the block. Parent/child indexes, branch-navigation aids, and similar helper structures may still exist, but they should be treated as derived implementation support rather than the primary durable truth.
-
-The need for serialized-byte fidelity is stronger after Part V because signatures and hashes depend on exact byte layout.
-
-### 2. Active-chain window state
-
-Part IV adds a new first-class responsibility: the implementation must explicitly model the active-chain window.
-
-It will likely need to track:
-
-- configured active chain length,
-- current head and tail sequence positions,
-- which blocks are about to leave the living chain,
-- whether required replay actions are pending before the tail advances,
-- and whether replay data has already been materialized into new serialized blocks.
-
-### 3. Current node-balance state
-
-Because old transaction history may disappear, the implementation must be able to reconstruct and preserve the current node state independently of full history.
-
-This implies explicit support for:
-
-- current balance per node,
-- current vote score per node,
-- node identifier to public-key mapping,
-- registration-derived node count progression,
-- and determining which balances must be present in active balance blocks.
-
-### 4. UTXO spent-state projection
-
-The address side of the model is represented as a **per-block spent-bit vector** rather than as an in-memory live UTXO set, per [ADR-016](./blockchain-adrs/ADR-016-sequence-indexed-utxo-input-model.md). Each block stored within the active `snake_chain` window carries one bit per UTXO output produced by its transactions; the bit is `0` while the output is unspent on the current active chain and `1` once spent. The spent-bit vector is co-located with the block in storage and is a derived projection of the current active chain.
-
-Practical consequences for the implementation:
-
-- UTXO input lookup uses `(block_sequence, output_index)` directly against the sequence-indexed block storage; no hash-keyed auxiliary index is required.
-- Carry-forward at tail-drop time reads the dropping block's spent-bit vector to identify still-unspent outputs; no separate "find unspent" scan is needed.
-- Chain-switch reconciliation must recompute the spent-bit vectors of blocks inside the rollback scope by forward-replaying the new active chain from the common ancestor. This is a bounded, deterministic step of the chain-switch workflow.
-- Saturation-related scheduling (which UTXOs are approaching tail deletion, custodian-fee-adjusted value, zero-input replay construction) is driven from the spent-bit vector plus block metadata, not from a continuously maintained live UTXO set. Repeated carry-forward is intentionally self-clearing: each preservation step reduces every surviving carried-forward UTXO by the custodian fee, and below-fee UTXOs disappear instead of being preserved again.
-
-### 5. Recovery state
-
-To support missing-parent recovery deterministically and within bounded resources, the implementation maintains an explicit `chain_heads` table (per blockchain module PRD FR19) indexing every block-tree tip — every block whose hash is not the parent reference of any other retained block — regardless of its FR9 status (Stored, Connected, or Active). Per chain_heads entry: the head block's hash; the head block's sequence; a `connected` cache flag; for Stored heads a tail-point cache (the lowest-sequence block on the head's branch whose parent reference does not resolve in the tree) and `last_request_timestamp` (initialized to the epoch); for Connected/Active heads a connection-point cache. The active head is identified by a single global `active_chain_head_id` field — no per-head active flag. Per block, a `head_ref_count` field counts how many chain_heads entries' ancestry passes through that block (structural — block-tree graph based, not active-chain based, and therefore unaffected by FR23 chain-switch reconciliation).
-
-The chain_heads table is bounded by `chain_heads_max_capacity`. Eviction selects the non-active head with the smallest `head_sequence` (deterministic tie-break by smallest `head_block_id` for FR67 replay determinism — wall-clock arrival timestamps are not consulted because they are not deterministic across nodes). Eviction walks back from the evicted head's `head_block_id` along the parent reference chain, decrementing each block's `head_ref_count` by 1; blocks whose count reaches 0 are deleted from durable storage and from the retained block-tree, and the walk continues to the deleted block's parent; blocks whose count remains positive are shared with another head and the walk terminates.
-
-Parent-recovery requests are emitted at most one per scheduler tick. Two chain-config parameters govern timing: `parent_recovery_global_tick_interval` (the wall-clock period between scheduler ticks) and `parent_recovery_per_head_retry_interval` (the minimum wall-clock period between two consecutive requests for the same head). On each tick the scheduler enumerates Stored heads whose per-head retry window has elapsed and selects the one with the smallest `last_request_timestamp` (deterministic tie-break by smallest head_sequence, then smallest head_block_id), emits a single recovery request for that head's tail-point parent, and updates the head's `last_request_timestamp` to the current monotonic time. Tail-pointing parent admission triggers a walking ref-count update along the merging branch (bounded by the snake_chain window length). FR23 chain-switch reconciliation triggers cache recomputation across all heads (connected flag, connection-point, demotion of newly-disconnected heads to Stored with `last_request_timestamp = 0`) without affecting `head_ref_count`. FR5 atomic recovery deletion removes any chain_heads entry whose `head_block_id` was deleted and recomputes cache fields of surviving heads. See FR19 for the full normative rules and edge cases.
-
-### 6. Vote and participation state
-
-The algorithm implies local tracking of:
-
-- votes or vote scores per candidate creator,
-- scoring module input used to determine which node receives the vote when a new transaction is accepted,
-- vote score resets after successful creation or penalty,
-- vote-interest growth over time,
-- spent-vote values recorded into block headers,
-- and first-ranked creator information used by approval deviation logic.
-
-At current module-boundary level, the blockchain module should not compute from raw radio observation which node a newly accepted transaction should vote for. That decision belongs to an upstream **scoring module**, whose selected vote target is written into the locally assembled signed transaction before the blockchain module sees it. The blockchain module's dedicated local transaction-creation surface therefore receives a fully formed signed transaction, validates it, and inserts it into the mempool automatically when accepted. The blockchain **vote module** owns the per-node accumulated vote count, the rule that each accepted transaction contributes one configured `vote_scale` credit to its target node, the integer-only anti-capture growth rule `score += floor(score × vote_interest / vote_scale)` applied on accepted blocks, the creator reset on successful block creation, the grace-period reset policy, and the determination of the next block creator from that accumulated state.
-
-### 7. Approval-support state
-
-Parts III, IV, and V imply that the system must also track, at least conceptually:
-
-- proposed fallback blocks,
-- signed support messages for those blocks,
-- support sufficiency against the configured majority requirement,
-- evidence blocks created from that support,
-- timing state related to grace periods,
-- and whether `snake_chain` replay blocks have to be inserted before approval evidence is written.
-
-The exact encoding and storage shape remain deferred.
+The serialized-byte fidelity requirement remains stronger after Part V because signatures and hashes depend on exact byte layout — see the "Serialization and Encoding Implications" section below for the canonical-serialization engineering consequences that the architecture does not restate.
 
 ## Data Modeling Implications
 
@@ -329,35 +222,9 @@ Part V directly motivates implementation techniques such as in-memory caching an
 
 ## Mempool-Specific Engineering Notes
 
-The current design direction treats the mempool as authoritative runtime state but not as durable blockchain truth.
+The current design direction treats the mempool as authoritative runtime state but not as durable blockchain truth. That means mempool contents may be lost across restart, active-chain changes must be allowed to remove now-confirmed transactions from the mempool, and transactions that fall out of the active chain during a chain switch may need to be reintroduced into the mempool. When mempool capacity is exhausted, randomized eviction (per [ADR-010](./blockchain-adrs/ADR-010-randomized-mempool-eviction-under-capacity-pressure.md)) is preferable to deterministic eviction because it increases the chance that the network as a whole retains a more diverse transaction set.
 
-That means:
-
-- mempool contents may be lost across restart,
-- active-chain changes must be allowed to remove now-confirmed transactions from the mempool,
-- and transactions that fall out of the active chain during a chain switch may need to be reintroduced into the mempool.
-
-When mempool capacity is exhausted, randomized eviction is preferable to deterministic eviction because it increases the chance that the network as a whole retains a more diverse transaction set.
-
-### Compact transaction storage layout
-
-MoonBlokz transactions are variable-size: a node transfer is 101 bytes while a complex transaction with several inputs and outputs can be much larger. Storing each pending transaction as a fixed-size object (allocating maximum transaction size per slot) would waste significant RAM on a constrained device.
-
-The mempool must therefore store transactions in **compacted form**:
-
-1. **Transaction byte buffer** — a single contiguous `[u8]` array that holds all pending transactions packed end-to-end with no inter-entry gaps.
-2. **Transaction index array** — a separate, much smaller array of fixed-size entries, one per pending transaction. Each entry contains:
-   - `start` (`u32`) — byte offset of the transaction within the byte buffer,
-   - `length` (`u32`) — byte length of the transaction,
-   - `arrival_time` (`u64`) — timestamp of when the transaction was received,
-   - `crc32` (`u32`) — CRC-32 checksum of the transaction bytes.
-
-The index array enables two critical fast-path operations:
-
-- **Block-proposal selection** — scanning the index to select transactions for inclusion in a new block without parsing the byte buffer until needed.
-- **Duplicate detection on arrival** — comparing the incoming transaction's CRC-32 against index entries. A CRC-32 match triggers a full byte comparison; a CRC-32 mismatch immediately rules out a duplicate. This avoids full-buffer scans for every incoming transaction.
-
-When a transaction is removed from the mempool (confirmed by the active chain, invalidated by a chain switch, or evicted under capacity pressure), the byte buffer must be **compacted**: remaining transactions are shifted to close the gap and the affected index entries are updated. This preserves the contiguous-storage invariant and prevents internal fragmentation from accumulating over the mempool's lifetime.
+The compact-storage layout, the index entry shape, the eligibility iterator, the deferred-flag handling, the byte-buffer compaction strategy, the CRC32-based duplicate detection, the FR43 sub-seeded PRNG for random eviction with own-transaction prioritization, and the full sub-crate API surface are defined in [`moonblokz-blockchain-architecture.md`](./moonblokz-blockchain-architecture.md) §3.3 (`Mempool<...>` API, 10 method-groups) and §6.8 (internals: compact buffer ~20 KB + 128 index entries + sub-seed PRNG ≈ 21.5 KB total).
 
 ### RAM-side expectations
 
@@ -397,13 +264,11 @@ This tradeoff should be documented explicitly because it affects:
 
 ## Configuration Boundaries Suggested by Parts III, IV, and V
 
-The combined articles explicitly or implicitly suggest that several values should remain configurable at chain level or later design level.
+The combined articles explicitly or implicitly suggest that several values should remain configurable at chain level or later design level. The chain-lib interface to those values is the `ChainConfigTrait` outlined in [`moonblokz-blockchain-architecture.md`](./moonblokz-blockchain-architecture.md) §11; the state and execution model behind the trait lives in the future `moonblokz-configuration` crate, which will receive its own BMAD covering FR7, FR8, FR17, FR49, and FR56. The categories below preserve the conceptual rationale for what must remain configurable; the concrete trait surface and its delegation contract belong to the Architecture Decision Document.
 
 ### Formula execution boundary
 
-The todo material raises an important future-facing implementation question: if chain configuration eventually contains formulas, should those formulas be evaluated by a constrained expression evaluator or by a more general virtual machine?
-
-At the current knowledge-base level, the safe guidance is not to choose prematurely, but to preserve the boundary conditions any such mechanism would have to satisfy:
+If chain configuration eventually contains formulas, the open question is whether they are evaluated by a constrained expression evaluator or by a more general virtual machine. The current architecture defers this decision to the future `moonblokz-configuration` crate (FR56 mini-VM capability is the placeholder term). Whichever mechanism is chosen must preserve the boundary conditions any such evaluator would have to satisfy:
 
 - deterministic behavior across all nodes,
 - bounded runtime,
@@ -473,32 +338,15 @@ The vote-interest mechanism is parameterized by two configuration values: `vote_
 
 ## Genesis and Bootstrap Implications
 
-Part IV defines a special two-block bootstrap, and Part V reinforces that those blocks use the same byte-structured blockchain model with some special validation exceptions.
+Part IV defines a special two-block bootstrap (block `#0` with node-`#0` registration and initial self-transfer; block `#1` with chain configuration), and Part V reinforces that those blocks use the same byte-structured blockchain model with some special validation exceptions. This must be treated as explicit startup logic rather than a quirky exception hidden in general validation code.
 
-Implementation planning therefore needs a dedicated bootstrap path for:
-
-- creating block `#0` with registration and initial self-transfer,
-- allowing its special validation behavior,
-- creating block `#1` with the chain configuration,
-- serializing both in canonical form,
-- and then switching into normal operational rules.
-
-This should be treated as explicit startup logic rather than a quirky exception hidden in general validation code.
+The bootstrap is realized in [`moonblokz-blockchain-architecture.md`](./moonblokz-blockchain-architecture.md) §3.6 as three separate `initialize_*` constructors (`initialize_genesis`, `initialize_join`, `initialize_from_storage`). The genesis path emits block `#0` as the outcome of `initialize_genesis` and block `#1` on the next `on_tick` via `TickOutcome::GenesisChainConfigCreated` — the single-outcome scheduling-pull pattern naturally splits the two-block sequence across two calls.
 
 ## Active-Chain Switch Consequences
 
-The todo material makes clear that an active-chain switch is not just a matter of choosing a new tip hash.
+Active-chain switch is not just a matter of choosing a new tip hash. It is a rare but first-class correction event: the Chain Knowledge Core remains the orchestrating truth source while derived subsystems (creator-score state, node-derived active balances, branch bookkeeping, mempool eligibility) are reconciled against the newly selected branch. A practical strategy is to walk backward to the common ancestor and then forward along the new active branch while updating derived state incrementally — chain switch is a structured recomputation workflow rather than a side effect attached to tip replacement.
 
-At current design level, chain switch should be treated as a rare but first-class correction event. The Chain Knowledge Core remains the orchestrating truth source, while derived subsystems are reconciled against the newly selected branch.
-
-A practical implementation may need to recompute or refresh at least:
-
-- creator-score state,
-- node-derived active balances or equivalent active-chain projections,
-- branch bookkeeping structures,
-- mempool assumptions that depended on the previous active chain.
-
-For vote state and similar derived subsystems, a practical strategy is to walk backward to the common ancestor and then forward along the new active branch while updating derived state incrementally. Reorg handling should therefore be implemented as a structured recomputation workflow rather than a small side effect attached to tip replacement.
+The concrete reconciliation workflow (backward walk → forward walk; spent-bits clear/replay; balance rollback/replay; vote score rollback/apply; mempool re-eligibility recheck; FR58 deep-zone reconstruction) is defined in [`moonblokz-blockchain-architecture.md`](./moonblokz-blockchain-architecture.md) §4.2 (`reconciliation.rs` module) and the supporting [ADR-011](./blockchain-adrs/ADR-011-chain-switch-reconciliation-is-a-structured-workflow.md).
 
 ## Scheduling Implications of snake_chain
 
@@ -539,7 +387,7 @@ The articles defer exact request/response formats, retry behavior, support-messa
 
 ### 2. Multi-signature or evidence efficiency
 
-The articles point toward special multi-signature constructions. Current planning should not assume naive signature bundling is final.
+Partly resolved. Per [ADR-015](./blockchain-adrs/ADR-015-approval-subgroup-selection.md), `MAX_AGGREGATED_SIGNATURES = 50` is the default. Per [`moonblokz-blockchain-architecture.md`](./moonblokz-blockchain-architecture.md) §6.5, the `ApprovalAccumulator` allocates a fixed `MAX_BLOCK_SIZE` buffer (~2 KB) that is crypto-agnostic; BLS aggregation packs roughly 5-10× more supporters into the same buffer than Schnorr (per-supporter cost ~4 B with BLS vs ~36 B with Schnorr). What remains open is whether future crypto backends introduce new aggregation primitives that change this tradeoff.
 
 ### 3. Random subgroup selection
 
@@ -551,7 +399,7 @@ Resolved by [ADR-015](./blockchain-adrs/ADR-015-approval-subgroup-selection.md).
 
 ### 5. Mutable configuration support
 
-Part IV mentions future support for configuration changes with approval and compatibility checks, but the current model does not define that mechanism.
+Partly addressed. [`moonblokz-blockchain-architecture.md`](./moonblokz-blockchain-architecture.md) §11 outlines a `ChainConfigTrait` (tentative/durable transitions per FR8, lock/discard per FR17, replay handling per FR49) that the chain-lib consumes via a trait handle, with state living in a future separate `moonblokz-configuration` crate. The mini-VM capability suggested by FR56 (programmable governance) is explicitly deferred to that future crate's own BMAD; the current architecture treats `ChainConfigTrait` as opaque to the chain-lib core. What remains open is the precise content shape, the approval mechanics for configuration changes mid-chain, and the mini-VM execution model.
 
 ### 6. Exact long-disconnect recovery strategy
 

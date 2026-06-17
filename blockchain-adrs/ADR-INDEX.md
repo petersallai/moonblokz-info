@@ -119,30 +119,30 @@ These define:
 
 ## What These ADRs Still Imply
 
-These ADRs settle the main architectural direction, but they still require deeper design work in several areas:
+These ADRs settle the main architectural direction. Their downstream design work has largely been completed during the 2026-05-19 → 2026-06-17 architecture workflow recorded in [`../moonblokz-blockchain-architecture.md`](../moonblokz-blockchain-architecture.md). Status:
 
-1. Chain Knowledge Core internal representation
-2. Detailed chain-switch reconciliation invariants
-3. Verification-horizon sizing and retained-information policy
-4. Bounded UTXO carry-forward policy and saturation handling
-5. Query payload definitions and depth semantics
-6. Vote-target input contract from the scoring module
-7. Mode-specific shared versus distinct data structures
+1. **Chain Knowledge Core internal representation** — addressed in architecture §4 (15 + 1 internal modules) and §6 (sized data-structure catalog with `BlockEntry`, `ChainHeadsTable`, `NodeInfo` SoA, `SchedulerState`, etc.).
+2. **Detailed chain-switch reconciliation invariants** — addressed in architecture §4.2 (`reconciliation.rs` module) covering the backward-walk + forward-walk workflow.
+3. **Verification-horizon sizing and retained-information policy** — addressed in architecture §5 (`VERIFICATION_HORIZON = 20` const default) and the snake_chain bounded-retention model (W=500).
+4. **Bounded UTXO carry-forward policy and saturation handling** — addressed in architecture §6.2 (co-located spent-bit vector per `BlockEntry`) and §4.2 (`spent_bits.rs`); ADR-013 + ADR-016 remain the conceptual anchors. FR52 ("no UTXO saturation detection") remains an explicit MVP-skip.
+5. **Query payload definitions and depth semantics** — addressed in architecture §3.1 (12 read-only public methods on `Blockchain<...>`) and §4.2 (`queries.rs` module).
+6. **Vote-target input contract from the scoring module** — partly open. The scoring-module → blockchain-vote-module contract (ADR-007) is conceptually settled, but the exact scoring-module API surface remains a separate design artifact.
+7. **Mode-specific shared versus distinct data structures** — addressed in architecture §3.2 (three-type Owned + View + Builder model) and §6.6 (`EmitScratch` outcome view source).
 
 ---
 
 ## Suggested Next Design Artifacts
 
-Based on the accepted ADR set, the most useful next artifacts would be:
+Based on the accepted ADR set:
 
-1. **Chain Knowledge Core architecture note**
-2. **Chain-switch reconciliation design note**
-3. **Bounded UTXO preservation design note**
-4. **Local query contract note**
-5. **Scoring module vote-target selection input contract**
+1. **Chain Knowledge Core architecture note** — **DONE.** Superseded by [`../moonblokz-blockchain-architecture.md`](../moonblokz-blockchain-architecture.md).
+2. **Chain-switch reconciliation design note** — **DONE.** Covered by architecture §4.2 (`reconciliation.rs` module).
+3. **Bounded UTXO preservation design note** — **DONE.** Covered by architecture §6.2 (co-located spent-bit vector) and ADR-016.
+4. **Local query contract note** — **DONE.** Covered by architecture §3.1 (read-only API surface) and §4.2 (`queries.rs`).
+5. **Scoring module vote-target selection input contract** — still open. The scoring-module is explicitly outside the `moonblokz-blockchain` boundary (ADR-002 / ADR-007), and its concrete API contract belongs to a separate design artifact yet to be authored.
 
 ---
 
 ## Status Summary
 
-All ADRs listed in this index are currently treated as **Accepted** within the working design set created during this session.
+All ADRs listed in this index are currently treated as **Accepted** within the working design set created during this session. The downstream architectural work derived from this ADR set was completed on 2026-06-17 — see [`../moonblokz-blockchain-architecture.md`](../moonblokz-blockchain-architecture.md) for the authoritative consolidated reference.
