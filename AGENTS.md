@@ -69,6 +69,13 @@ A citation that crosses subsystem boundaries — most often from a cross-cutting
 
 Terms that are used across subsystems or that carry more than one meaning (for example, "score", which names a radio relay metric, a radio-side vote-target input, and a blockchain accumulated-vote value) must have an entry in the cross-subsystem glossary that disambiguates the senses and links to each authoritative definition site. The glossary is non-authoritative: the linked definition site wins on any divergence.
 
+When adding to or modifying the knowledge base, review the glossary as part of the same change:
+
+- if the change introduces or newly surfaces a term that meets the inclusion criteria above, add a disambiguating entry that links to its authoritative definition site;
+- if the change affects a term already in the glossary — a new sense to disambiguate, a changed meaning, or a moved or renamed authoritative definition site — update that entry in the same change.
+
+This review only adds or revises entries that satisfy those criteria; a term that remains unambiguous within a single subsystem still does not belong in the glossary.
+
 ## Related Documents Sections
 
 Each knowledge-base document should help readers reach the other documents most useful alongside it. When creating a new document, include a short "Related Documents" section that links those documents — typically the other concept, algorithm, and implementation files for the same subsystem, the owning Product Requirements Document and Architecture Decision Document, and any relevant cross-cutting reference such as the System Constraints & Limits Reference or the Glossary. When modifying a document that lacks such a section, add one if its related set is clear. Keep these sections to links with a short reason each, not restated content.
