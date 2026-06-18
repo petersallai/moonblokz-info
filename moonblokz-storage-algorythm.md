@@ -16,6 +16,8 @@ Its purpose is to capture:
 
 This file is the **primary knowledge-base document for the current formal storage model**.
 
+- Use [moonblokz-storage-prd.md](./moonblokz-storage-prd.md) for the authoritative FR1–FR53 / NFR1–NFR20 catalog that defines the required storage capabilities.
+- Use [moonblokz-storage-architecture.md](./moonblokz-storage-architecture.md) for the authoritative crate-split, backend feature model, naming and structure patterns, and data-structure contracts that this formal model realizes.
 - Use [moonblokz-storage-concept.md](./moonblokz-storage-concept.md) for the higher-level explanation of why the storage crate is shaped this way and how it differs from the earlier article framing.
 - Use [moonblokz-storage-implementation.md](./moonblokz-storage-implementation.md) for engineering consequences of the current crate structure, feature model, mock-flash strategy, and backend implementation details.
 

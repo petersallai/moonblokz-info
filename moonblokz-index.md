@@ -314,7 +314,39 @@ This document explains:
 
 Use this file when you want implementation guidance that complements the conceptual and algorithm telemetry documents without scattering those details across the simulator files.
 
-### 21. [MoonBlokz Storage Concept Model](./moonblokz-storage-concept.md)
+### 21. [MoonBlokz Storage Product Requirements Document](./moonblokz-storage-prd.md) — Authoritative
+
+The authoritative source for the `moonblokz-storage` library's functional requirements (FR1–FR53) and Non-Functional Requirements (NFR1–NFR20).
+
+This document explains:
+
+- the executive summary, success criteria, and product scope of the `moonblokz-storage` crate and its companion `moonblokz-chain-types` crate,
+- the user journeys covering chain-runtime success path, edge-case recovery, chain-developer integration, node-operator troubleshooting, and backend-implementer baseline,
+- the domain-specific requirements including embedded constraints, control-plane schema, layout rules, and simplicity-first policy,
+- the full FR1–FR53 functional requirement catalog covering storage lifecycle, control-plane management, indexed persistence and retrieval, integrity and error semantics, chain integration, backend abstraction, blockchain-types boundary, developer distribution, and documentation,
+- and the NFR1–NFR20 catalog covering performance, security, reliability, integration, and implementation simplicity.
+
+Use this file as the canonical reference whenever any other storage knowledge-base document — concept, algorithm, implementation, or architecture — cites an FR or NFR by number. Other knowledge-base files reference this document instead of restating its content, so divergence from the PRD must be treated as exact evidence of a knowledge-base inconsistency.
+
+### 22. [MoonBlokz Storage Architecture Decision Document](./moonblokz-storage-architecture.md) — Authoritative
+
+The authoritative source for the architecture of the `moonblokz-storage` library and its companion `moonblokz-chain-types` crate.
+
+This document explains:
+
+- the project context analysis covering requirements overview, technical constraints, and cross-cutting concerns,
+- the dual-library Cargo starter selection with compile-time feature-selected backends,
+- the core architectural decisions covering crate split, backend exclusivity, synchronous `no_std` API, and backend-local integrity behavior,
+- the implementation patterns and consistency rules across naming, structure, format, communication, and process,
+- the complete two-repo project structure and the FR-to-structure mapping,
+- the architecture validation results, gap analysis, and implementation handoff guidance,
+- and the data structure contract appendix covering canonical block layout, RP2040 placement contract, serialization and hashing contracts, and backend conformance data requirements.
+
+Use this file as the canonical reference whenever any other storage knowledge-base document — concept, algorithm, or implementation — describes a crate boundary, backend isolation rule, feature gating model, public API surface, naming convention, or block/storage data-structure contract. Divergence from the Architecture Decision Document must be treated as exact evidence of a knowledge-base inconsistency.
+
+The document was originally authored on 2026-02-25 and was reconciled on 2026-06-18 with the current `moonblokz-storage` and `moonblokz-chain-types` codebases. The reconciliation updated the FR-count framing to FR1–FR53, the RP2040 slot geometry to the shipped per-slot hash layout, and the Project Structure section to the actual repository file set.
+
+### 23. [MoonBlokz Storage Concept Model](./moonblokz-storage-concept.md)
 
 A conceptual storage document grounded in the current `moonblokz-storage` and `moonblokz-chain-types` codebases.
 
@@ -329,7 +361,7 @@ This document explains:
 
 Use this file when you want to understand the role, current design philosophy, and conceptual trade-offs of MoonBlokz storage before reading the more formal or implementation-facing storage notes.
 
-### 22. [MoonBlokz Storage Algorithm Model](./moonblokz-storage-algorythm.md)
+### 24. [MoonBlokz Storage Algorithm Model](./moonblokz-storage-algorythm.md)
 
 A formal, algorithm-oriented storage document grounded in the current `moonblokz-storage` implementation and the canonical `moonblokz-chain-types` block and hash contracts.
 
@@ -345,7 +377,7 @@ This document explains:
 
 Use this file when you want the main formal description of the currently implemented MoonBlokz storage behavior.
 
-### 23. [MoonBlokz Storage Implementation Notes](./moonblokz-storage-implementation.md)
+### 25. [MoonBlokz Storage Implementation Notes](./moonblokz-storage-implementation.md)
 
 An implementation-support storage document grounded in the current `moonblokz-storage` repository and its dependency on `moonblokz-chain-types`.
 
@@ -360,7 +392,7 @@ This document explains:
 
 Use this file when you want implementation guidance that complements the conceptual and algorithm storage documents while staying grounded in the current codebase.
 
-### 24. [MoonBlokz Website Summary](./website.md)
+### 26. [MoonBlokz Website Summary](./website.md)
 
 A concise summary of the current public MoonBlokz website.
 
@@ -397,7 +429,9 @@ Use this file when you need a quick orientation to the current public web presen
 18. Then read [MoonBlokz Telemetry Concept Model](./moonblokz-telemetry-concept.md) to understand why field testing needs a separate telemetry architecture and how the operational components fit together.
 19. Continue with [MoonBlokz Telemetry Algorithm Model](./moonblokz-telemetry-algorythm.md) for the formal flow of logs, commands, polling control, OTA, and analyzer interaction.
 20. Continue with [MoonBlokz Telemetry Implementation Notes](./moonblokz-telemetry-implementation.md) for repository-level responsibilities, update-path cautions, and telemetry-specific engineering constraints.
-21. Then read [MoonBlokz Storage Concept Model](./moonblokz-storage-concept.md) to understand why bounded blockchain persistence on flash is possible at all and how MoonBlokz separates recoverable block data from recovery-critical control data.
-22. Continue with [MoonBlokz Storage Algorithm Model](./moonblokz-storage-algorythm.md) for the formal storage-unit layout, integrity-check rules, redundancy behavior, crash recovery, and wear-lifetime model.
-23. Continue with [MoonBlokz Storage Implementation Notes](./moonblokz-storage-implementation.md) for RP2040/XIP/Embassy engineering consequences, capacity-planning cautions, and explicitly open storage design questions.
-24. Then read [MoonBlokz Website Summary](./website.md) when you need a compact summary of the public website, its location, current public-facing structure, and deployment form.
+21. Then read [MoonBlokz Storage Product Requirements Document](./moonblokz-storage-prd.md) for the authoritative FR1–FR53 functional requirements and NFR1–NFR20 Non-Functional Requirements that anchor the storage subsystem.
+22. Then read [MoonBlokz Storage Architecture Decision Document](./moonblokz-storage-architecture.md) for the authoritative crate-split, backend feature model, naming and structure patterns, and data structure contracts that realize those requirements.
+23. Then read [MoonBlokz Storage Concept Model](./moonblokz-storage-concept.md) to understand why bounded blockchain persistence on flash is possible at all and how MoonBlokz separates recoverable block data from recovery-critical control data.
+24. Continue with [MoonBlokz Storage Algorithm Model](./moonblokz-storage-algorythm.md) for the formal storage-unit layout, integrity-check rules, redundancy behavior, crash recovery, and wear-lifetime model.
+25. Continue with [MoonBlokz Storage Implementation Notes](./moonblokz-storage-implementation.md) for RP2040/XIP/Embassy engineering consequences, capacity-planning cautions, and explicitly open storage design questions.
+26. Then read [MoonBlokz Website Summary](./website.md) when you need a compact summary of the public website, its location, current public-facing structure, and deployment form.

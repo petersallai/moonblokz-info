@@ -505,7 +505,7 @@ The full per-module breakdown (folyamatok / adatstruktúrák / kapcsolatok / API
 
 | Const generic | Default | Source / rationale |
 |---|---|---|
-| `MAX_NODES` | 1000 | user-set; per-node arrays |
+| `MAX_NODES` | 1000 | user-set; **network-wide registered-node cap** — sizes all node-id-indexed arrays (`NodeInfo.public_keys`/`balances`/`seed_source_idx`, `VoteEngine.vote_score`). Every node in the network holds an entry for every other registered node. See §12.1 for tuning trade-offs. |
 | `SNAKE_CHAIN_LENGTH` (W) | 500 | user-set; active chain window |
 | `VERIFICATION_HORIZON` (H) | 20 | user-set; FR58 cheap-zone boundary |
 | `MAX_BLOCKS` | 600 | RP2040 flash storage capacity 1:1 |
@@ -522,7 +522,9 @@ The full per-module breakdown (folyamatok / adatstruktúrák / kapcsolatok / API
 
 ## 6. Sized data structure catalog (Step 6 §3)
 
-### 6.1 `NodeInfo` — per-node SoA state
+### 6.1 `NodeInfo` — node-roster SoA state
+
+Each parallel array is indexed by **global node-id** and sized to `MAX_NODES` — the network-wide registered-node cap. Every node maintains an entry for every other registered node, because the consensus model and balance reconstruction require full roster knowledge (per [`moonblokz-blockchain-concept.md`](./moonblokz-blockchain-concept.md) and §12.1).
 
 ```rust
 pub(crate) struct NodeInfo<const MAX_NODES: usize, const PUBLIC_KEY_SIZE: usize> {

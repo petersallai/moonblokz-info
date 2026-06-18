@@ -16,6 +16,8 @@ Its purpose is to describe:
 This file is intentionally focused on conceptual understanding rather than exact byte offsets or repository-internal implementation walkthroughs.
 
 - Use this document to understand **what the current storage crate is for**, **why its public contract is deliberately small**, and **which storage trade-offs and boundaries MoonBlokz currently treats as architectural rather than merely mechanical details**.
+- Use [moonblokz-storage-prd.md](./moonblokz-storage-prd.md) for the authoritative FR1–FR53 / NFR1–NFR20 catalog that defines what the storage crate must do.
+- Use [moonblokz-storage-architecture.md](./moonblokz-storage-architecture.md) for the authoritative crate-split, backend feature model, naming and structure patterns, and data-structure contracts that the crate realizes.
 - Use [moonblokz-storage-algorythm.md](./moonblokz-storage-algorythm.md) for the formal API contract, slot/page mapping rules, control-plane record structure, error outcomes, backend behavior, and the exact chain-types-derived storage constraints.
 - Use [moonblokz-storage-implementation.md](./moonblokz-storage-implementation.md) for engineering consequences of the current crate structure, feature model, RP2040 flash implementation, mock-flash testing strategy, and remaining open limits.
 

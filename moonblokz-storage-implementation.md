@@ -14,6 +14,8 @@ It complements the conceptual and algorithm storage documents by identifying:
 - how the canonical block and hash crate constrains storage engineering,
 - and which implementation boundaries remain explicitly open.
 
+- Use [moonblokz-storage-prd.md](./moonblokz-storage-prd.md) for the authoritative FR1–FR53 / NFR1–NFR20 catalog that defines what the storage crate must do.
+- Use [moonblokz-storage-architecture.md](./moonblokz-storage-architecture.md) for the authoritative crate-split, backend feature model, naming and structure patterns, and data-structure contracts.
 - Use [moonblokz-storage-concept.md](./moonblokz-storage-concept.md) for the strategic role and current conceptual trade-offs of MoonBlokz storage.
 - Use [moonblokz-storage-algorythm.md](./moonblokz-storage-algorythm.md) for the formal public API, control-plane record model, slot/page mapping rules, chain-types-derived geometry, and error semantics.
 
