@@ -619,21 +619,8 @@ Even with the reviewed telemetry repositories as source of truth, some conceptua
 - long-term scaling or retention policy beyond the current bounded cleanup model,
 - and whether field-testing telemetry should later evolve into production operational infrastructure.
 
-## Technical Writer View: How to Read the Telemetry Document Set
+## Related Documents
 
-Read this conceptual document first when you want to understand:
-
-- why the telemetry system exists,
-- what role each major component plays,
-- why telemetry is separated from the LoRa mesh,
-- how the Probe currently sharpens the station-side operational model,
-- how the HUB currently sharpens the cloud-side coordination model,
-- how the Collector currently sharpens the local extraction model,
-- how the CLI currently sharpens the operator control model,
-- and how the field-testing architecture fits into the broader MoonBlokz project.
-
-Then continue with:
-
-- [moonblokz-telemetry-algorythm.md](./moonblokz-telemetry-algorythm.md) for the formal flow of logs, commands, polling, cleanup, updates, and analyzer interaction,
-- [moonblokz-telemetry-implementation.md](./moonblokz-telemetry-implementation.md) for implementation-facing repository responsibilities, current module structure, and engineering cautions,
-- and the simulator documents when you need the current desktop behavior of live tracking, playback, and operator interaction.
+- [`moonblokz-telemetry-algorythm.md`](./moonblokz-telemetry-algorythm.md) — formal flow of logs, commands, polling, cleanup, updates, and analyzer interaction.
+- [`moonblokz-telemetry-implementation.md`](./moonblokz-telemetry-implementation.md) — repository responsibilities, module structure, and engineering cautions.
+- [`moonblokz-simulator-concept.md`](./moonblokz-simulator-concept.md) — the analyzer/desktop side that consumes this telemetry pipeline.

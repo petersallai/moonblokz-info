@@ -781,3 +781,11 @@ From the perspective of the MoonBlokz knowledge base, the current codebase estab
 7. missing-fragment recovery is explicit and currently implemented for block fragments,
 8. application processing results directly influence relay and reply behavior,
 9. bounded queues and bounded pools are part of the algorithm, not only implementation detail.
+
+## Related Documents
+
+- [`moonblokz-radio-concept.md`](./moonblokz-radio-concept.md) — conceptual role and design philosophy of the radio subsystem.
+- [`moonblokz-radio-implementation.md`](./moonblokz-radio-implementation.md) — code-level API, memory configuration, and backend responsibilities for this flow.
+- [`moonblokz-simulator-algorythm.md`](./moonblokz-simulator-algorythm.md) — exercises this flow at network scale (airtime, collisions, recovery).
+- [ADR-007](./blockchain-adrs/ADR-007-vote-module-consumes-scoring-module-input.md) — defines the radio-side scoring input distinct from the relay score in §H4.
+- [`moonblokz-glossary.md`](./moonblokz-glossary.md) — disambiguates the overloaded "score" senses used here.

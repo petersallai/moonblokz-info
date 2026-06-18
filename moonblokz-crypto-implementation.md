@@ -448,17 +448,7 @@ This matters because the code now includes a `schnorr-crypto-bigint` backend tha
 - introducing `std` assumptions into the core crate
 - drifting the three Schnorr backends into semantically different behaviors
 
-## Technical Writer View: How to Use This File
-
-Read this file when you want to answer questions such as:
-
-- What engineering constraints follow from the current crypto library?
-- What should be preserved if a backend is optimized or replaced?
-- Which details are protocol-visible versus purely internal?
-- Where are the main maintenance and compatibility risks?
-- What special care is required around aggregation, serialization, and low-level backend code?
-
 ## Related Documents
 
-- [moonblokz-crypto-concept.md](./moonblokz-crypto-concept.md)
-- [moonblokz-crypto-algorythm.md](./moonblokz-crypto-algorythm.md)
+- [`moonblokz-crypto-concept.md`](./moonblokz-crypto-concept.md) — the conceptual role and design philosophy of the crypto subsystem.
+- [`moonblokz-crypto-algorythm.md`](./moonblokz-crypto-algorythm.md) — the formal public API, constants, backends, and aggregation behavior this code realizes.

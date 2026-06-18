@@ -1077,3 +1077,9 @@ Even with the current Probe, HUB, Collector, and CLI repos as source of truth, s
 - whether global upload scheduling should remain globally shared across all nodes,
 - whether the Collector should remain intentionally stateless across restart or evolve a durable cursor model,
 - and whether the CLI should remain intentionally minimal or grow richer operator affordances such as history, dry-run, structured output, and better semantic validation.
+
+## Related Documents
+
+- [`moonblokz-telemetry-concept.md`](./moonblokz-telemetry-concept.md) — conceptual role of each telemetry component.
+- [`moonblokz-telemetry-algorythm.md`](./moonblokz-telemetry-algorythm.md) — formal flow of logs, commands, polling, cleanup, and updates.
+- [`moonblokz-simulator-implementation.md`](./moonblokz-simulator-implementation.md) — the analyzer runtime that consumes telemetry.

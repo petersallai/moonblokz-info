@@ -326,20 +326,7 @@ From an architectural point of view, the current crypto library establishes seve
 
 The addition of a `schnorr-crypto-bigint` backend strengthens the architectural conclusion that MoonBlokz expects crypto backend evolution over time.
 
-## Technical Writer View: How to Read This Document
-
-For knowledge-base purposes, this file should be read as the answer to these questions:
-
-- Why does MoonBlokz distinguish direct signatures, aggregation-ready signatures, and aggregated evidence?
-- Why is the crypto subsystem compile-time swappable?
-- Why does aggregation remain a central concern?
-- Why do deterministic nonces matter conceptually?
-- Why does the library impose a fixed aggregate limit?
-- Why does MoonBlokz still keep both Schnorr and BLS in the codebase?
-
-Readers looking for exact constants, trait behavior, serialization formats, per-backend algorithm differences, and test implications should continue with the companion files.
-
 ## Related Documents
 
-- [moonblokz-crypto-algorythm.md](./moonblokz-crypto-algorythm.md)
-- [moonblokz-crypto-implementation.md](./moonblokz-crypto-implementation.md)
+- [`moonblokz-crypto-algorythm.md`](./moonblokz-crypto-algorythm.md) — the exact current public crypto API, constants, backends, and aggregation behavior.
+- [`moonblokz-crypto-implementation.md`](./moonblokz-crypto-implementation.md) — engineering constraints, maintenance risks, and what must be preserved across backends.

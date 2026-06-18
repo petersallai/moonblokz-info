@@ -30,6 +30,12 @@ Do not add low-information meta sections such as `Technical Writer View`, “how
 
 If any inconsistency, illogical addition, or non-implementable solution is identified during any modification, the issue must be flagged immediately and clarified with the user. The problem must be identified explicitly, and the resolution decision must be left to the user.
 
+## Proactive Conformance Cleanup
+
+When a modification touches a document that also carries a pre-existing governance violation — such as discouraged boilerplate (for example a `Technical Writer View` or "how to read this file" section), a duplicate link list, or a `Related Documents` section that does not follow the required link-with-reason style — that violation should be brought into conformance as part of the same change, and the cleanup must be flagged explicitly in the response.
+
+This latitude covers conformance and formatting only. It must not silently expand content: adding new links, facts, requirements, or conclusions remains governed by the Source Fidelity rule, and substantive issues that need a judgment call follow the Modification Rules above. Larger structural changes should be surfaced as optional follow-ups rather than applied unprompted.
+
 ## BMAD Processing Flow
 
 Every piece of information added to the knowledge base must be processed sequentially through three BMAD agent perspectives.
@@ -43,6 +49,29 @@ Every piece of information added to the knowledge base must be processed sequent
 The knowledge base must avoid unnecessary redundancy across its files.
 
 Each piece of information should appear in full detail only in the single file where it is most relevant. If the same information is also important elsewhere, the other files should reference the primary source instead of duplicating the content.
+
+This applies especially to cross-cutting facts: single values or rules that several subsystem documents depend on, such as shared numeric constants, capacity caps, memory or flash budgets, physical or airtime limits, and FR/NFR numbers. Each cross-cutting fact has exactly one authoritative home and is stated in full only there:
+
+- functional and non-functional requirements belong to the owning Product Requirements Document;
+- data-structure layouts, RAM and stack budgets, const-generic values, public API shapes, and crate boundaries belong to the owning Architecture Decision Document.
+
+A consolidation document, such as the System Constraints & Limits Reference, may gather cross-cutting facts in one place for navigation and may restate a value with a one-line implication and a link to its authoritative home. Such a document is explicitly non-authoritative and must never become a second source of truth; on any divergence the linked source wins.
+
+When a cross-cutting fact changes, update its authoritative home and reconcile every restatement and link to it in the same change. A stale duplicate left elsewhere is a knowledge-base inconsistency and must be handled under the Source Fidelity and Post-Change Validation rules.
+
+## FR Reference Namespacing
+
+Functional-requirement (FR) numbers are assigned per Product Requirements Document, so the same number denotes unrelated requirements in different subsystems (for example, blockchain FR9 and storage FR9 are different requirements). Within a subsystem's own documents an FR may be cited by its bare number, because the document's subsystem already disambiguates it.
+
+A citation that crosses subsystem boundaries — most often from a cross-cutting document such as the System Constraints & Limits Reference — must namespace the number with the owning subsystem's prefix (`BC-FR…` for blockchain, `ST-FR…` for storage) and link to the owning Product Requirements Document.
+
+## Term Glossary
+
+Terms that are used across subsystems or that carry more than one meaning (for example, "score", which names a radio relay metric, a radio-side vote-target input, and a blockchain accumulated-vote value) must have an entry in the cross-subsystem glossary that disambiguates the senses and links to each authoritative definition site. The glossary is non-authoritative: the linked definition site wins on any divergence.
+
+## Related Documents Sections
+
+Each knowledge-base document should help readers reach the other documents most useful alongside it. When creating a new document, include a short "Related Documents" section that links those documents — typically the other concept, algorithm, and implementation files for the same subsystem, the owning Product Requirements Document and Architecture Decision Document, and any relevant cross-cutting reference such as the System Constraints & Limits Reference or the Glossary. When modifying a document that lacks such a section, add one if its related set is clear. Keep these sections to links with a short reason each, not restated content.
 
 ## Knowledge Base Entry Point
 

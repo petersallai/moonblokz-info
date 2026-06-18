@@ -525,3 +525,10 @@ Even with the codebase as source of truth, several implementation areas remain i
 - future queue-size tuning per profile,
 - future protocol extensions beyond the current message set,
 - and any later refinement of CAD, CRC, or recovery policy.
+
+## Related Documents
+
+- [`moonblokz-radio-concept.md`](./moonblokz-radio-concept.md) — conceptual role and design philosophy of the radio subsystem.
+- [`moonblokz-radio-algorythm.md`](./moonblokz-radio-algorythm.md) — the formal message flow this code implements.
+- [`moonblokz-simulator-implementation.md`](./moonblokz-simulator-implementation.md) — reuses this radio library crate in host-mode simulation.
+- [`moonblokz-system-constraints.md`](./moonblokz-system-constraints.md) — gathers the radio memory profiles among cross-cutting limits.

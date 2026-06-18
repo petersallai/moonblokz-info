@@ -305,18 +305,9 @@ Even with the current code as source of truth, some conceptual areas remain inte
 - longer-term evolution of analyzer telemetry formats,
 - and any future unification or expansion of operating modes.
 
-## Technical Writer View: How to Read the Radio Simulator Document Set
+## Related Documents
 
-Read this conceptual document first when you want to understand:
-
-- what the simulator currently is,
-- how its role has expanded beyond the original article,
-- what realities it preserves,
-- and what boundaries still define the current product.
-
-Then continue with:
-
-- [moonblokz-simulator-algorythm.md](./moonblokz-simulator-algorythm.md) for the formal simulation, analyzer, and timing behavior,
-- [moonblokz-simulator-implementation.md](./moonblokz-simulator-implementation.md) for the engineering implications of the current crate structure,
-- [moonblokz-telemetry-concept.md](./moonblokz-telemetry-concept.md) and its companion telemetry files when you need the broader Probe/HUB/Collector/CLI field-testing architecture around the analyzer workflows,
-- and the main radio documents if you need the underlying protocol behavior being exercised and visualized.
+- [`moonblokz-simulator-algorythm.md`](./moonblokz-simulator-algorythm.md) — formal simulation, analyzer, and timing behavior.
+- [`moonblokz-simulator-implementation.md`](./moonblokz-simulator-implementation.md) — engineering implications of the current crate structure.
+- [`moonblokz-radio-concept.md`](./moonblokz-radio-concept.md) — the radio subsystem whose real library this simulator exercises.
+- [`moonblokz-telemetry-concept.md`](./moonblokz-telemetry-concept.md) — the Probe/HUB/Collector/CLI field-testing architecture around the analyzer workflows.

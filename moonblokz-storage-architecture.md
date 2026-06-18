@@ -723,3 +723,11 @@ This appendix defines architecture-level data structure contracts and ownership 
 - Do not introduce shadow/duplicate canonical block representations or hash-function definitions in storage.
 - Keep backend-local data structures isolated to backend modules.
 - Validate behavior against conformance scenarios before merge.
+
+## Related Documents
+
+- [`moonblokz-storage-prd.md`](./moonblokz-storage-prd.md) — the requirements (FR/NFR) this architecture realizes.
+- [`moonblokz-storage-concept.md`](./moonblokz-storage-concept.md) — conceptual overview of the storage subsystem.
+- [`moonblokz-storage-algorythm.md`](./moonblokz-storage-algorythm.md) — algorithm-level storage behavior.
+- [`moonblokz-blockchain-architecture.md`](./moonblokz-blockchain-architecture.md) — canonical block layout and `moonblokz-chain-types` that storage depends on.
+- [`moonblokz-system-constraints.md`](./moonblokz-system-constraints.md) — gathers block-size and flash-geometry limits among cross-cutting limits.

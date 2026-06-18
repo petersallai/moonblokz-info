@@ -389,12 +389,6 @@ That simulator perspective does not change the conceptual role of the radio subs
 - the radio design must be reusable in host-mode simulation as well as on embedded hardware,
 - and the practical behavior of relaying, collisions, topology depth, and missing-fragment recovery must be observable at network scale, not only reasoned about locally.
 
-For that perspective, continue with:
-
-- [moonblokz-simulator-concept.md](./moonblokz-simulator-concept.md)
-- [moonblokz-simulator-algorythm.md](./moonblokz-simulator-algorythm.md)
-- [moonblokz-simulator-implementation.md](./moonblokz-simulator-implementation.md)
-
 ## What Still Remains Open
 
 Even with the current code as source of truth, some areas remain intentionally open or only partially documented:
@@ -404,11 +398,9 @@ Even with the current code as source of truth, some areas remain intentionally o
 - final long-term queue sizes and tuning decisions for all deployment profiles,
 - and any protocol evolution that later code or later series parts may introduce.
 
-## Technical Writer View: How to Read the Radio Knowledge-Base Set
+## Related Documents
 
-This conceptual file should be read first when the goal is to understand the role and design philosophy of the MoonBlokz radio subsystem.
-
-Then continue with:
-
-- [moonblokz-radio-algorythm.md](./moonblokz-radio-algorythm.md) to see the formal current flow of messages, packetization, scheduling, relaying, reassembly, and recovery,
-- and [moonblokz-radio-implementation.md](./moonblokz-radio-implementation.md) to see the actual code-level API, feature model, memory configuration, backend responsibilities, and engineering cautions.
+- [`moonblokz-radio-algorythm.md`](./moonblokz-radio-algorythm.md) — formal message flow: packetization, scheduling, relaying, reassembly, and recovery.
+- [`moonblokz-radio-implementation.md`](./moonblokz-radio-implementation.md) — code-level API, feature model, memory configuration, and backend responsibilities.
+- [`moonblokz-simulator-concept.md`](./moonblokz-simulator-concept.md) — the multi-node simulator that validates this radio design at network scale.
+- [`moonblokz-system-constraints.md`](./moonblokz-system-constraints.md) — cross-cutting airtime, RAM, and flash limits the radio design must respect.

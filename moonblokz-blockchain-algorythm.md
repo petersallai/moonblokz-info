@@ -1215,5 +1215,5 @@ Architecturally, Parts III, IV, and V imply that the full algorithm has at least
 
 ## Related Documents
 
-- [`moonblokz-blockchain-concept.md`](./moonblokz-blockchain-concept.md)
-- [`moonblokz-blockchain-implementation.md`](./moonblokz-blockchain-implementation.md)
+- [`moonblokz-blockchain-concept.md`](./moonblokz-blockchain-concept.md) — the conceptual role and design philosophy of the blockchain subsystem.
+- [`moonblokz-blockchain-implementation.md`](./moonblokz-blockchain-implementation.md) — code-level crate structure, APIs, and engineering cautions.

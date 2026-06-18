@@ -643,4 +643,9 @@ From the perspective of the MoonBlokz knowledge base, the current codebase estab
 8. remote control is explicitly out-of-band and Telemetry-Hub-based,
 9. all important histories and queues remain bounded by design.
 
-For the broader field-testing telemetry flow that feeds these analyzer behaviors — including Probe uploads, HUB ordering rules, Collector downloads, CLI command routing, OTA/update paths, and the formal meaning of these control requests — use [moonblokz-telemetry-algorythm.md](./moonblokz-telemetry-algorythm.md) rather than duplicating that architecture here.
+## Related Documents
+
+- [`moonblokz-simulator-concept.md`](./moonblokz-simulator-concept.md) — conceptual role and scope of the simulator.
+- [`moonblokz-simulator-implementation.md`](./moonblokz-simulator-implementation.md) — crate structure and engineering implications of this runtime.
+- [`moonblokz-telemetry-algorythm.md`](./moonblokz-telemetry-algorythm.md) — the field-testing telemetry flow (Probe uploads, HUB ordering, Collector downloads, CLI routing, OTA) that feeds these analyzer behaviors.
+- [`moonblokz-system-constraints.md`](./moonblokz-system-constraints.md) — authoritative home of the airtime model this simulator references.

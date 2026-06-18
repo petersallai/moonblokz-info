@@ -152,7 +152,7 @@ Chain-level configuration is treated as a first-class requirement. This implies 
 
 ## Assumptions About Hardware and Networking
 
-Part I also lists core assumptions about the capabilities and limits of participating nodes.
+Part I also lists core assumptions about the capabilities and limits of participating nodes. Their project-wide architectural consolidation — and the invariants derived from them — lives in [Technology & Architecture](./moonblokz-technology.md), under *non-negotiable environmental assumptions* and *The Main Architectural Invariants*.
 
 ### Time
 

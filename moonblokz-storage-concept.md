@@ -378,3 +378,10 @@ The current repositories do **not** define:
 - or how future non-RP2040 backends should handle block-integrity metadata beyond preserving public API semantics.
 
 These limits should remain explicit rather than being silently filled in by documentation guesswork.
+
+## Related Documents
+
+- [`moonblokz-storage-prd.md`](./moonblokz-storage-prd.md) — authoritative storage requirements.
+- [`moonblokz-storage-architecture.md`](./moonblokz-storage-architecture.md) — authoritative storage architecture.
+- [`moonblokz-storage-algorythm.md`](./moonblokz-storage-algorythm.md) — formal storage-contract behavior.
+- [`moonblokz-storage-implementation.md`](./moonblokz-storage-implementation.md) — implementation-facing storage details.

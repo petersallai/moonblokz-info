@@ -4,6 +4,60 @@
 
 This document serves as the table of contents for the `moonblokz-info` knowledge base. It helps readers quickly find the most relevant project-level documents and understand what each file covers before opening it.
 
+## Find by Topic
+
+If you already know your topic, use this table to jump straight to the relevant document(s); the full per-document descriptions live in the Contents section below. Documents marked *(authoritative)* win on any divergence.
+
+| Topic | Where to look |
+| --- | --- |
+| Project vision, use cases, MVP scope | [Overview](./moonblokz-overview.md) |
+| System-wide architecture and how subsystems connect | [Technology & Architecture](./moonblokz-technology.md) |
+| Functional and non-functional requirements (FR/NFR numbers) | [Blockchain PRD](./moonblokz-blockchain-prd.md) *(authoritative)*, [Storage PRD](./moonblokz-storage-prd.md) *(authoritative)* |
+| Architecture decisions, crate boundaries, public APIs, data-structure layouts | [Blockchain Architecture](./moonblokz-blockchain-architecture.md) *(authoritative)*, [Storage Architecture](./moonblokz-storage-architecture.md) *(authoritative)*, [Blockchain ADR Index](./blockchain-adrs/ADR-INDEX.md) |
+| Blockchain behavior — block-tree, branching, `snake_chain`, phases, queries | [Blockchain Concept](./moonblokz-blockchain-concept.md), [Blockchain Algorithm](./moonblokz-blockchain-algorythm.md), [Blockchain Implementation](./moonblokz-blockchain-implementation.md) |
+| Cryptography — signatures, aggregation, Schnorr/BLS backends | [Crypto Concept](./moonblokz-crypto-concept.md), [Crypto Algorithm](./moonblokz-crypto-algorythm.md), [Crypto Implementation](./moonblokz-crypto-implementation.md) |
+| Radio mesh — connection matrix, echo mapping, relaying, packetization | [Radio Concept](./moonblokz-radio-concept.md), [Radio Algorithm](./moonblokz-radio-algorythm.md), [Radio Implementation](./moonblokz-radio-implementation.md) |
+| Simulation, historical replay, desktop validation | [Simulator Concept](./moonblokz-simulator-concept.md), [Simulator Algorithm](./moonblokz-simulator-algorythm.md), [Simulator Implementation](./moonblokz-simulator-implementation.md) |
+| Field testing — telemetry, Probe, HUB, OTA updates, CLI, analyzer | [Telemetry Concept](./moonblokz-telemetry-concept.md), [Telemetry Algorithm](./moonblokz-telemetry-algorythm.md), [Telemetry Implementation](./moonblokz-telemetry-implementation.md) |
+| Storage and flash persistence — backends, block layout, integrity, wear | [Storage PRD](./moonblokz-storage-prd.md), [Storage Architecture](./moonblokz-storage-architecture.md), [Storage Concept](./moonblokz-storage-concept.md), [Storage Algorithm](./moonblokz-storage-algorythm.md), [Storage Implementation](./moonblokz-storage-implementation.md) |
+| Memory and RAM budgets, capacity caps, const-generics, flash and airtime limits | [System Constraints](./moonblokz-system-constraints.md) (first stop), then [Blockchain Architecture](./moonblokz-blockchain-architecture.md) §7/§12 and [Radio Implementation](./moonblokz-radio-implementation.md) |
+| Term meanings and cross-subsystem disambiguation | [Glossary](./moonblokz-glossary.md) |
+| Public website | [Website Summary](./website.md) |
+
+## Document Authority Model
+
+The subsystem documents fall into two deliberately different classes:
+
+- **Requirements-driven (authoritative).** Blockchain and storage each have a Product Requirements Document and an Architecture Decision Document, authored ahead of their implementation-facing docs. These carry the *(authoritative)* marker above and win on any divergence; their concept, algorithm, and implementation docs describe how that intent is realized.
+- **Current-code-grounded.** Crypto, radio, simulator, and telemetry have no PRD or Architecture Decision Document. Their concept, algorithm, and implementation docs are grounded in the current code, which is the source of truth for those subsystems and wins on any divergence.
+
+The asymmetry is intentional: the requirements-first workflow that produces the PRD and Architecture documents was introduced only partway through the project, so blockchain and storage were captured under it while the earlier subsystems were documented from their existing code and have not been retrofitted with requirements artifacts.
+
+## Cross-Cutting References
+
+These documents are organized by topic rather than by subsystem. They consolidate facts that are otherwise spread across multiple subsystem documents so that cross-cutting questions can be answered from one place. They are lookup references, not part of the linear reading order below.
+
+### [MoonBlokz System Constraints & Limits Reference](./moonblokz-system-constraints.md)
+
+A consolidation and navigation layer for the numeric constraints, capacity caps, memory budgets, and physical limits that are spread across the knowledge base.
+
+This document explains:
+
+- the blockchain capacity caps (const-generics such as `MAX_NODES`) and what they imply for deployment,
+- the crypto constants and bounded-aggregation limits for the Schnorr and BLS families,
+- the 264 KB RP2040 RAM/SRAM budget, per-structure costs, and the Schnorr-versus-BLS margins,
+- the flash and storage geometry constants,
+- the LoRa and airtime physical constraints and the radio memory profiles,
+- and the currently known cross-document discrepancies and gaps, with their impact.
+
+It is explicitly **not authoritative** for the values it lists — each value links to its authoritative source document, which wins on any divergence. Use this file as the first stop for hardware-sizing, capacity-planning, and memory-budgeting questions, then follow the links for the full rationale.
+
+### [MoonBlokz Glossary (Cross-Subsystem & Ambiguous Terms)](./moonblokz-glossary.md)
+
+A disambiguation index for terms that span subsystems or carry more than one meaning — for example `score` (radio relay metric vs. radio-side vote-target input vs. blockchain accumulated-vote value) and `verification horizon` versus the active-chain window.
+
+It is explicitly **not authoritative**: each entry links to the term's authoritative definition site, which wins on any divergence. Use this file when a term reads ambiguously across documents and you need to confirm which meaning and which source applies.
+
 ## Contents
 
 ### 1. [MoonBlokz Overview](./moonblokz-overview.md)
@@ -32,7 +86,7 @@ This document explains:
 - which implementation-grounded updates sharpen the original Part II framing,
 - and which technology boundaries and open questions must remain explicit.
 
-Use this file when you want a single architectural summary of how MoonBlokz is built before reading the subsystem-specific documents.
+Use this file when you want a single architectural summary of how MoonBlokz is built before reading the subsystem-specific documents, or when you need the canonical statement of the project's foundational environmental assumptions and architectural invariants.
 
 ### 3. [MoonBlokz Blockchain Concept Model](./moonblokz-blockchain-concept.md)
 
@@ -79,7 +133,7 @@ This document explains:
 - the 15 + 1 internal modules of `moonblokz-blockchain` (`lifecycle`, `scheduler`, `blocks`, `chain_heads`, `snake_chain`, `branch_value`, `intake`, `staged_validation`, `reconciliation`, `node_info`, `spent_bits`, `creator`, `approval`, `queries`, `emit_scratch`, + the `api.rs` surface),
 - the const-generic catalog (`MAX_NODES`, `SNAKE_CHAIN_LENGTH`, `MAX_BLOCKS`, `MAX_BRANCH_COUNT`, etc. with default values),
 - the sized data-structure catalog with bit-level layouts (`BlockEntry` 76 B padded, `ChainHeadEntry` 32 B padded, `NodeInfo` SoA, `ApprovalAccumulator` ~2 KB crypto-agnostic, `EmitScratch`, `SchedulerState`),
-- the 264 KB SRAM RAM budget verified for Schnorr (~25-29% margin) and BLS (~3-6% margin),
+- the 264 KB SRAM RAM budget verified for Schnorr (~18% margin) and BLS (does not fit at the default profile; mandatory `MAX_NODES` tuning),
 - the FR1–FR69 coverage matrix showing 63 hard-covered FRs, 5 delegated to the future `moonblokz-configuration` crate, and 1 MVP-skip (FR52),
 - the `ChainConfigTrait` outline for the future chain-config crate,
 - the BLS deployment-tuning recipe with `MAX_NODES` reduction levers,
@@ -435,3 +489,7 @@ Use this file when you need a quick orientation to the current public web presen
 24. Continue with [MoonBlokz Storage Algorithm Model](./moonblokz-storage-algorythm.md) for the formal storage-unit layout, integrity-check rules, redundancy behavior, crash recovery, and wear-lifetime model.
 25. Continue with [MoonBlokz Storage Implementation Notes](./moonblokz-storage-implementation.md) for RP2040/XIP/Embassy engineering consequences, capacity-planning cautions, and explicitly open storage design questions.
 26. Then read [MoonBlokz Website Summary](./website.md) when you need a compact summary of the public website, its location, current public-facing structure, and deployment form.
+
+> **Cross-cutting reference (not part of the linear flow):** Consult [MoonBlokz System Constraints & Limits Reference](./moonblokz-system-constraints.md) whenever you need a numeric cap, memory budget, flash or airtime limit, or a known cross-document constraint discrepancy. It restates each value with a one-line implication and links to the authoritative source.
+
+> **Cross-cutting reference (not part of the linear flow):** Consult the [MoonBlokz Glossary](./moonblokz-glossary.md) when a term such as `score` or `verification horizon` reads ambiguously across documents; it disambiguates the senses and links to each authoritative definition site.

@@ -583,18 +583,7 @@ Architecturally, the current formal crypto model has these layers:
 5. **bounded aggregate storage model**
 6. **test-backed behavior layer**
 
-## Technical Writer View: How to Read This File
-
-This document should be read as the answer to these questions:
-
-- What is the exact current public crypto API?
-- Which backends exist today?
-- What constants and limits define serialized behavior?
-- How does current Schnorr signing and aggregation work?
-- How does the BLS wrapper differ structurally?
-- What behaviors are explicitly enforced by tests?
-
 ## Related Documents
 
-- [moonblokz-crypto-concept.md](./moonblokz-crypto-concept.md)
-- [moonblokz-crypto-implementation.md](./moonblokz-crypto-implementation.md)
+- [`moonblokz-crypto-concept.md`](./moonblokz-crypto-concept.md) — why MoonBlokz distinguishes the signature kinds and keeps crypto compile-time swappable.
+- [`moonblokz-crypto-implementation.md`](./moonblokz-crypto-implementation.md) — engineering constraints and compatibility risks of the current crypto library.

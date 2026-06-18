@@ -547,5 +547,5 @@ From an architectural point of view, the combined model establishes several dura
 
 ## Related Documents
 
-- [`moonblokz-blockchain-algorythm.md`](./moonblokz-blockchain-algorythm.md)
-- [`moonblokz-blockchain-implementation.md`](./moonblokz-blockchain-implementation.md)
+- [`moonblokz-blockchain-algorythm.md`](./moonblokz-blockchain-algorythm.md) — the formal current flow of blocks, transactions, voting, and chain reconciliation.
+- [`moonblokz-blockchain-implementation.md`](./moonblokz-blockchain-implementation.md) — code-level crate structure, APIs, and engineering cautions.

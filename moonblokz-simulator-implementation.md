@@ -553,3 +553,10 @@ Even with the codebase as source of truth, several implementation areas remain i
 - possible non-blocking Telemetry Hub transport in the future,
 - any future unification of simulation and analyzer runtimes,
 - and any later move toward 3D or richer map semantics.
+
+## Related Documents
+
+- [`moonblokz-simulator-concept.md`](./moonblokz-simulator-concept.md) — conceptual role and scope of the simulator.
+- [`moonblokz-simulator-algorythm.md`](./moonblokz-simulator-algorythm.md) — formal simulation, analyzer, and timing behavior implemented here.
+- [`moonblokz-radio-implementation.md`](./moonblokz-radio-implementation.md) — the real radio library reused inside the simulator.
+- [`moonblokz-telemetry-implementation.md`](./moonblokz-telemetry-implementation.md) — the telemetry stack the analyzer mode consumes.

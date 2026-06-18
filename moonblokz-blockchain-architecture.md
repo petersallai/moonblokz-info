@@ -700,18 +700,20 @@ pub struct VoteEngine<const MAX_NODES: usize> {
 | Consumer | Schnorr | BLS |
 |---|---:|---:|
 | moonblokz-blockchain + mempool + vote | ~121 KB | ~185 KB |
-| moonblokz-radio-lib (memory-config-medium) | ~30-40 KB | ~30-40 KB |
+| moonblokz-radio-lib (memory-config-medium) | ~60 KB | ~60 KB |
 | moonblokz-crypto-lib scratch | ~4 KB | ~4 KB |
 | moonblokz-storage page buffer | ~4 KB | ~4 KB |
 | Embassy task stacks (5-6 tasks × 4-6 KB) | ~24 KB | ~24 KB |
 | Embassy executor + statics | ~4 KB | ~4 KB |
-| **Subtotal allocated** | **~187-197 KB** | **~247-257 KB** |
-| **Margin** (264 KB − allocated) | **~67-77 KB** (~25-29%) ✅ | **~7-17 KB** (~3-6%) ⚠️ |
+| **Subtotal allocated** | **~217 KB** | **~281 KB** |
+| **Margin** (264 KB − allocated) | **~47 KB** (~18%) ✅ | **~−17 KB** (exceeds 264 KB) ❌ |
+
+**Radio figure:** `memory-config-medium` is counted at its source-confirmed ~60 KB (`moonblokz-radio-lib` README + `lib.rs` profile consts); an earlier ~30-40 KB estimate under-counted it and made the BLS default appear feasible.
 
 ### 7.4 Verdict
 
 - **Schnorr build**: comfortable margin, MVP-ready.
-- **BLS build**: tight, but feasible without const-generic tuning at the 1000-node default. The earlier "~3-13 KB margin" figure relied on an incorrect ApprovalAccumulator sizing; the corrected figure is **~7-17 KB margin**. Tuning (see §11) is recommended for headroom but not strictly mandatory.
+- **BLS build**: does **not** fit at the 1000-node default once the radio `memory-config-medium` profile is counted at its source-confirmed ~60 KB (README + `lib.rs`) instead of the earlier ~30-40 KB estimate — the full-system total is ~281 KB, ~17 KB over the 264 KB ceiling. Const-generic tuning (see §12) is therefore **mandatory** for BLS: `MAX_NODES 1000 → 500` frees ~56 KB, yielding ~39 KB margin.
 
 ---
 
@@ -843,7 +845,7 @@ pub trait ChainConfigTrait {
 
 ## 12. BLS deployment-tuning recipe (Step 8 — new)
 
-When a deployment selects the BLS crypto backend, the default const-generic values (1000 nodes, 500 snake-chain window) leave ~7-17 KB margin against the 264 KB SRAM ceiling — feasible but tight. The chain-lib code does NOT need to change — tuning happens at the deployment binary's const-generic instantiation site if more headroom is needed.
+When a deployment selects the BLS crypto backend, the default const-generic values (1000 nodes, 500 snake-chain window) **do not fit** the 264 KB SRAM ceiling once the radio `memory-config-medium` profile is counted at its source-confirmed ~60 KB (full-system ~281 KB, ~17 KB over). The chain-lib code does NOT need to change — tuning happens at the deployment binary's const-generic instantiation site, and for BLS it is mandatory rather than optional.
 
 ### 12.1 Tuning levers (most impactful first)
 
@@ -862,9 +864,9 @@ When a deployment selects the BLS crypto backend, the default const-generic valu
 
 | Profile | MAX_NODES | SNAKE_CHAIN | Margin (BLS, 264 KB) |
 |---|---:|---:|---:|
-| BLS-large | 1000 | 500 | ~7-17 KB (default — feasible but tight) |
-| BLS-medium | 500 | 500 | ~63-73 KB ✅ |
-| BLS-small | 250 | 300 | ~89-99 KB ✅ |
+| BLS-large | 1000 | 500 | ~−17 KB (default — does NOT fit) ❌ |
+| BLS-medium | 500 | 500 | ~39 KB ✅ |
+| BLS-small | 250 | 300 | ~73 KB ✅ |
 
 ### 12.3 Future optimization (NOT MVP)
 
@@ -926,7 +928,7 @@ Selected high-impact decisions from the Step 5 + Step 6 + Step 7 iterations:
 
 | Risk | Severity | Mitigation |
 |---|---|---|
-| BLS build margin ~7-17 KB on 1000-node default | Low-Medium | §12 BLS tuning recipe; feasible at default but tuning recommended for headroom |
+| BLS does not fit at 1000-node default (~−17 KB) with the ~60 KB radio medium profile | Medium-High | §12 tuning; `MAX_NODES 1000→500` mandatory for BLS → ~39 KB margin |
 | `moonblokz-configuration` crate not yet scaffolded | Medium | Trait stub per §11; full BMAD as a follow-up |
 | FR45 block creation stack peak (~4 KB) close to default | Low | §13 task #8: 6 KB stack for chain-lib task |
 | `MAX_AGGREGATED_SIGNATURES` / `MULTI_SIGNATURE_SIZE` const values not yet ratified beyond ADR-015 default 50 | Low | Step 9 (implementation kickoff) confirms with crypto-lib test vectors |

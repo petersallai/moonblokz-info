@@ -502,3 +502,11 @@ The current crates do **not** formally define:
 - or how future backends must replicate the RP2040 slot-hash layout specifically.
 
 These questions remain outside the current formal storage contract.
+
+## Related Documents
+
+- [`moonblokz-storage-concept.md`](./moonblokz-storage-concept.md) — conceptual overview of the storage subsystem.
+- [`moonblokz-storage-architecture.md`](./moonblokz-storage-architecture.md) — authoritative architecture (const-generics, layout).
+- [`moonblokz-storage-prd.md`](./moonblokz-storage-prd.md) — authoritative storage requirements.
+- [`moonblokz-storage-implementation.md`](./moonblokz-storage-implementation.md) — implementation-facing storage details.
+- [`moonblokz-system-constraints.md`](./moonblokz-system-constraints.md) — gathers block-size and flash-geometry limits among cross-cutting limits.

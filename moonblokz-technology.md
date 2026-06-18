@@ -57,7 +57,7 @@ The overall architecture is shaped by a small set of non-negotiable environmenta
 - some hardware lacks true random generation or crypto acceleration,
 - and field testing needs observability that must not distort the LoRa mesh itself.
 
-These assumptions are not local implementation details. They define the architecture of the whole project.
+These assumptions are not local implementation details. They define the architecture of the whole project. This section, together with the architectural invariants below, is their canonical home: other documents apply these assumptions in their own context and reference these sections rather than restating them as independent facts.
 
 ## Core Technology Direction
 
@@ -108,7 +108,7 @@ This build-time replaceability should not be confused with node-level operationa
 
 ## The Main Architectural Invariants
 
-The current knowledge base establishes several project-wide invariants that should guide future work.
+The current knowledge base establishes several project-wide invariants that should guide future work. Together with the non-negotiable environmental assumptions above, they are stated canonically here; subsystem documents show how each invariant applies in their area and reference this section rather than restating it as an independent rule.
 
 ### 1. Best-effort operation is normal
 

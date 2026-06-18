@@ -433,3 +433,10 @@ With a 1-engineer MVP team, scope discipline is critical. Mitigate by excluding 
 - NFR18: Implementation choices shall be simplicity-first for embedded limits, using minimal logic and minimal state needed to satisfy requirements.
 - NFR19: New abstractions, traits, derives, or helper layers that increase binary size or runtime overhead shall require explicit justification in architecture/task artifacts.
 - NFR20: Documentation and code reviews shall treat unnecessary complexity as a defect for MVP scope.
+
+## Related Documents
+
+- [`moonblokz-storage-architecture.md`](./moonblokz-storage-architecture.md) — the architecture that realizes these requirements.
+- [`moonblokz-storage-concept.md`](./moonblokz-storage-concept.md) — conceptual overview of the storage subsystem.
+- [`moonblokz-storage-algorythm.md`](./moonblokz-storage-algorythm.md) — the formal storage-contract behavior.
+- [`moonblokz-system-constraints.md`](./moonblokz-system-constraints.md) — gathers storage-derived block-size and flash limits among cross-cutting limits.

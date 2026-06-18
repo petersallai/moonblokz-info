@@ -1470,3 +1470,9 @@ From the perspective of the MoonBlokz knowledge base, the current `moonblokz-pro
 17. the current Probe/HUB/Collector/CLI/Update-Server surfaces contain important discrepancies that documentation must keep explicit,
 18. Probe-generated `TM8` version lines are part of the current telemetry stream semantics,
 19. the simulator analyzer is formally downstream of this telemetry pipeline and should be read as a telemetry consumer rather than a second source of telemetry architecture.
+
+## Related Documents
+
+- [`moonblokz-telemetry-concept.md`](./moonblokz-telemetry-concept.md) — why the telemetry system exists and each component's role.
+- [`moonblokz-telemetry-implementation.md`](./moonblokz-telemetry-implementation.md) — repository responsibilities and current module structure.
+- [`moonblokz-simulator-algorythm.md`](./moonblokz-simulator-algorythm.md) — the analyzer workflows that consume this pipeline.
