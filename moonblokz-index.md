@@ -12,7 +12,7 @@ If you already know your topic, use this table to jump straight to the relevant 
 | --- | --- |
 | Project vision, use cases, MVP scope | [Overview](./moonblokz-overview.md) |
 | System-wide architecture and how subsystems connect | [Technology & Architecture](./moonblokz-technology.md) |
-| Functional and non-functional requirements (FR/NFR numbers) | [Blockchain PRD](./moonblokz-blockchain-prd.md) *(authoritative)*, [Storage PRD](./moonblokz-storage-prd.md) *(authoritative)* |
+| Functional and non-functional requirements (FR/NFR numbers) | Start here to find which requirement covers a topic and how to read just that one: [Blockchain FR/NFR Index](./moonblokz-blockchain-prd-fr-index.md), [Storage FR/NFR Index](./moonblokz-storage-prd-fr-index.md). Full requirement wording: [Blockchain PRD](./moonblokz-blockchain-prd.md) *(authoritative)*, [Storage PRD](./moonblokz-storage-prd.md) *(authoritative)* |
 | Architecture decisions, crate boundaries, public APIs, data-structure layouts | [Blockchain Architecture](./moonblokz-blockchain-architecture.md) *(authoritative)*, [Storage Architecture](./moonblokz-storage-architecture.md) *(authoritative)*, [Blockchain ADR Index](./blockchain-adrs/ADR-INDEX.md) |
 | Blockchain behavior — block-tree, branching, `snake_chain`, phases, queries | [Blockchain Concept](./moonblokz-blockchain-concept.md), [Blockchain Algorithm](./moonblokz-blockchain-algorythm.md), [Blockchain Implementation](./moonblokz-blockchain-implementation.md) |
 | Cryptography — signatures, aggregation, Schnorr/BLS backends | [Crypto Concept](./moonblokz-crypto-concept.md), [Crypto Algorithm](./moonblokz-crypto-algorythm.md), [Crypto Implementation](./moonblokz-crypto-implementation.md) |
@@ -108,17 +108,19 @@ Use this file when you want to understand the operating idea of MoonBlokz blockc
 
 ### 4. [MoonBlokz Blockchain Product Requirements Document](./moonblokz-blockchain-prd.md) — Authoritative
 
-The authoritative source for the `moonblokz-blockchain` module's functional requirements (FR1–FR69) and Non-Functional Requirements.
+The authoritative source for the `moonblokz-blockchain` module's functional requirements (FR1–FR69) and Non-Functional Requirements (NFR1–NFR26).
 
 This document explains:
 
 - the executive summary, success criteria, and product scope of the `moonblokz-blockchain` crate,
 - the user journeys driving radio intake, local interface interaction, branch divergence, creator role, and simulator-driven validation,
 - the domain-specific requirements and main conceptual limitations under bounded retention and constrained connectivity,
-- the full FR1–FR69 functional requirement catalog covering chain lifecycle, block and transaction intake, branching, mempool, queries, block creation, `snake_chain` and tail preservation, genesis and bootstrap, external input contracts, storage and retention policy, registration and balance scheduling, lifecycle and recovery, module boundary, simulation and observability, and initialization parameters,
-- and the Non-Functional Requirements covering performance, reliability, security and integrity, capacity and resource bounds, integration, and observability and testability.
+- the full FR1–FR69 functional requirement catalog covering chain lifecycle, block and transaction intake, branching, mempool, queries, block creation, `snake_chain` and tail preservation, genesis and bootstrap, external input contracts, storage and retention policy, lifecycle and recovery, module boundary, simulation and observability, and initialization parameters,
+- and the NFR1–NFR26 catalog covering performance, reliability, security and integrity, capacity and resource bounds, integration, and observability and testability.
 
 Use this file as the canonical reference whenever any other knowledge-base document — concept, algorithm, implementation, or ADR — cites an FR by number. Other knowledge-base files reference this document instead of restating its content, so divergence from the PRD must be treated as exact evidence of a knowledge-base inconsistency.
+
+For FR/NFR lookups, start with its companion navigation index, [MoonBlokz Blockchain PRD — FR/NFR Navigation Index](./moonblokz-blockchain-prd-fr-index.md): per-FR titles grouped by section, the NFR1–NFR26 catalog by category, and a recipe for reading a single requirement without loading the whole PRD. The index is a non-authoritative navigation aid; this PRD remains authoritative.
 
 ### 5. [MoonBlokz Blockchain Architecture Decision Document](./moonblokz-blockchain-architecture.md) — Authoritative
 
@@ -382,6 +384,8 @@ This document explains:
 
 Use this file as the canonical reference whenever any other storage knowledge-base document — concept, algorithm, implementation, or architecture — cites an FR or NFR by number. Other knowledge-base files reference this document instead of restating its content, so divergence from the PRD must be treated as exact evidence of a knowledge-base inconsistency.
 
+For FR/NFR lookups, start with its companion navigation index, [MoonBlokz Storage PRD — FR/NFR Navigation Index](./moonblokz-storage-prd-fr-index.md): per-FR and per-NFR titles grouped by section, and a recipe for reading a single requirement without loading the whole PRD. The index is a non-authoritative navigation aid; this PRD remains authoritative.
+
 ### 22. [MoonBlokz Storage Architecture Decision Document](./moonblokz-storage-architecture.md) — Authoritative
 
 The authoritative source for the architecture of the `moonblokz-storage` library and its companion `moonblokz-chain-types` crate.
@@ -466,7 +470,7 @@ Use this file when you need a quick orientation to the current public web presen
 1. Start with [MoonBlokz Overview](./moonblokz-overview.md) to understand the mission, use cases, and high-level constraints.
 2. Continue with [MoonBlokz Technology and Architecture](./moonblokz-technology.md) to understand the implementation strategy and architectural foundation.
 3. Then read [MoonBlokz Blockchain Concept Model](./moonblokz-blockchain-concept.md) to understand the operating idea of MoonBlokz blockchain behavior.
-4. Then read [MoonBlokz Blockchain Product Requirements Document](./moonblokz-blockchain-prd.md) for the authoritative FR1–FR69 functional requirements and Non-Functional Requirements; this is the canonical anchor every other blockchain document references by FR number.
+4. Then read [MoonBlokz Blockchain Product Requirements Document](./moonblokz-blockchain-prd.md) for the authoritative FR1–FR69 functional requirements and NFR1–NFR26 Non-Functional Requirements; this is the canonical anchor every other blockchain document references by FR number.
 5. Then read [MoonBlokz Blockchain Architecture Decision Document](./moonblokz-blockchain-architecture.md) for the authoritative crate-split, public API, internal modules, data-structure layouts, RAM budget, and decisions log; this is the canonical anchor every other blockchain document references for chain-lib implementation shape.
 6. Continue with [MoonBlokz Blockchain Algorithm Model](./moonblokz-blockchain-algorythm.md) for the full Parts III, IV, and V algorithmic flow and the detailed main data structures.
 7. Then read [MoonBlokz Blockchain Implementation Notes](./moonblokz-blockchain-implementation.md) for implementation-facing constraints, configuration boundaries, and cautions.

@@ -27,7 +27,7 @@ These HTMLs are the iteration history; this `moonblokz-blockchain-architecture.m
 
 ## Related Knowledge-Base Documents
 
-- [`moonblokz-blockchain-prd.md`](./moonblokz-blockchain-prd.md) — authoritative FR1–FR69 functional requirements and Non-Functional Requirements that this architecture realizes.
+- [`moonblokz-blockchain-prd.md`](./moonblokz-blockchain-prd.md) — authoritative FR1–FR69 functional requirements and NFR1–NFR26 Non-Functional Requirements that this architecture realizes.
 - [`moonblokz-blockchain-concept.md`](./moonblokz-blockchain-concept.md) — operating-model background and conceptual framing.
 - [`moonblokz-blockchain-algorythm.md`](./moonblokz-blockchain-algorythm.md) — formal algorithm description that this architecture implements.
 - [`moonblokz-blockchain-implementation.md`](./moonblokz-blockchain-implementation.md) — supplementary engineering cautions, source-article bridging notes, and items deferred to later design work. This document defers to `moonblokz-blockchain-architecture.md` for all data-structure, module-boundary, public API, and RAM/stack-budget specifics.

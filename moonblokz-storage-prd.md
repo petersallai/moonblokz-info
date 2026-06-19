@@ -16,6 +16,7 @@ When other storage knowledge-base files (concept, algorithm, implementation) cit
 
 ## Related Knowledge-Base Documents
 
+- [`moonblokz-storage-prd-fr-index.md`](./moonblokz-storage-prd-fr-index.md) — non-authoritative FR/NFR navigation index for this PRD: per-FR and per-NFR titles by section, and a recipe for reading a single requirement without loading the whole file.
 - [`moonblokz-storage-architecture.md`](./moonblokz-storage-architecture.md) — authoritative architecture decisions, crate-split layout, backend feature model, structure/pattern rules, and data structure contracts that realize these requirements.
 - [`moonblokz-storage-concept.md`](./moonblokz-storage-concept.md) — conceptual storage operating model grounded in the current code.
 - [`moonblokz-storage-algorythm.md`](./moonblokz-storage-algorythm.md) — formal algorithm description grounded in the current code.
