@@ -115,7 +115,7 @@ The concrete in-memory layouts, field-by-field sizes, alignment, sentinels, and 
 
 The bridging principle that ADR-004 establishes — that durable storage is permissive during collection and processing and remains permissive in ready state except when intake-time exact evidence is already present — is preserved verbatim in the architecture's intake module (§4.2 `intake.rs`). The intake-time exact-evidence forms (parsing failure; direct-active-extension creator-signature invalidity when `previous_hash = active_chain_head_hash` and the creator key is derivable from the current active chain; chain-config content-signature invalidity against `node_zero_public_key`; configuration-module rejection of chain-config content; ready-state chain-config content mismatch against the durable-locked configuration; deviation-branch creator-exclusivity violation; FR69 node-zero trust-anchor mismatches on node-`#0` registration, balance-block NodeInfo, or chain-config signature material) map onto `Rejected(RejectReason)` variants of the `ReceiveBlockOutcome` enum per PRD FR10's Implementation annotation.
 
-The scoring-module boundary remains an external concern: the blockchain module does not compute vote targets from raw radio observation. The scoring module supplies the vote target written into the locally assembled signed transaction before the blockchain module sees it; the chain-lib vote sub-crate (`moonblokz-vote`, architecture §3.4) owns only the per-node accumulated vote count, the per-acceptance `vote_scale` credit rule, the integer anti-capture growth `score += floor(score × vote_interest / vote_scale)`, the creator reset on successful block creation, the grace-period reset policy, and the next-creator determination.
+The scoring-module boundary remains an external concern: the blockchain module does not determine the transaction's vote target (vote-target selection) from raw radio observation; that is the scoring module's responsibility. The scoring module supplies the vote target written into the locally assembled signed transaction before the blockchain module sees it; the chain-lib vote sub-crate (`moonblokz-vote`, architecture §3.4) owns only the per-node **accumulated vote**, the per-acceptance `vote_scale` credit rule, the integer anti-capture growth `accumulated_vote += floor(accumulated_vote × vote_interest / vote_scale)`, the creator reset on successful block creation, the grace-period reset policy, and the next-creator determination.
 
 The serialized-byte fidelity requirement remains stronger after Part V because signatures and hashes depend on exact byte layout — see the "Serialization and Encoding Implications" section below for the canonical-serialization engineering consequences that the architecture does not restate.
 
@@ -334,7 +334,7 @@ Per [ADR-015](./blockchain-adrs/ADR-015-approval-subgroup-selection.md), chain-c
 
 ### Anti-capture parameter
 
-The vote-interest mechanism is parameterized by two configuration values: `vote_scale` (the numeric value of one received vote credit and the denominator of the anti-capture rule) and `vote_interest` (the per-block growth numerator). Anti-capture growth then uses integer arithmetic: `score += floor(score × vote_interest / vote_scale)`.
+The vote-interest mechanism is parameterized by two configuration values: `vote_scale` (the numeric value of one received vote credit and the denominator of the anti-capture rule) and `vote_interest` (the per-block growth numerator). Anti-capture growth then uses integer arithmetic: `accumulated_vote += floor(accumulated_vote × vote_interest / vote_scale)`.
 
 ## Genesis and Bootstrap Implications
 
@@ -344,9 +344,9 @@ The bootstrap is realized in [`moonblokz-blockchain-architecture.md`](./moonblok
 
 ## Active-Chain Switch Consequences
 
-Active-chain switch is not just a matter of choosing a new tip hash. It is a rare but first-class correction event: the Chain Knowledge Core remains the orchestrating truth source while derived subsystems (creator-score state, node-derived active balances, branch bookkeeping, mempool eligibility) are reconciled against the newly selected branch. A practical strategy is to walk backward to the common ancestor and then forward along the new active branch while updating derived state incrementally — chain switch is a structured recomputation workflow rather than a side effect attached to tip replacement.
+Active-chain switch is not just a matter of choosing a new tip hash. It is a rare but first-class correction event: the Chain Knowledge Core remains the orchestrating truth source while derived subsystems (per-node accumulated vote and creator-order state, node-derived active balances, branch bookkeeping, mempool eligibility) are reconciled against the newly selected branch. A practical strategy is to walk backward to the common ancestor and then forward along the new active branch while updating derived state incrementally — chain switch is a structured recomputation workflow rather than a side effect attached to tip replacement.
 
-The concrete reconciliation workflow (backward walk → forward walk; spent-bits clear/replay; balance rollback/replay; vote score rollback/apply; mempool re-eligibility recheck; FR58 deep-zone reconstruction) is defined in [`moonblokz-blockchain-architecture.md`](./moonblokz-blockchain-architecture.md) §4.2 (`reconciliation.rs` module) and the supporting [ADR-011](./blockchain-adrs/ADR-011-chain-switch-reconciliation-is-a-structured-workflow.md).
+The concrete reconciliation workflow (backward walk → forward walk; spent-bits clear/replay; balance rollback/replay; accumulated-vote rollback/apply; mempool re-eligibility recheck; FR58 deep-zone reconstruction) is defined in [`moonblokz-blockchain-architecture.md`](./moonblokz-blockchain-architecture.md) §4.2 (`reconciliation.rs` module) and the supporting [ADR-011](./blockchain-adrs/ADR-011-chain-switch-reconciliation-is-a-structured-workflow.md).
 
 ## Scheduling Implications of snake_chain
 
@@ -417,7 +417,7 @@ The outer chain-config payload envelope is now fixed: it carries canonical confi
 
 ### Keep current-state derivation explicit
 
-Because history disappears, the code should make it clear where current balances, vote scores, chain config, and live UTXOs come from.
+Because history disappears, the code should make it clear where current balances, accumulated vote, chain config, and live UTXOs come from.
 
 ### Preserve canonical bytes or canonical reconstruction
 

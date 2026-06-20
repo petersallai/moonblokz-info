@@ -24,7 +24,7 @@ Authoritative source: [`moonblokz-blockchain-architecture.md`](./moonblokz-block
 
 | Const generic | Default | Meaning / deployment implication |
 |---|---:|---|
-| `MAX_NODES` | 1000 | **Network-wide registered-node cap.** Sizes all node-id-indexed arrays (`NodeInfo`, `VoteEngine.vote_score`); every node holds an entry for every registered node. Dominant RAM driver — see §3. |
+| `MAX_NODES` | 1000 | **Network-wide registered-node cap.** Sizes all node-id-indexed arrays (`NodeInfo`, `VoteEngine.accumulated_vote`); every node holds an entry for every registered node. Dominant RAM driver — see §3. |
 | `SNAKE_CHAIN_LENGTH` (W) | 500 | Active-chain window length (bounded retention). |
 | `VERIFICATION_HORIZON` (H) | 20 | [BC-FR58](./moonblokz-blockchain-prd.md) cheap-zone boundary; retained knowledge beyond the active window for rare chain switches. |
 | `MAX_BLOCKS` | 600 | In-RAM block-table slots; 1:1 with RP2040 durable flash capacity (see §4). |
@@ -74,10 +74,10 @@ Authoritative source: [`moonblokz-blockchain-architecture.md`](./moonblokz-block
 | `EmitScratch` + scheduler + lifecycle + PRNG | ~2.1 KB | ~2.1 KB | `MAX_BLOCK_SIZE` buffer + small fields |
 | **`moonblokz-blockchain` subtotal** | **~95 KB** | **~159 KB** | matches architecture §7.1 / §7.2 |
 | `Mempool` (sibling `moonblokz-mempool`) | ~21.5 KB | ~21.5 KB | `MEMPOOL_COMPACT_BYTES` + index |
-| `VoteEngine.vote_score` (sibling `moonblokz-vote`) | ~4 KB | ~4 KB | `MAX_NODES` × 4 B |
+| `VoteEngine.accumulated_vote` (sibling `moonblokz-vote`) | ~4 KB | ~4 KB | `MAX_NODES` × 4 B |
 | **blockchain + mempool + vote** | **~121 KB** | **~185 KB** | carried into §3.2 |
 
-Raising `MAX_NODES` costs ~48 B/node (Schnorr) or ~112 B/node (BLS) across the node-id-indexed arrays (`NodeInfo` + `vote_score`), derived from architecture §7.1 and corroborated by its §12.1 tuning levers. The default 1000-node cap already consumes most of the RP2040 budget, so caps an order of magnitude larger (for example a city-scale payment network) exceed RP2040 SRAM and require an MCU with substantially more RAM.
+Raising `MAX_NODES` costs ~48 B/node (Schnorr) or ~112 B/node (BLS) across the node-id-indexed arrays (`NodeInfo` + `accumulated_vote`), derived from architecture §7.1 and corroborated by its §12.1 tuning levers. The default 1000-node cap already consumes most of the RP2040 budget, so caps an order of magnitude larger (for example a city-scale payment network) exceed RP2040 SRAM and require an MCU with substantially more RAM.
 
 ### 3.2 Full-system allocation
 

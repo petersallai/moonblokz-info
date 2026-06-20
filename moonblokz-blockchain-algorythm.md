@@ -284,7 +284,7 @@ Node-transfer transactions (`type=1`) are unrestricted by this rule: a transacti
 
 Each transaction can vote for a node and thereby increase its chance of future block creation.
 
-At current module-boundary level, the choice of **which node gets the vote when a new transaction is accepted** is not made by the blockchain module from raw radio observations. Instead, an external **scoring module** may compute per-node scores from the senders of observed radio messages and provide the selected vote target to the caller that assembles the transaction. The blockchain module's local transaction-creation surface then receives a fully assembled signed transaction with that chosen vote target already recorded in its `vote` field, validates it, and admits it to the mempool when accepted. The blockchain **vote module** later tracks each node's accumulated vote count — both votes already present in transactions and blocks and the anti-capture interest growth applied on each block acceptance — and determines the next block creator from that accumulated state.
+At current module-boundary level, the choice of **which node gets the vote when a new transaction is accepted** is not made by the blockchain module from raw radio observations. Instead, an external **scoring module** may compute per-node scores from the senders of observed radio messages and provide the selected vote target to the caller that assembles the transaction. The blockchain module's local transaction-creation surface then receives a fully assembled signed transaction with that chosen vote target already recorded in its `vote` field, validates it, and admits it to the mempool when accepted. The blockchain **vote module** later tracks each node's accumulated vote — both votes already present in transactions and blocks and the anti-capture interest growth applied on each block acceptance — and determines the next block creator from that accumulated state.
 
 Restriction explicitly stated by the article — a single rule (the no-self-vote rule) applied at two structural sites:
 
@@ -537,7 +537,7 @@ Algorithmically, this means the payload must be capable of proving:
 
 Subgroup selection and the supporting-node set are now defined in [ADR-015](./blockchain-adrs/ADR-015-approval-subgroup-selection.md). The evidence therefore only needs to carry actually signing supporters, so the relevant crypto bound is `required_support ≤ MAX_AGGREGATED_SIGNATURES(backend)` rather than a bound on the full subgroup size.
 
-The approval evidence block payload begins with a `supporter_vote_sum: u64` field, computed by the proposer at evidence-block creation time per the closed-form formula `supporter_vote_sum = (m / 2 + 1) · deviance_creator_vote + original_creator_vote` (integer division for `m / 2`), where `m` is the subgroup size from ADR-015 (`m = min(2 · required_support − 1, |A|)`), `deviance_creator_vote` is the deviation block creator's `vote_count` at sequence `proposed_sequence − 1` (projected against the candidate chain that the deviation block extends), and `original_creator_vote` is the `vote_count` of the node that would have been the creator at `proposed_sequence` in the absence of the deviation — the top entry of the creator-order projection at sequence `proposed_sequence − 1` whose deviation triggered this approval — projected against the same candidate chain at the same sequence. The field is followed by the aggregated support signature and the list of supporting node identifiers. Other nodes verify the proposer's claim authoritatively at chain-switch reconciliation or processing-pass time by recomputing the formula against the candidate chain's per-node vote-score projection at sequence `proposed_sequence − 1` and comparing to the recorded `supporter_vote_sum` value; a discrepancy invalidates the evidence block. Because the formula depends only on `m`, `deviance_creator_vote`, and `original_creator_vote` — all fixed by the candidate chain at `proposed_sequence − 1` — the proposer cannot vary the resulting value by choosing which subgroup-eligible signers it admits into the aggregated evidence beyond satisfying `required_support`; this also guarantees that the deviation-bearing branch's combined contribution at the deviation point strictly exceeds the corresponding normal-branch per-block contribution at the same sequence, so a later normal-branch supplement cannot retroactively overtake the deviation-bearing branch under the branch-value rule. The payload field order — `supporter_vote_sum` first, then aggregated support signature, then supporter identity list — is established here; the exact binary encoding of each component (aggregated-signature byte length per backend, identity-list count format) follows the broader serialization rules of Section 10 and any backend-specific specifications.
+The approval evidence block payload begins with a `supporter_vote_sum: u64` field, computed by the proposer at evidence-block creation time per the closed-form formula `supporter_vote_sum = (m / 2 + 1) · deviance_creator_vote + original_creator_vote` (integer division for `m / 2`), where `m` is the subgroup size from ADR-015 (`m = min(2 · required_support − 1, |A|)`), `deviance_creator_vote` is the deviation block creator's `vote_count` at sequence `proposed_sequence − 1` (projected against the candidate chain that the deviation block extends), and `original_creator_vote` is the `vote_count` of the node that would have been the creator at `proposed_sequence` in the absence of the deviation — the top entry of the creator-order projection at sequence `proposed_sequence − 1` whose deviation triggered this approval — projected against the same candidate chain at the same sequence. The field is followed by the aggregated support signature and the list of supporting node identifiers. Other nodes verify the proposer's claim authoritatively at chain-switch reconciliation or processing-pass time by recomputing the formula against the candidate chain's per-node accumulated-vote projection at sequence `proposed_sequence − 1` and comparing to the recorded `supporter_vote_sum` value; a discrepancy invalidates the evidence block. Because the formula depends only on `m`, `deviance_creator_vote`, and `original_creator_vote` — all fixed by the candidate chain at `proposed_sequence − 1` — the proposer cannot vary the resulting value by choosing which subgroup-eligible signers it admits into the aggregated evidence beyond satisfying `required_support`; this also guarantees that the deviation-bearing branch's combined contribution at the deviation point strictly exceeds the corresponding normal-branch per-block contribution at the same sequence, so a later normal-branch supplement cannot retroactively overtake the deviation-bearing branch under the branch-value rule. The payload field order — `supporter_vote_sum` first, then aggregated support signature, then supporter identity list — is established here; the exact binary encoding of each component (aggregated-signature byte length per backend, identity-list count format) follows the broader serialization rules of Section 10 and any backend-specific specifications.
 
 ## 10. Serialization Rules
 
@@ -657,15 +657,15 @@ Select the next block creator using lightweight locally available information wh
 ### Selection process
 
 1. Receive vote-target selection input from the scoring module, derived from radio-layer observation of valid messages.
-2. When a node accepts a new transaction, the scoring module determines which other node currently has the strongest local message-based score and therefore receives the vote recorded into the transaction.
-3. Aggregate vote scores per candidate node inside blockchain state from the votes already present in accepted transactions and blocks, with each accepted transaction contributing one configured `vote_scale` credit to its target node.
-4. When a block should be created, select the node with the highest accumulated blockchain vote score.
+2. When a node accepts a new transaction, the scoring module — a radio-side component outside the blockchain module — determines which other node currently has the strongest radio-derived message-based score, and that node is recorded as the **vote target** (the `vote` field) of the transaction. This radio-derived score is distinct from the per-node **accumulated vote** maintained by the blockchain vote module (see Algorithm 9).
+3. Aggregate per-node **accumulated vote** inside blockchain state from the votes already present in accepted transactions and blocks, with each accepted transaction contributing one configured `vote_scale` credit to its target node.
+4. When a block should be created, select the node with the highest **accumulated vote**.
 5. Break ties deterministically using node identifiers.
-6. After successful block creation by the selected node, reset that node’s vote count to zero.
+6. After successful block creation by the selected node, reset that node's **accumulated vote** to zero.
 
 ### Boundary note
 
-The original article-era framing described vote preference in terms of directly observed valid messages. The current MoonBlokz module boundary refines that design so the blockchain vote module consumes scoring module input at transaction-creation time rather than owning the score computation itself. The scoring module produces the vote target; the vote module tracks the accumulated votes and determines the next block creator.
+The original article-era framing described vote preference in terms of directly observed valid messages. The current MoonBlokz module boundary refines that design so the blockchain vote module consumes scoring module input at transaction-creation time rather than owning the **vote-target-selection** computation itself. The scoring module produces the vote target; the vote module tracks each node's **accumulated vote** and determines the next block creator.
 
 ## Algorithm 4: Block Creation Readiness
 
@@ -715,9 +715,9 @@ Allow the network to recover when the selected creator does not produce a block.
 3. After double the grace period, permit the top three.
 4. Continue widening the acceptable creator set as waiting continues.
 
-### Vote-score reset is applied only to the first node
+### Accumulated-vote reset is applied only to the first node
 
-As a data-size optimization, **only the originally-top node's (the first node's) accumulated vote score is reset to zero** at the start of the fallback cycle. All other nodes that are admitted in later expansion steps but still miss the chance to produce the block — the second-ranked, third-ranked, and so on — **retain their vote scores unchanged**. There is exactly one reset per fallback cycle, regardless of how many grace-period expansions occur before some admitted node finally produces a block.
+As a data-size optimization, **only the originally-top node's (the first node's) accumulated vote is reset to zero** at the start of the fallback cycle. All other nodes that are admitted in later expansion steps but still miss the chance to produce the block — the second-ranked, third-ranked, and so on — **retain their accumulated vote unchanged**. There is exactly one reset per fallback cycle, regardless of how many grace-period expansions occur before some admitted node finally produces a block.
 
 This is sufficient for anti-capture dynamics because the originally-top node carries the full penalty; it is also sufficient for audit purposes because the subsequently admitted nodes are the ones that are given the chance to create, not penalized for inactivity in that cycle.
 
@@ -756,7 +756,7 @@ The highest-voted node fails to create the expected block within its grace perio
 
 ### Penalty rule
 
-Reset the vote score of that first missed node to zero.
+Reset the accumulated vote of that first missed node to zero.
 
 ## Algorithm 8: Branch Value Calculation
 
@@ -766,14 +766,14 @@ Choose the effective blockchain branch from the block-tree using local informati
 
 ### Value rules from Parts III and V
 
-- a normal block’s value equals the spent vote score associated with that block (recorded as `consumed_votes` in the block header);
-- an approval block’s value equals the value carried in its `supporter_vote_sum: u64` payload field at the start of the evidence block’s payload (per Section 9 of this document); the proposer computes the field by the closed-form formula `supporter_vote_sum = (m / 2 + 1) · deviance_creator_vote + original_creator_vote` (integer division, with `m` the subgroup size, `deviance_creator_vote` the deviation block creator’s vote score, and `original_creator_vote` the would-have-been original creator’s vote score, all projected against the candidate chain at sequence `proposed_sequence − 1`), and the value is validated authoritatively at chain-switch / processing-pass time by recomputing the formula and comparing — a discrepancy invalidates the evidence block; the `consumed_votes_from_first_voted_node` field of the deviation block records the originally-top node’s pre-penalty vote score for audit purposes only and does **not** contribute to the evidence block’s value;
+- a normal block’s value equals the spent accumulated vote associated with that block (recorded as `consumed_votes` in the block header);
+- an approval block’s value equals the value carried in its `supporter_vote_sum: u64` payload field at the start of the evidence block’s payload (per Section 9 of this document); the proposer computes the field by the closed-form formula `supporter_vote_sum = (m / 2 + 1) · deviance_creator_vote + original_creator_vote` (integer division, with `m` the subgroup size, `deviance_creator_vote` the deviation block creator’s accumulated vote, and `original_creator_vote` the would-have-been original creator’s accumulated vote, all projected against the candidate chain at sequence `proposed_sequence − 1`), and the value is validated authoritatively at chain-switch / processing-pass time by recomputing the formula and comparing — a discrepancy invalidates the evidence block; the `consumed_votes_from_first_voted_node` field of the deviation block records the originally-top node’s pre-penalty accumulated vote for audit purposes only and does **not** contribute to the evidence block’s value;
 - a `snake_chain` essential-state replay block (chain-config replay per Algorithm 11, balance replay per Algorithm 11, or zero-input UTXO carry-forward per Algorithm 12) intervening between a deviation block and its associated evidence block contributes value zero, because such blocks carry `consumed_votes = 0` by deliberate header construction (per blockchain module PRD FR28);
 - and the necessary vote-consumption information for normal blocks (`consumed_votes`) and the auditable deviation-record information for deviation blocks (`first_voted_node`, `consumed_votes_from_first_voted_node`) are preserved explicitly in the block header because full history may later disappear.
 
 ### Branch selection and tie-break
 
-The active branch is the operationally admissible candidate branch with the highest cumulative branch value. Operationally admissible means the candidate retains a continuous tip-ending segment long enough to cover the full `snake_chain` window: once the chain has matured to length `W`, this means at least `W` blocks on that candidate branch; before the chain first reaches length `W`, the admissible bootstrap case is a genesis-anchored candidate spanning the entire currently existing chain from block `#0` to its tip. A deviation-bearing branch that does not yet contain its associated approval evidence block does not overtake the corresponding normal branch: because the deviation block is created only after the originally-top creator missed its opportunity, the deviation block's own `consumed_votes` is lower than the ordinary top-creator contribution that would have won at that same sequence, so approval is the mechanism that can later make the deviation branch competitive. When two or more candidate branches are tied on cumulative branch value, the tie shall be resolved deterministically in the following order: first by the **serialized size of the branch tip block in bytes** (larger size wins — under equal vote-derived branch values, the branch carrying more block content is preferred); then, if still tied, by the **node identifier of the branch tip's creator** (lower node identifier wins); and finally, if the tip creator is also tied under creator equivocation at the same sequence with equally-sized blocks, by the **lowest tip block hash** interpreted as a big-endian unsigned integer. This tie-break applies only in ready/processing state, where vote scores are trusted; collecting-state candidate selection follows its own dedicated rule and does not use branch value.
+The active branch is the operationally admissible candidate branch with the highest cumulative branch value. Operationally admissible means the candidate retains a continuous tip-ending segment long enough to cover the full `snake_chain` window: once the chain has matured to length `W`, this means at least `W` blocks on that candidate branch; before the chain first reaches length `W`, the admissible bootstrap case is a genesis-anchored candidate spanning the entire currently existing chain from block `#0` to its tip. A deviation-bearing branch that does not yet contain its associated approval evidence block does not overtake the corresponding normal branch: because the deviation block is created only after the originally-top creator missed its opportunity, the deviation block's own `consumed_votes` is lower than the ordinary top-creator contribution that would have won at that same sequence, so approval is the mechanism that can later make the deviation branch competitive. When two or more candidate branches are tied on cumulative branch value, the tie shall be resolved deterministically in the following order: first by the **serialized size of the branch tip block in bytes** (larger size wins — under equal vote-derived branch values, the branch carrying more block content is preferred); then, if still tied, by the **node identifier of the branch tip's creator** (lower node identifier wins); and finally, if the tip creator is also tied under creator equivocation at the same sequence with equally-sized blocks, by the **lowest tip block hash** interpreted as a big-endian unsigned integer. This tie-break applies only in ready/processing state, where accumulated vote are trusted; collecting-state candidate selection follows its own dedicated rule and does not use branch value.
 
 ## Algorithm 9: Anti-Capture Vote Interest
 
@@ -783,7 +783,7 @@ A small group may try to dominate block creation by generating many transactions
 
 ### Interest rule
 
-If a node has vote score `x`, then each accepted block updates that node's score in integer arithmetic as `x := x + floor(x × vote_interest / vote_scale)`, where `vote_scale` is both the numeric value of one received vote credit and the denominator of the anti-capture rule, and `vote_interest` is the per-block growth numerator. `floor(a / b)` here is ordinary unsigned integer division.
+If a node has accumulated vote `x`, then each accepted block updates that node's accumulated vote in integer arithmetic as `x := x + floor(x × vote_interest / vote_scale)`, where `vote_scale` is both the numeric value of one received vote credit and the denominator of the anti-capture rule, and `vote_interest` is the per-block growth numerator. `floor(a / b)` here is ordinary unsigned integer division.
 
 ## Algorithm 10: snake_chain Tail Advancement
 
@@ -812,7 +812,7 @@ If a chain-config block would drop out of the active chain:
 If balances would be lost from the active chain:
 
 1. identify the affected nodes,
-2. compute their **current** balances and vote scores,
+2. compute their **current** balances and accumulated vote,
 3. create a balance block at the head containing those current values,
 4. ensure the living chain still contains balances for all affected nodes and therefore preserves full rolling-window coverage across the chain,
 5. rely on the fact that this replay step fits into one balance block because a single tail advance makes only one block's worth of seed sources newly droppable and the replacement block only has to restate the nodes affected by that frontier.
@@ -1032,9 +1032,9 @@ When a side branch overtakes the current active branch according to the local ch
 
 ### Recomputation rule
 
-1. Determine that the competing branch outranks the current active chain according to the configured sequence, creator, score, or equivalent branch-selection rules.
+1. Determine that the competing branch outranks the current active chain according to the configured sequence, creator, accumulated-vote, or equivalent branch-selection rules.
 2. Identify the common ancestor or equivalent branch-merge point.
-3. Recalculate the active score table.
+3. Recalculate the active accumulated-vote table.
 4. Recalculate node state derived from the active chain.
 5. Recalculate branch bookkeeping derived from the active chain.
 6. Recalculate mempool acceptance assumptions that depended on the previous chain.
@@ -1207,7 +1207,7 @@ Architecturally, Parts III, IV, and V imply that the full algorithm has at least
 
 1. **observation layer** — receiving blocks and messages,
 2. **reconstruction layer** — building the block-tree and recovering missing ancestors,
-3. **selection layer** — choosing a preferred creator by vote scores,
+3. **selection layer** — choosing a preferred creator by accumulated vote,
 4. **recovery layer** — approval-based fallback when normal selection fails,
 5. **retention layer** — preserving balances, configuration, and live UTXOs as the tail advances,
 6. **valuation layer** — assigning branch value so later reconciliation remains deterministic,

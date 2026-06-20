@@ -238,7 +238,7 @@ This means the configuration is not just deployment metadata. It is part of dura
 
 ### 4. Approval evidence blocks
 
-These record proof that a branch deviation from the normal vote-based creator-selection rule received majority support.
+These record proof that a branch deviation from the normal accumulated-vote-based creator-selection rule received majority support.
 
 Conceptually, these blocks allow later nodes to understand why a non-default block became legitimate.
 
@@ -477,7 +477,7 @@ The concept aligns with several decisions that are already part of the MVP model
 
 - The `ready → collecting → processing → ready` re-entry path uses the lifecycle already specified by the chain lifecycle and recovery requirements; no new lifecycle state is introduced.
 - The subgroup-based authentication pattern reuses the conceptual approach of the approval-subgroup mechanism (ADR-015).
-- The trust-from-known-participants idea is consistent with how vote-based creator selection and approval evidence already work.
+- The trust-from-known-participants idea is consistent with how accumulated-vote-based creator selection and approval evidence already work.
 - “The recovered chain must still be the same chain” follows naturally from the set-once chain-configuration lock: a recovery anchor whose chain belongs to a different chain-config will fail the durable-lock match check during the subsequent processing → ready transition, which is the correct behavior under the existing “no cross-chain merging” boundary.
 
 ### Open questions for the post-MVP design

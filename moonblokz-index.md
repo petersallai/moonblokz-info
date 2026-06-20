@@ -54,7 +54,7 @@ It is explicitly **not authoritative** for the values it lists — each value li
 
 ### [MoonBlokz Glossary (Cross-Subsystem & Ambiguous Terms)](./moonblokz-glossary.md)
 
-A disambiguation index for terms that span subsystems or carry more than one meaning — for example `score` (radio relay metric vs. radio-side vote-target input vs. blockchain accumulated-vote value) and `verification horizon` versus the active-chain window.
+A disambiguation index for terms that span subsystems or carry more than one meaning — for example `score` (radio relay metric vs. radio-side vote-target input; the blockchain-side per-node value is the separate, non-overloaded term **accumulated vote**) and `verification horizon` versus the active-chain window.
 
 It is explicitly **not authoritative**: each entry links to the term's authoritative definition site, which wins on any divergence. Use this file when a term reads ambiguously across documents and you need to confirm which meaning and which source applies.
 

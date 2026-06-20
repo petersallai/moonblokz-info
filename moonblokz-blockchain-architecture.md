@@ -337,7 +337,7 @@ impl<...> Mempool<...> {
 
 ```rust
 pub struct VoteEngine<const MAX_NODES: usize> {
-    vote_score: [u32; MAX_NODES],      // 4 KB on 1000-node default
+    accumulated_vote: [u32; MAX_NODES],      // 4 KB on 1000-node default
     cached_top_creator: Option<u32>,
     sub_seed_prng: WyRand,
 }
@@ -348,7 +348,7 @@ impl<const MAX_NODES: usize> VoteEngine<MAX_NODES> {
     pub fn undo_block(&mut self, block: BlockView<'_>);                   // FR23 backward
     pub fn seed_from_balance_block(&mut self, block: BlockView<'_>);      // FR50 seed source
     pub fn top_creator(&self, deadline_seq: u32, now: u64) -> Option<u32>; // FR38
-    pub fn vote_scale(&self, node_id: u32) -> u32;                        // vote_score raw
+    pub fn vote_scale(&self, node_id: u32) -> u32;                        // accumulated_vote raw
     pub fn vote_interest(&self, node_id: u32) -> u32;                     // weighted by recency
 }
 ```
@@ -505,7 +505,7 @@ The full per-module breakdown (folyamatok / adatstruktúrák / kapcsolatok / API
 
 | Const generic | Default | Source / rationale |
 |---|---|---|
-| `MAX_NODES` | 1000 | user-set; **network-wide registered-node cap** — sizes all node-id-indexed arrays (`NodeInfo.public_keys`/`balances`/`seed_source_idx`, `VoteEngine.vote_score`). Every node in the network holds an entry for every other registered node. See §12.1 for tuning trade-offs. |
+| `MAX_NODES` | 1000 | user-set; **network-wide registered-node cap** — sizes all node-id-indexed arrays (`NodeInfo.public_keys`/`balances`/`seed_source_idx`, `VoteEngine.accumulated_vote`). Every node in the network holds an entry for every other registered node. See §12.1 for tuning trade-offs. |
 | `SNAKE_CHAIN_LENGTH` (W) | 500 | user-set; active chain window |
 | `VERIFICATION_HORIZON` (H) | 20 | user-set; FR58 cheap-zone boundary |
 | `MAX_BLOCKS` | 600 | RP2040 flash storage capacity 1:1 |
@@ -651,7 +651,7 @@ pub struct Mempool<const COMPACT_BYTES: usize, const MAX_ENTRIES: usize, const M
 
 ```rust
 pub struct VoteEngine<const MAX_NODES: usize> {
-    vote_score: [u32; MAX_NODES],     // 4 KB
+    accumulated_vote: [u32; MAX_NODES],     // 4 KB
     cached_top_creator: Option<u32>,  // ~8 B
     sub_seed_prng: WyRand,            // 8 B
 }

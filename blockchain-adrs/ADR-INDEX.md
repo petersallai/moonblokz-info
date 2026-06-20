@@ -66,7 +66,7 @@ These define:
 - what is durable truth,
 - what the Chain Knowledge Core owns,
 - how the core executes,
-- and how vote-related responsibilities split across the scoring module (which supplies the vote target at transaction-creation time) and the blockchain vote module (which tracks accumulated vote counts and determines the next block creator).
+- and how vote-related responsibilities split across the scoring module (which supplies the vote target at transaction-creation time) and the blockchain vote module (which tracks accumulated votes and determines the next block creator).
 
 ### 3. Local and transaction-facing behavior
 - ADR-008
@@ -104,7 +104,7 @@ These define:
 - **ADR-004** — Durable blockchain storage retains every received block except those already rejected by intake-time exact evidence (parse failure, direct-active-extension signature invalidity, chain-config / trust-anchor mismatch cases, configuration-module rejection, or deviation-branch creator-exclusivity violation); broader creator-signature-invalidity decisions remain deferred to blockchain module PRD FR9 Tier 3 chain-switch reconciliation or blockchain module PRD FR3 processing pass; helper indexes are not primary durable truth.
 - **ADR-005** — The Chain Knowledge Core is the main orchestration source for chain truth and reconciliation.
 - **ADR-006** — The blockchain core remains single-threaded, synchronous, and deterministic.
-- **ADR-007** — The scoring module computes per-node scores from the senders of observed radio messages and supplies the vote target to the upstream local transaction-building path before the signed transaction reaches the blockchain module; the blockchain vote module tracks each node's accumulated vote count and determines the next block creator from that state.
+- **ADR-007** — The scoring module computes per-node scores from the senders of observed radio messages and supplies the vote target to the upstream local transaction-building path before the signed transaction reaches the blockchain module; the blockchain vote module tracks each node's accumulated vote and determines the next block creator from that state.
 - **ADR-008** — The local query surface is active-chain-centered by default.
 - **ADR-009** — The mempool is independent in operation but remains governed by chain truth.
 - **ADR-010** — Mempool eviction under pressure is randomized to improve whole-network transaction survival.

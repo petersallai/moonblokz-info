@@ -64,7 +64,7 @@ Search by anchor rather than citing a line: anchors are stable across edits, lin
 | FR34 | Six derived operational-state projections maintained from active chain |
 | FR35 | Derived projections incrementally updated on two trigger event types |
 | FR36 | Block-creator mining reward, transaction fee, and replay-reward credit |
-| FR37 | Vote-score accumulation, anti-capture interest growth, and creator reset |
+| FR37 | Accumulated-vote accumulation, anti-capture interest growth, and creator reset |
 | FR38 | Creator-order projection derived and refreshed from vote state |
 | FR39 | Rollback-sensitive derived-state correctness through FR23 reconciliation |
 
@@ -82,7 +82,7 @@ Search by anchor rather than citing a line: anchors are stable across edits, lin
 | FR44 | Local creator determination and grace-period fallback set expansion |
 | FR45 | Block-creation triggers, content-assembly priority, and header construction |
 | FR46 | External time-driver next-wakeup query and tick callback contract |
-| FR47 | Grace-period expiry advancing fallback cycle without vote-score reset |
+| FR47 | Grace-period expiry advancing fallback cycle without accumulated-vote reset |
 
 ### Snake_chain & Tail Preservation
 | FR | Subject |
