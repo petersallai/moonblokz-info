@@ -9,24 +9,9 @@ The blockchain module sits next to several adjacent subsystem concerns: communic
 MoonBlokz uses explicit subsystem boundaries across radio, storage, crypto, telemetry, and simulation. The blockchain module must follow the same discipline if it is to remain testable, portable, and conceptually clean.
 
 ### Decision
-`moonblokz-blockchain` owns:
-- blockchain decisions,
-- staged validation logic,
-- known-block and branch knowledge,
-- active-chain selection,
-- runtime mempool handling,
-- vote / next-creator state,
-- and local blockchain-facing query answers.
+`moonblokz-blockchain` owns blockchain decisions, staged validation, known-block and branch knowledge, active-chain selection, runtime mempool handling, vote / next-creator state, and local blockchain-facing query answers. It does **not** own communication transport, fragment handling, serialization adapters, storage implementation, crypto backend, or the radio-side scoring module.
 
-`moonblokz-blockchain` does **not** own:
-- communication transport,
-- fragment handling,
-- serialization / deserialization adapters,
-- storage implementation mechanics,
-- crypto backend implementation,
-- or the scoring module used as creator-selection input.
-
-The blockchain module therefore remains a domain core with explicit surrounding adapters and dependencies, not an all-in-one blockchain engine.
+The exact crate boundaries, sub-crate split, and API surfaces are normative in [`moonblokz-blockchain-architecture.md`](../moonblokz-blockchain-architecture.md) §1–§3, and the boundary contract / public-API-only consumption rules are normative in [PRD](../moonblokz-blockchain-prd.md) FR61 and FR66.
 
 ### Consequences
 #### Positive

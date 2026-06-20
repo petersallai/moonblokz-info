@@ -9,9 +9,9 @@ The blockchain module maintains authoritative and derived state under staged val
 The accepted semantic-event-state-machine model already assumes serialized state transitions. The blockchain core therefore needs an execution model that preserves determinism rather than weakening it with internal concurrency.
 
 ### Decision
-`moonblokz-blockchain` is implemented as a **single-threaded, synchronous, deterministic core**.
+`moonblokz-blockchain` is implemented as a **single-threaded, synchronous, deterministic core**. Asynchronous orchestration, parallelism, and multicore concerns may exist around the module but remain outside the blockchain core boundary.
 
-Asynchronous orchestration, parallelism, and multicore concerns may exist around the module, but they remain outside the blockchain core boundary.
+The execution model — single-`embassy::select` loop, single-outcome scheduling-pull API (`CallResult<OutcomeEnum> + NextCall`), Core 0 / Core 1 split — is normative in [`moonblokz-blockchain-architecture.md`](../moonblokz-blockchain-architecture.md) §1.1 and §1.3; the no-heap, no-panic, `no_std` guarantee is normative in [PRD](../moonblokz-blockchain-prd.md) FR65, with the deterministic-reconstruction requirement in NFR5.
 
 ### Consequences
 #### Positive

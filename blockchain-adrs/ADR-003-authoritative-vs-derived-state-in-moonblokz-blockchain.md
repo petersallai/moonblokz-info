@@ -9,19 +9,9 @@ The blockchain module maintains many kinds of useful state: known blocks, mempoo
 MoonBlokz needs a deliberately small and defensible truth model so that restart behavior, reconciliation, persistence, and runtime caches remain understandable.
 
 ### Decision
-`moonblokz-blockchain` distinguishes between **authoritative state** and **derived operational state**.
+`moonblokz-blockchain` distinguishes **authoritative state** (known blocks, mempool, operation mode) from **derived operational state** (active chain, balances / UTXOs, vote / next-creator). Derived state may be incrementally maintained for performance, but it is not primary durable truth.
 
-Authoritative state:
-- known blocks,
-- mempool,
-- operation mode.
-
-Derived operational state:
-- active chain,
-- balance / UTXO truth,
-- vote / next-creator state.
-
-Derived state may be incrementally maintained for performance, but it is not the primary durable truth source.
+The six derived projections and their incremental-update trigger events are normative in [PRD](../moonblokz-blockchain-prd.md) FR34 and FR35; the architectural realization (`NodeInfo` SoA, `ChainHeadsTable`, `VoteEngine`, etc.) is in [`moonblokz-blockchain-architecture.md`](../moonblokz-blockchain-architecture.md) §1.2 and §4–§6.
 
 ### Consequences
 #### Positive

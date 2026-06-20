@@ -9,18 +9,9 @@ The mempool must accept pending transactions and supply candidates for block cre
 The internal architecture already places the Chain Knowledge Core above other working subsystems as the primary source of blockchain truth.
 
 ### Decision
-The mempool is modeled as an **independent registry** with its own runtime behavior, but it remains **chain-governed**.
+The mempool is modeled as an **independent registry** with its own runtime behavior — it accepts pending transactions, retains them while relevant, and proposes block candidates — but it remains **chain-governed**: when active-chain truth changes, the Chain Knowledge Core drives mempool correction (removing newly confirmed transactions, reintroducing transactions that fell off the previously active chain when still eligible). The mempool supports blockchain operation but does not define blockchain truth.
 
-Normal responsibilities:
-- accept pending transactions,
-- retain them while relevant,
-- propose block candidates.
-
-When active-chain truth changes, the Chain Knowledge Core drives mempool correction by:
-- removing transactions now confirmed in the new active chain,
-- and reintroducing transactions that fell out of the previously active chain when they remain eligible.
-
-The mempool therefore supports blockchain operation, but it does not define blockchain truth.
+The mempool's separate-crate split (`moonblokz-mempool`), compact byte-buffer storage, and the chain-driven reconciliation contract are normative in [`moonblokz-blockchain-architecture.md`](../moonblokz-blockchain-architecture.md) §3.3 and §4.2 (`reconciliation.rs`); the FR-level rules are normative in [PRD](../moonblokz-blockchain-prd.md) FR30 (separate-module structure), FR32 (forward-extension and chain-switch reconciliation), and FR33 (randomized eviction).
 
 ### Consequences
 #### Positive

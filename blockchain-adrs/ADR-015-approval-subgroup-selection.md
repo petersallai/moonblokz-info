@@ -78,7 +78,7 @@ If an approval cannot collect `required_support` signatures in time, the subgrou
 - No grindable inputs: neither the proposer nor any single past creator can bias the subgroup.
 - Self-capping for small networks: `m = |A|` when the active set is below the normal subgroup size.
 - Monotonic in `m`, which keeps this ADR compatible with any future mechanism that needs to widen a deterministic ordering.
-- Aligns with ADR-003 (authoritative vs. derived state), ADR-005 (Chain Knowledge Core orchestration), ADR-007 (vote module scope), and ADR-008 (active-chain-centered local queries).
+- Aligns with ADR-003 (authoritative vs. derived state), ADR-005 (Chain Knowledge Core orchestration), PRD FR55 (vote module scope vs. external `scoring_module`), and ADR-008 (active-chain-centered local queries).
 - Aligns with the bounded-aggregation principle from `moonblokz-crypto-concept.md` by treating the crypto ceiling as a hard chain-config bound.
 
 #### Trade-offs

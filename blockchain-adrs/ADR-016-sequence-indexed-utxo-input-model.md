@@ -15,7 +15,7 @@ MoonBlokz shall reference UTXOs by `(block_sequence, output_index)` rather than 
 
 Spent-state for UTXO outputs shall be represented as a **per-block spent-bit vector** co-located with the block in storage. Each block carries one bit per UTXO output produced by its transactions; the bit is `0` while the output is unspent on the current active chain and `1` once spent.
 
-The spent-bit vector is a **derived projection** of the current active chain, not durable blockchain truth. The authoritative record of spend events remains the transactions contained in accepted blocks. On chain switch, spent-bit vectors covering blocks inside the rollback scope shall be recomputed by forward-replaying the new active chain from the common ancestor, consistent with the chain-switch reconciliation workflow (ADR-011).
+The spent-bit vector is a **derived projection** of the current active chain, not durable blockchain truth. The authoritative record of spend events remains the transactions contained in accepted blocks. On chain switch, spent-bit vectors covering blocks inside the rollback scope shall be recomputed by forward-replaying the new active chain from the common ancestor, consistent with the chain-switch reconciliation workflow defined in PRD FR23 and realized in `moonblokz-blockchain-architecture.md` §4.2 (`reconciliation.rs`).
 
 This decision supersedes the Part V rationale that hash-based references are preferred because they "survive branch changes". Under `snake_chain` bounds, the sequence reference is equally stable within its valid scope (the active chain inside the retained window), and carry-forward already invalidates key references in both models, so the hash-based stability argument does not provide a net advantage.
 
@@ -39,7 +39,7 @@ This decision implies that later design work and dependent artifacts must define
 - the binary serialization of the UTXO input field (Algorithm 25 and Section 6.1 of the algorithm document),
 - the complex-transaction validity rules so that input existence and unspent status are resolved against the sequence-indexed block storage and the per-block spent-bit vector (Algorithm 13),
 - the carry-forward algorithm so that the unspent output set is read from the spent-bit vector of the dropping block (Algorithm 12),
-- the chain-switch reconciliation workflow so that spent-bit vectors within the rollback scope are recomputed as part of the forward-replay step (ADR-011 and the derived-state projection definitions),
+- the chain-switch reconciliation workflow so that spent-bit vectors within the rollback scope are recomputed as part of the forward-replay step (PRD FR23 and the derived-state projection definitions; realized in architecture §4.2 `reconciliation.rs`),
 - the implementation-level representation of derived state: the "Live UTXO state" section of the implementation document shall be reframed as a per-block spent-bit vector projection.
 
 This ADR does not change the carry-forward policy itself (ADR-013): custodian-fee reduction, compression into consecutive blocks, and below-fee discard all continue to apply. It changes only the representation of UTXO identity and spent state.

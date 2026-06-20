@@ -9,15 +9,9 @@ The blockchain module needs a local-facing query surface that higher-level payme
 The broader blockchain boundary already separates internal chain complexity from the simpler local-facing operational truth that consumers need.
 
 ### Decision
-The local query surface of `moonblokz-blockchain` is **active-chain-centered** by default.
+The local query surface of `moonblokz-blockchain` is **active-chain-centered** by default: queries resolve only against the active chain, expose simple `Unknown / In-mempool / Confirmed` statuses, optional active-chain depth, and balance / UTXO views — they are not a full branch-observability API.
 
-This means:
-- block queries resolve only against the active chain,
-- transaction status distinguishes at least between unknown, in mempool, and in active chain,
-- transaction answers in active chain also expose sequence depth,
-- balance queries support a simple current answer and may optionally expose active-chain depth or context.
-
-The default local surface is not a full branch-observability API.
+The 12 read-only public methods that realize this surface (and their depth semantics) are normative in [`moonblokz-blockchain-architecture.md`](../moonblokz-blockchain-architecture.md) §3.1 and `queries.rs` (§4.2); the per-query outcome contracts are normative in [PRD](../moonblokz-blockchain-prd.md) FR40 (transaction state), FR41 (balance / UTXO), FR42 (block retrieval), FR43 (top-mempool exchange).
 
 ### Consequences
 #### Positive

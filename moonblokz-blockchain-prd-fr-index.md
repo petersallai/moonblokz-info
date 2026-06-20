@@ -160,7 +160,7 @@ Search by anchor rather than citing a line: anchors are stable across edits, lin
 | NFR | Subject |
 |-----|---------|
 | NFR9 | Cryptographic validation against canonical projections, not transport-time observations |
-| NFR10 | ADR-004 permissive durable intake with deferred authoritative invalidation |
+| NFR10 | Permissive durable intake (per FR16) with deferred authoritative invalidation |
 | NFR11 | Correctness protection preferring rejection/reversion over partial acceptance |
 | NFR12 | Chain-configuration integrity preserved for the chain lifetime |
 

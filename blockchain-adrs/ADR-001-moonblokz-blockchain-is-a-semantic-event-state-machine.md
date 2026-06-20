@@ -11,17 +11,9 @@ A key architecture question was whether the module should be modeled around tran
 MoonBlokz already treats communication transport, fragmentation, storage mechanics, and cryptographic implementation as separate subsystem concerns. The blockchain core therefore needs an identity that keeps protocol meaning separate from those outer mechanics.
 
 ### Decision
-`moonblokz-blockchain` is defined as a **stateful semantic event state machine**.
+`moonblokz-blockchain` is defined as a **stateful semantic event state machine**: it consumes blockchain-relevant semantic events, maintains internal state, produces semantic decisions, and serves read-only local queries. It is **not** a transport-aware byte-processing component.
 
-It:
-- consumes blockchain-relevant semantic events,
-- maintains blockchain-relevant internal state,
-- produces semantic decisions or responses,
-- and serves read-only local blockchain-facing queries.
-
-Its inputs are semantic, not transport-level byte streams. Its outputs are blockchain decisions and query answers, not communication-side delivery actions.
-
-The module is therefore **not** defined as a transport-aware byte-processing component.
+The concrete event vocabulary, public API surface, and module structure are normative in [`moonblokz-blockchain-architecture.md`](../moonblokz-blockchain-architecture.md) §1 (framework constraints) and §3 (public API).
 
 ### Consequences
 #### Positive

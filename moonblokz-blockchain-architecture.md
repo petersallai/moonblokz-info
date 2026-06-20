@@ -155,13 +155,13 @@ graph TB
 
 **New crates introduced by this architecture:**
 1. `moonblokz-mempool` — extracted from chain-lib per FR30 (mempool is separate module)
-2. `moonblokz-vote` — extracted per ADR-007 (vote engine is its own concern)
+2. `moonblokz-vote` — extracted as its own concern (vote engine is separate from the radio-side scoring module per PRD FR55)
 3. `moonblokz-node-runtime` — bridge layer, hosts embassy async + radio↔blockchain glue
 4. `moonblokz-configuration` — future, separate BMAD; holds chain-config state with mini-VM capability per FR56
 
 **Extensions to existing crates:**
 - `moonblokz-chain-types` — adds the three-type model (Owned / View / Builder) per FR61 and the Step 5 refactor
-- `moonblokz-radio-lib` — getter API additions to expose radio-derived score input cleanly to vote crate (ADR-007)
+- `moonblokz-radio-lib` — getter API additions to expose radio-derived score input cleanly to vote crate (per the `scoring_module` boundary in PRD FR55)
 
 ### 2.2 Three-type model (Owned + View + Builder)
 
@@ -886,7 +886,7 @@ Tasks to bring the empty `moonblokz-chain-lib` directory and the existing depend
 | 4 | Scaffold `moonblokz-node-runtime/` bridge crate | filesystem | embassy::select loop + radio↔chain-lib glue. |
 | 5 | Add three-type model to `moonblokz-chain-types` | existing crate | `Block` (Owned) + `BlockView<'_>` + `BlockBuilder` per FR61. Also Transaction triplet. |
 | 6 | Rename `Block` → `BlockView` where applicable in chain-types | existing crate | Per Step 5 user directive: current `Block` is actually a view. |
-| 7 | Radio-lib getter API additions | `moonblokz-radio-lib` | Expose radio-derived score input cleanly for vote sub-crate (per ADR-007). |
+| 7 | Radio-lib getter API additions | `moonblokz-radio-lib` | Expose radio-derived score input cleanly for vote sub-crate (per PRD FR55 `scoring_module` boundary). |
 | 8 | Set `moonblokz-node-runtime` chain-lib task stack to 6 KB | `moonblokz-node-runtime/src/main.rs` | Per §8 stack analysis. Other tasks remain 4 KB. |
 | 9 | Initial scaffold for `moonblokz-configuration` crate | filesystem (placeholder) | Trait stub per §11 only; full BMAD later. |
 | 10 | Wire all 4 new crates into `moonblokz-node/Cargo.toml` | existing | Replace chain-lib path dep with blockchain + add mempool + vote + node-runtime. |
@@ -902,7 +902,7 @@ Selected high-impact decisions from the Step 5 + Step 6 + Step 7 iterations:
 | 1 | Single-outcome scheduling-pull API pattern | Radio queue overflow prevention; FR-defined delays self-rate-limit |
 | 2 | Bridge layer as separate `moonblokz-node-runtime` crate | Embassy runtime ownership separation; chain-lib stays sync no_std |
 | 3 | Three-type model (Owned / View / Builder) for Block + Transaction | Outcome enums stay ~16 B (borrow) not 2 KB (owned) |
-| 4 | Mempool + vote extracted into separate sub-crates | FR30 + ADR-007; clean concern separation |
+| 4 | Mempool + vote extracted into separate sub-crates | FR30 + FR55 (`scoring_module` boundary); clean concern separation |
 | 5 | Const-generic Blockchain\<C, S, X, MAX_NODES, ...\> | Compile-time configuration without alloc |
 | 6 | Crypto handle stored on Blockchain, sign happens inside chain-lib | FR68 — chain-lib holds trait handle, never raw key bytes |
 | 7 | BlockEntry array of structs (AoS) with co-located spent_bits | ADR-016 alignment; lifecycle coupling; ~3 KB harmless side-branch waste |

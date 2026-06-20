@@ -9,12 +9,9 @@ MoonBlokz blockchain behavior includes collection, processing, and ready-like op
 The blockchain lifecycle is not only a naming distinction. Different modes may place different demands on chain knowledge, validation maturity, branch bookkeeping, and derived-state support.
 
 ### Decision
-Mode transitions are treated as **representation-aware design points**. It is not safe to assume up front that all operational modes can share one unchanged internal structure with only a flag difference.
+Mode transitions are treated as **representation-aware design points**: it is not safe to assume that all operational modes (collecting, processing, ready) share one unchanged internal structure with only a flag difference. The architecture must explicitly evaluate which data structures are shared across modes, which change meaning across modes, and which require mode-specific support.
 
-The architecture must explicitly evaluate which data structures:
-- are shared across modes,
-- change meaning across modes,
-- or require mode-specific support.
+The three-type Owned + View + Builder model for `Block` / `Transaction` (per FR61) that realizes this representation-awareness is normative in [`moonblokz-blockchain-architecture.md`](../moonblokz-blockchain-architecture.md) §3.2; the `EmitScratch` outcome view source is normative in §6.6.
 
 ### Consequences
 #### Positive

@@ -9,21 +9,9 @@ The blockchain module contains multiple internal concerns: known blocks, branch 
 The broader architecture already distinguishes authoritative truth from derived operational state. The module therefore needs one internal source that owns chain truth and drives reconciliation of the rest.
 
 ### Decision
-The module is internally organized around a **Chain Knowledge Core** as the primary orchestration source.
+The module is internally organized around a **Chain Knowledge Core** as the primary orchestration source: it owns known blocks, branch and connectivity knowledge, active-chain selection, operation mode, and the recovery / approval / `snake_chain` consequences. Derived subsystems (economic-state cache, mempool registry, vote module) maintain their own internal state but are corrected from the Chain Knowledge Core when active-chain truth changes.
 
-The Chain Knowledge Core owns:
-- known blocks,
-- branch and connectivity knowledge,
-- active-chain selection,
-- operation mode,
-- and embedded recovery / approval / `snake_chain` consequences.
-
-Derived or working subsystems such as:
-- the economic state cache,
-- the mempool registry,
-- and the vote module
-
-may maintain their own internal state, but the Chain Knowledge Core remains the source that drives correction and reconciliation when active-chain truth changes.
+The 15 + 1 internal modules that realize this organization (`lifecycle`, `chain_heads`, `snake_chain`, `branch_value`, `reconciliation`, `node_info`, `creator`, `approval`, `queries`, …) are normative in [`moonblokz-blockchain-architecture.md`](../moonblokz-blockchain-architecture.md) §4.
 
 ### Consequences
 #### Positive
