@@ -84,7 +84,7 @@ The architecture work was reframed from the BMAD default deliverables (generic t
 1. **Public API definition** (sync, narrow) — see §2.
 2. **In-memory data structure budget** — sized for ~600 durable blocks (RP2040 figure: 2 MB flash − code − control plane ÷ 4 KB page × 2 slots/page) and up to ~1000 nodes — see §3 + §4.
 3. **Internal module structure** — see §5.
-4. **Vote management and mempool extracted into separate library crates** alongside `moonblokz-chain-lib` — see §2.
+4. **Vote management and mempool extracted into separate library crates** alongside `moonblokz-blockchain` — see §2.
 
 ### 1.3 The single-outcome scheduling-pull API pattern
 
@@ -100,7 +100,7 @@ If the blockchain has more work pending (e.g., a queued parent-recovery request 
 ### 1.4 Bridge layer = `moonblokz-node-runtime`
 
 The radio↔blockchain integration lives in a **separate bridge crate** (`moonblokz-node-runtime`), not inside the blockchain. The bridge owns the embassy async runtime and handles:
-- Translating `RadioMessage` enum variants (from `moonblokz-radio-lib`) into chain-lib semantic calls (`receive_block`, `receive_transaction`, `receive_support`).
+- Translating `RadioMessage` enum variants (from `moonblokz-radio-lib`) into blockchain semantic calls (`receive_block`, `receive_transaction`, `receive_support`).
 - Translating outcome variants back into radio outgoing messages via `MessageProcessingResult` (radio crate's existing enum, FR66).
 - Scheduling: a single `embassy::select` loop with one `Timer::at(NextCall)` arm.
 - Two-core split: Core 0 hosts real-time radio + local-UI tasks; Core 1 hosts the blockchain task **including the `moonblokz-blockchain` crate, the `moonblokz-mempool` sub-crate, the `moonblokz-vote` sub-crate, and the `moonblokz-configuration` sub-crate** — all sync, no-alloc state lives on Core 1. Embassy channels bridge cores.
@@ -154,7 +154,7 @@ graph TB
 ```
 
 **New crates introduced by this architecture:**
-1. `moonblokz-mempool` — extracted from chain-lib per FR30 (mempool is separate module)
+1. `moonblokz-mempool` — extracted from blockchain per FR30 (mempool is separate module)
 2. `moonblokz-vote` — extracted as its own concern (vote engine is separate from the radio-side scoring module per PRD FR55)
 3. `moonblokz-node-runtime` — bridge layer, hosts embassy async + radio↔blockchain glue
 4. `moonblokz-configuration` — future, separate BMAD; holds chain-config state with mini-VM capability per FR56
@@ -173,7 +173,7 @@ For every wire-format payload (Block, Transaction, Support, … ) `moonblokz-cha
 | `BlockView<'_>` | Borrow into existing bytes (radio buffer / emit scratch / storage page) | bound to source | ~16 B (pointer + len) |
 | `BlockBuilder` | Mutation surface for block construction (FR45 creator) | scope of construction | ~2 KB internal buffer |
 
-Outcomes use `BlockView<'_>` to keep enum variants small (~16 B borrow), not 2 KB owned. The `emit_scratch.block_buffer` in chain-lib state owns the bytes; the view borrows them.
+Outcomes use `BlockView<'_>` to keep enum variants small (~16 B borrow), not 2 KB owned. The `emit_scratch.block_buffer` in blockchain state owns the bytes; the view borrows them.
 
 ### 2.3 PRNG sub-seed derivation hierarchy (FR43)
 
@@ -189,7 +189,7 @@ graph TB
     Root -->|"derive_subseed('replay')"| Replay
 ```
 
-Each sub-crate (mempool, vote) receives a sub-seed during initialization; the chain-lib retains the root. This ensures deterministic, reproducible PRNG behavior across the system without coupling the sub-crates to each other.
+Each sub-crate (mempool, vote) receives a sub-seed during initialization; the blockchain retains the root. This ensures deterministic, reproducible PRNG behavior across the system without coupling the sub-crates to each other.
 
 ### 2.4 Sequence diagrams (illustrative)
 
@@ -406,7 +406,7 @@ pub enum TickOutcome<'a> {
 | # | Kérdés | Döntés | Indok |
 |---|---|---|---|
 | 1 | `node_zero_pk` minden init-ben paraméter? | **Igen** — mind a 3 init-ben | Kód-szintű védelem (bootstrap of trust): a stored chain validáció során a node_zero_pk-nak out-of-band megbízható forrásból kell jönnie (pl. firmware-be sütve), különben egy sérült storage hamis trust anchor-t adhatna. |
-| 2 | Entrópia-forrás trait vagy egyszerű `prng_seed: u64`? | **`prng_seed: u64`** | A bridge layer felelős értelmes seed előállításáért (RP2040: ROSC-jitter; own_node_id × restart_count hash; stb.). A chain-lib egyszerűen elfogadja az u64-et. |
+| 2 | Entrópia-forrás trait vagy egyszerű `prng_seed: u64`? | **`prng_seed: u64`** | A bridge layer felelős értelmes seed előállításáért (RP2040: ROSC-jitter; own_node_id × restart_count hash; stb.). A blockchain egyszerűen elfogadja az u64-et. |
 | 3 | `own_node_id` paraméter a `initialize_genesis`-nél is? | **Implicit 0**, nem paraméter | A genesis kontextusa eleve "én vagyok a node #0"; a típus-szignatúra maga a contract. Az `own_pk` paraméter egyúttal `node_zero_pk` szerepű. |
 | 4 | `chain_config: X` állapota a genesis-nél? | **Üres-state implementor**; az `initial_chain_config_bytes` a Block #1 emit-kor kerül durable-locked állapotba | A chain_config struktúrának a Block #1 acceptance pillanatában válik authoritatív tartalommá. |
 | 5 | `storage: S` preconditions a 3 esetben | genesis: **üres**; join: **üres**; restart: **non-empty + well-formed** | Az init metódus `Rejected` outcome-mal tér vissza, ha a precondition nem teljesül; nem panic. |
@@ -728,7 +728,7 @@ pub struct VoteEngine<const MAX_NODES: usize> {
 | (5) FR23 forward walk peak | reconciliation forward → mempool.recheck_eligibility | ~3 KB | accumulated locals |
 | (6) FR59 restart | lifecycle.restart_from_storage → reconciliation.reconstruct loop | ~3 KB | same iter pattern as FR23 |
 
-**Decision:** the `moonblokz-node-runtime` bridge layer must declare the chain-lib hosting embassy task with a **6 KB stack** (not the 4 KB default). Other embassy tasks (radio, USB console) can remain 4 KB.
+**Decision:** the `moonblokz-node-runtime` bridge layer must declare the blockchain hosting embassy task with a **6 KB stack** (not the 4 KB default). Other embassy tasks (radio, USB console) can remain 4 KB.
 
 ---
 
@@ -748,11 +748,11 @@ pub struct VoteEngine<const MAX_NODES: usize> {
 - **FR9 Tier 1/2/3** → `staged_validation.rs` with crypto handle through `bc.crypto.verify`
 - **FR19 chain_heads** → `chain_heads.rs` + `scheduler.next_parent_recovery_tick_ms`
 - **FR23 chain-switch** → `reconciliation.reconcile_to_new_head` (backward + forward walk)
-- **FR45 block creation** → `creator.try_create_block` (`bc.crypto.sign` inside chain-lib)
+- **FR45 block creation** → `creator.try_create_block` (`bc.crypto.sign` inside blockchain)
 - **FR50 balance replay coverage** → `node_info.seed_source_idx` per-node SoA projection
 - **FR62 simulator compat** → no_std + no_alloc + sync core (see §10)
 - **FR65 no_std public API** → entire crate stack is `#![no_std]`
-- **FR68 no local signing key** → chain-lib holds `CryptoTrait` handle, never raw key bytes; sign happens inside chain-lib via `bc.crypto.sign(...)`
+- **FR68 no local signing key** → blockchain holds `CryptoTrait` handle, never raw key bytes; sign happens inside blockchain via `bc.crypto.sign(...)`
 
 The full FR1-FR69 coverage matrix (per-FR row with primary + support modules) is in `step7-architecture.html` §1.1-1.8.
 
@@ -764,7 +764,7 @@ FR52 ("no explicit UTXO saturation detection") is itself a "doing nothing" requi
 
 ## 10. FR62 simulator compatibility (Step 7 §5)
 
-The chain-lib design is **fully compatible** with the existing `moonblokz-radio-simulator` (std host, multi-node, eframe/egui-based desktop tool):
+The blockchain design is **fully compatible** with the existing `moonblokz-radio-simulator` (std host, multi-node, eframe/egui-based desktop tool):
 
 | Requirement | Step 5/6 design | Status |
 |---|---|---|
@@ -797,13 +797,13 @@ async fn node_task(mut node: SimNode, mut rx: Receiver<Event>) {
 }
 ```
 
-**Critical**: the chain-lib never requires `'static` queues, so no `Box::leak()` is needed on the chain-lib state (the simulator already uses `Box::leak()` for radio queues — that's a radio-lib requirement, not a chain-lib one).
+**Critical**: the blockchain never requires `'static` queues, so no `Box::leak()` is needed on the blockchain state (the simulator already uses `Box::leak()` for radio queues — that's a radio-lib requirement, not a blockchain one).
 
 ---
 
 ## 11. `ChainConfigTrait` outline (Step 8 — new)
 
-The 5 delegated FRs (FR7, FR8, FR17, FR49, FR56) live in a separate `moonblokz-configuration` crate (future, separate BMAD). The chain-lib accesses chain-config via this trait:
+The 5 delegated FRs (FR7, FR8, FR17, FR49, FR56) live in a separate `moonblokz-configuration` crate (future, separate BMAD). The blockchain accesses chain-config via this trait:
 
 ```rust
 pub trait ChainConfigTrait {
@@ -829,23 +829,23 @@ pub trait ChainConfigTrait {
     // FR49 replay handling (chain-config blocks must be replayed before window drop)
     fn handle_window_drop_replay(&mut self, replay_view: ChainConfigReplayView<'_>);
 
-    // FR56 mini-VM capability (future — opaque to chain-lib)
+    // FR56 mini-VM capability (future — opaque to blockchain)
     fn supports_vm_extension(&self) -> bool;
 }
 ```
 
-**Why a trait, not direct ownership in chain-lib:**
+**Why a trait, not direct ownership in blockchain:**
 - The chain-config crate will eventually carry a mini-VM (FR56) for programmable governance — a domain-specific capability that does not belong in the core blockchain logic.
-- The chain-lib must remain `no_std no-alloc` and minimal; pushing VM execution to a separate crate keeps the chain-lib lean.
+- The blockchain must remain `no_std no-alloc` and minimal; pushing VM execution to a separate crate keeps the blockchain lean.
 - Trait-based decoupling lets the simulator and tests inject mock chain-configs trivially.
 
-**Owned by Blockchain via generic param:** `X: ChainConfigTrait` (see §3.1 Blockchain struct definition). The chain-lib calls `bc.chain_config.current_inter_block_interval_ms()` etc.
+**Owned by Blockchain via generic param:** `X: ChainConfigTrait` (see §3.1 Blockchain struct definition). The blockchain calls `bc.chain_config.current_inter_block_interval_ms()` etc.
 
 ---
 
 ## 12. BLS deployment-tuning recipe (Step 8 — new)
 
-When a deployment selects the BLS crypto backend, the default const-generic values (1000 nodes, 500 snake-chain window) **do not fit** the 264 KB SRAM ceiling once the radio `memory-config-medium` profile is counted at its source-confirmed ~60 KB (full-system ~281 KB, ~17 KB over). The chain-lib code does NOT need to change — tuning happens at the deployment binary's const-generic instantiation site, and for BLS it is mandatory rather than optional.
+When a deployment selects the BLS crypto backend, the default const-generic values (1000 nodes, 500 snake-chain window) **do not fit** the 264 KB SRAM ceiling once the radio `memory-config-medium` profile is counted at its source-confirmed ~60 KB (full-system ~281 KB, ~17 KB over). The blockchain code does NOT need to change — tuning happens at the deployment binary's const-generic instantiation site, and for BLS it is mandatory rather than optional.
 
 ### 12.1 Tuning levers (most impactful first)
 
@@ -876,20 +876,20 @@ A future architectural enhancement: **LRU public key cache**. Hot nodes' public 
 
 ## 13. Refactor / implementation task list (Step 8 — finalized)
 
-Tasks to bring the empty `moonblokz-chain-lib` directory and the existing dependencies in line with this architecture:
+Tasks to bring the empty `moonblokz-blockchain` directory and the existing dependencies in line with this architecture:
 
 | # | Task | Crate / location | Notes |
 |---|---|---|---|
-| 1 | Rename empty `moonblokz-chain-lib/` to `moonblokz-blockchain/` | filesystem | The existing dir is empty; safe rename. |
+| 1 | Establish empty `moonblokz-blockchain/` directory for the new crate | filesystem | Greenfield scaffold; the new crate lives in its own directory. |
 | 2 | Scaffold `moonblokz-mempool/` crate (new sibling) | filesystem | See §3.3 API surface. |
 | 3 | Scaffold `moonblokz-vote/` crate (new sibling) | filesystem | See §3.4 API surface. |
-| 4 | Scaffold `moonblokz-node-runtime/` bridge crate | filesystem | embassy::select loop + radio↔chain-lib glue. |
+| 4 | Scaffold `moonblokz-node-runtime/` bridge crate | filesystem | embassy::select loop + radio↔blockchain glue. |
 | 5 | Add three-type model to `moonblokz-chain-types` | existing crate | `Block` (Owned) + `BlockView<'_>` + `BlockBuilder` per FR61. Also Transaction triplet. |
 | 6 | Rename `Block` → `BlockView` where applicable in chain-types | existing crate | Per Step 5 user directive: current `Block` is actually a view. |
 | 7 | Radio-lib getter API additions | `moonblokz-radio-lib` | Expose radio-derived score input cleanly for vote sub-crate (per PRD FR55 `scoring_module` boundary). |
-| 8 | Set `moonblokz-node-runtime` chain-lib task stack to 6 KB | `moonblokz-node-runtime/src/main.rs` | Per §8 stack analysis. Other tasks remain 4 KB. |
+| 8 | Set `moonblokz-node-runtime` blockchain task stack to 6 KB | `moonblokz-node-runtime/src/main.rs` | Per §8 stack analysis. Other tasks remain 4 KB. |
 | 9 | Initial scaffold for `moonblokz-configuration` crate | filesystem (placeholder) | Trait stub per §11 only; full BMAD later. |
-| 10 | Wire all 4 new crates into `moonblokz-node/Cargo.toml` | existing | Replace chain-lib path dep with blockchain + add mempool + vote + node-runtime. |
+| 10 | Wire all 4 new crates into `moonblokz-node/Cargo.toml` | existing | Add `moonblokz-blockchain` + `moonblokz-mempool` + `moonblokz-vote` + `moonblokz-node-runtime` path deps. |
 
 ---
 
@@ -900,11 +900,11 @@ Selected high-impact decisions from the Step 5 + Step 6 + Step 7 iterations:
 | # | Decision | Rationale |
 |---|---|---|
 | 1 | Single-outcome scheduling-pull API pattern | Radio queue overflow prevention; FR-defined delays self-rate-limit |
-| 2 | Bridge layer as separate `moonblokz-node-runtime` crate | Embassy runtime ownership separation; chain-lib stays sync no_std |
+| 2 | Bridge layer as separate `moonblokz-node-runtime` crate | Embassy runtime ownership separation; blockchain stays sync no_std |
 | 3 | Three-type model (Owned / View / Builder) for Block + Transaction | Outcome enums stay ~16 B (borrow) not 2 KB (owned) |
 | 4 | Mempool + vote extracted into separate sub-crates | FR30 + FR55 (`scoring_module` boundary); clean concern separation |
 | 5 | Const-generic Blockchain\<C, S, X, MAX_NODES, ...\> | Compile-time configuration without alloc |
-| 6 | Crypto handle stored on Blockchain, sign happens inside chain-lib | FR68 — chain-lib holds trait handle, never raw key bytes |
+| 6 | Crypto handle stored on Blockchain, sign happens inside blockchain | FR68 — blockchain holds trait handle, never raw key bytes |
 | 7 | BlockEntry array of structs (AoS) with co-located spent_bits | ADR-016 alignment; lifecycle coupling; ~3 KB harmless side-branch waste |
 | 8 | No `storage_index` field in BlockEntry | `blocks[i] ⟷ storage_index = i` 1:1 |
 | 9 | `head_idx == u32::MAX` / `sequence == u32::MAX` as empty-slot sentinels | Saves count field; FR53 already rejects u32::MAX-based chain extension |
@@ -913,13 +913,13 @@ Selected high-impact decisions from the Step 5 + Step 6 + Step 7 iterations:
 | 12 | Lifecycle phase as 1-byte field directly on Blockchain | No separate LifecycleState struct (single field doesn't justify it) |
 | 13 | SchedulerState 4 conditional deadlines as `Option<u64>` | FR46 explicit "not scheduled" states; `filter_map(min)` for NextCall |
 | 14 | Block-creation + grace-period deadlines network-wide-consistent | Critical consensus invariant; both `Some` on every node, role-differentiated triggers |
-| 15 | `moonblokz-configuration` as separate future crate | FR56 mini-VM capability doesn't belong in core chain-lib |
+| 15 | `moonblokz-configuration` as separate future crate | FR56 mini-VM capability doesn't belong in core blockchain |
 | 16 | Chain-lib hosting embassy task gets 6 KB stack (not 4 KB) | §8 FR45 block creation peak ~4 KB |
 | 17 | Feature-gated introspection getters (`#[cfg(feature = "introspection")]`) | FR65 production binary minimal; simulator/CLI enable for observability |
 | 18 | Three separate `initialize_*` constructors (genesis / join / restart), not one with a mode enum | Distinct precondition contracts, parameter shapes, and outcome enum types; bridge dispatches on boot-mode anyway |
 | 19 | Genesis two-block bootstrap split across `initialize_genesis` + next `on_tick` | Single-outcome scheduling-pull: init returns Block #0 + `NextCall::Immediate`; tick emits Block #1 (`GenesisChainConfigCreated`) |
 | 20 | `node_zero_pk` mind a 3 init-ben paraméter | Bootstrap of trust: out-of-band megbízható forrásból (firmware-be sütve) kell jönnie; sérült storage nem hamisíthat trust anchor-t |
-| 21 | Entrópia: egyszerű `prng_seed: u64` paraméter | Bridge layer felelős a seed előállításáért (RP2040 ROSC-jitter, restart_count hash); chain-lib egyszerűen elfogadja |
+| 21 | Entrópia: egyszerű `prng_seed: u64` paraméter | Bridge layer felelős a seed előállításáért (RP2040 ROSC-jitter, restart_count hash); blockchain egyszerűen elfogadja |
 | 22 | ApprovalAccumulator fix MAX_BLOCK_SIZE buffer (~2 KB), crypto-agnostic | BLS in-place aggregation hatékonyabb (~4 B/supporter vs. Schnorr ~36 B/supporter), de az allokált memória mérete a max blokk-méret mindkét variantnál |
 
 ---
@@ -930,9 +930,9 @@ Selected high-impact decisions from the Step 5 + Step 6 + Step 7 iterations:
 |---|---|---|
 | BLS does not fit at 1000-node default (~−17 KB) with the ~60 KB radio medium profile | Medium-High | §12 tuning; `MAX_NODES 1000→500` mandatory for BLS → ~39 KB margin |
 | `moonblokz-configuration` crate not yet scaffolded | Medium | Trait stub per §11; full BMAD as a follow-up |
-| FR45 block creation stack peak (~4 KB) close to default | Low | §13 task #8: 6 KB stack for chain-lib task |
+| FR45 block creation stack peak (~4 KB) close to default | Low | §13 task #8: 6 KB stack for blockchain task |
 | `MAX_AGGREGATED_SIGNATURES` / `MULTI_SIGNATURE_SIZE` const values not yet ratified beyond ADR-015 default 50 | Low | Step 9 (implementation kickoff) confirms with crypto-lib test vectors |
-| Simulator chain-lib integration not yet implemented | Out-of-scope (post-MVP) | §10 confirms architectural compatibility; integration is separate work |
+| Simulator blockchain integration not yet implemented | Out-of-scope (post-MVP) | §10 confirms architectural compatibility; integration is separate work |
 
 ---
 
@@ -947,7 +947,7 @@ Selected high-impact decisions from the Step 5 + Step 6 + Step 7 iterations:
    - Implement `reconciliation.rs` (most complex; depends on all of the above)
    - Implement `creator.rs` + `approval.rs` + `queries.rs`
 3. Schedule a separate BMAD for `moonblokz-configuration` crate covering FR7, FR8, FR17, FR49, FR56 in depth.
-4. Plan `moonblokz-radio-simulator` chain-lib integration as a separate workstream once node firmware is functional.
+4. Plan `moonblokz-radio-simulator` blockchain integration as a separate workstream once node firmware is functional.
 
 _(PRD reconciliation tasks for FR10, FR43, FR64 were completed on 2026-06-17 — both `_bmad-output/planning-artifacts/prd.md` and `moonblokz-info/moonblokz-blockchain-prd.md` now carry `Implementation annotation (architecture 2026-06-17)` paragraphs at the three FRs.)_
 

@@ -141,7 +141,7 @@ This document explains:
 - the BLS deployment-tuning recipe with `MAX_NODES` reduction levers,
 - the consolidated 22-row decisions log, the risks list, and the implementation roadmap.
 
-Use this file as the canonical reference whenever any other knowledge-base document — concept, algorithm, or implementation — describes a chain-lib data structure, module boundary, public API method, RAM/stack budget, const-generic value, crate dependency edge, or initialization parameter. Divergence from the Architecture Decision Document must be treated as exact evidence of a knowledge-base inconsistency.
+Use this file as the canonical reference whenever any other knowledge-base document — concept, algorithm, or implementation — describes a blockchain data structure, module boundary, public API method, RAM/stack budget, const-generic value, crate dependency edge, or initialization parameter. Divergence from the Architecture Decision Document must be treated as exact evidence of a knowledge-base inconsistency.
 
 ### 6. [MoonBlokz Blockchain Algorithm Model](./moonblokz-blockchain-algorythm.md)
 
@@ -471,7 +471,7 @@ Use this file when you need a quick orientation to the current public web presen
 2. Continue with [MoonBlokz Technology and Architecture](./moonblokz-technology.md) to understand the implementation strategy and architectural foundation.
 3. Then read [MoonBlokz Blockchain Concept Model](./moonblokz-blockchain-concept.md) to understand the operating idea of MoonBlokz blockchain behavior.
 4. Then read [MoonBlokz Blockchain Product Requirements Document](./moonblokz-blockchain-prd.md) for the authoritative FR1–FR69 functional requirements and NFR1–NFR26 Non-Functional Requirements; this is the canonical anchor every other blockchain document references by FR number.
-5. Then read [MoonBlokz Blockchain Architecture Decision Document](./moonblokz-blockchain-architecture.md) for the authoritative crate-split, public API, internal modules, data-structure layouts, RAM budget, and decisions log; this is the canonical anchor every other blockchain document references for chain-lib implementation shape.
+5. Then read [MoonBlokz Blockchain Architecture Decision Document](./moonblokz-blockchain-architecture.md) for the authoritative crate-split, public API, internal modules, data-structure layouts, RAM budget, and decisions log; this is the canonical anchor every other blockchain document references for blockchain implementation shape.
 6. Continue with [MoonBlokz Blockchain Algorithm Model](./moonblokz-blockchain-algorythm.md) for the full Parts III, IV, and V algorithmic flow and the detailed main data structures.
 7. Then read [MoonBlokz Blockchain Implementation Notes](./moonblokz-blockchain-implementation.md) for implementation-facing constraints, configuration boundaries, and cautions.
 8. Then read [MoonBlokz Blockchain ADR Index](./blockchain-adrs/ADR-INDEX.md) for the currently accepted architecture decisions and their recommended reading order before moving into adjacent subsystem documents.
