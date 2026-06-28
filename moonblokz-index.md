@@ -21,6 +21,7 @@ If you already know your topic, use this table to jump straight to the relevant 
 | Field testing — telemetry, Probe, HUB, OTA updates, CLI, analyzer | [Telemetry Concept](./moonblokz-telemetry-concept.md), [Telemetry Algorithm](./moonblokz-telemetry-algorythm.md), [Telemetry Implementation](./moonblokz-telemetry-implementation.md) |
 | Storage and flash persistence — backends, block layout, integrity, wear | [Storage PRD](./moonblokz-storage-prd.md), [Storage Architecture](./moonblokz-storage-architecture.md), [Storage Concept](./moonblokz-storage-concept.md), [Storage Algorithm](./moonblokz-storage-algorythm.md), [Storage Implementation](./moonblokz-storage-implementation.md) |
 | Memory and RAM budgets, capacity caps, const-generics, flash and airtime limits | [System Constraints](./moonblokz-system-constraints.md) (first stop), then [Blockchain Architecture](./moonblokz-blockchain-architecture.md) §7/§12 and [Radio Implementation](./moonblokz-radio-implementation.md) |
+| Open gaps, unresolved verification items, known telemetry drift, post-MVP recovery questions | [Open Gaps Register](./moonblokz-open-gaps-register.md) |
 | Term meanings and cross-subsystem disambiguation | [Glossary](./moonblokz-glossary.md) |
 | Public website | [Website Summary](./website.md) |
 
@@ -57,6 +58,20 @@ It is explicitly **not authoritative** for the values it lists — each value li
 A disambiguation index for terms that span subsystems or carry more than one meaning — for example `score` (radio relay metric vs. radio-side vote-target input; the blockchain-side per-node value is the separate, non-overloaded term **accumulated vote**) and `verification horizon` versus the active-chain window.
 
 It is explicitly **not authoritative**: each entry links to the term's authoritative definition site, which wins on any divergence. Use this file when a term reads ambiguously across documents and you need to confirm which meaning and which source applies.
+
+### [MoonBlokz Open Gaps Register](./moonblokz-open-gaps-register.md)
+
+A cross-cutting register for unresolved gaps, verified documentation drift, and explicitly post-MVP design questions that affect MoonBlokz planning, implementation, deployment, or operations.
+
+This document explains:
+
+- radio and airtime deployment gaps such as the missing regional LoRa duty-cycle limit,
+- flash and storage-geometry gaps such as unquantified wear-lifetime and the storage slot-count divisor verification item,
+- telemetry deployment-model and docs-vs-code drift across Probe, HUB, Collector, CLI, and Update Server,
+- the accepted MVP no-saturation-handling stance for bounded UTXO retention,
+- and the post-MVP open questions around dynamic custodian fees and long-disconnect recovery.
+
+It is explicitly **not authoritative**: each entry links to the source document where the underlying gap, drift, limitation, or open question is defined. Use this file before planning work that depends on unresolved deployment constraints, telemetry interoperability assumptions, UTXO saturation behavior, or long-disconnect recovery.
 
 ## Contents
 
@@ -495,5 +510,7 @@ Use this file when you need a quick orientation to the current public web presen
 26. Then read [MoonBlokz Website Summary](./website.md) when you need a compact summary of the public website, its location, current public-facing structure, and deployment form.
 
 > **Cross-cutting reference (not part of the linear flow):** Consult [MoonBlokz System Constraints & Limits Reference](./moonblokz-system-constraints.md) whenever you need a numeric cap, memory budget, flash or airtime limit, or a known cross-document constraint discrepancy. It restates each value with a one-line implication and links to the authoritative source.
+
+> **Cross-cutting reference (not part of the linear flow):** Consult [MoonBlokz Open Gaps Register](./moonblokz-open-gaps-register.md) when planning around unresolved deployment constraints, telemetry docs-vs-code drift, UTXO saturation behavior, or post-MVP recovery questions.
 
 > **Cross-cutting reference (not part of the linear flow):** Consult the [MoonBlokz Glossary](./moonblokz-glossary.md) when a term such as `score` or `verification horizon` reads ambiguously across documents; it disambiguates the senses and links to each authoritative definition site.

@@ -185,6 +185,7 @@ Per [`AGENTS.md`](./AGENTS.md), divergences must be flagged, not silently resolv
 
 ## Related Documents
 
+- [`moonblokz-open-gaps-register.md`](./moonblokz-open-gaps-register.md) — consolidates unresolved gaps and verification items, including the duty-cycle, flash wear-lifetime, and storage divisor items listed here.
 - [`moonblokz-blockchain-architecture.md`](./moonblokz-blockchain-architecture.md) — authoritative for const-generics, RAM budget, stack frames, tuning.
 - [`moonblokz-crypto-algorythm.md`](./moonblokz-crypto-algorythm.md) — authoritative for crypto constants and bounded aggregation.
 - [`moonblokz-storage-algorythm.md`](./moonblokz-storage-algorythm.md) / [`moonblokz-storage-architecture.md`](./moonblokz-storage-architecture.md) — authoritative for block size and flash geometry.
