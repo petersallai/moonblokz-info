@@ -35,7 +35,7 @@ These HTMLs are the iteration history; this `moonblokz-blockchain-architecture.m
 
 ---
 
-# Architecture Decision Document — `moonblokz-blockchain` and Related Crates
+## Architecture Decision Document — `moonblokz-blockchain` and Related Crates
 
 _Workflow: BMAD `bmad-create-architecture`. Steps 1-8 complete (2026-05-19 → 2026-06-17). Step-by-step working artifacts preserved at `step5-architecture.html`, `step6-architecture.html`, `step7-architecture.html`._
 
@@ -179,7 +179,7 @@ Outcomes use `BlockView<'_>` to keep enum variants small (~16 B borrow), not 2 K
 
 ```mermaid
 graph TB
-    Root["Blockchain root PRNG (WyRand u64)<br/>Seeded from initial node_id + restart timestamp"]
+    Root["Blockchain root PRNG (Xoshiro256PlusPlus, 256-bit state)<br/>Seeded from initial node_id + restart timestamp"]
     Mempool["Mempool sub-seed<br/>FR43 random eviction"]
     Vote["Vote engine sub-seed<br/>FR38 next-creator ordering"]
     Replay["Snake_chain replay sub-seed<br/>FR50 seed-source selection"]
@@ -190,6 +190,8 @@ graph TB
 ```
 
 Each sub-crate (mempool, vote) receives a sub-seed during initialization; the blockchain retains the root. This ensures deterministic, reproducible PRNG behavior across the system without coupling the sub-crates to each other.
+
+**Algorithm choice (2026-06-27 revision).** The original Step 4 framing named WyRand u64 as the root PRNG. The 2026-06-27 implementation pass (Story 1.3) substituted Xoshiro256PlusPlus (Blackman & Vigna, 2018, via the `rand_xoshiro` crate) for the same root + sub-seed-derivation role. The substitution is contained: it does not change the public `derive_subseed(label) -> u64` contract or the sub-crate integration (each sub-crate still receives an opaque `u64` and chooses its own internal PRNG). Rationale: significantly higher statistical quality (PractRand >2 TB vs. ~32 GB) at negligible cost on RP2040 (+24 B per instance, comparable cycle budget per `next_u64`, no new transitive deps beyond `rand_xoshiro` + `rand_core`, both `no_std` with `default-features = false`).
 
 ### 2.4 Sequence diagrams (illustrative)
 
@@ -339,7 +341,7 @@ impl<...> Mempool<...> {
 pub struct VoteEngine<const MAX_NODES: usize> {
     accumulated_vote: [u32; MAX_NODES],      // 4 KB on 1000-node default
     cached_top_creator: Option<u32>,
-    sub_seed_prng: WyRand,
+    sub_seed_prng: Xoshiro256PlusPlus,
 }
 
 impl<const MAX_NODES: usize> VoteEngine<MAX_NODES> {
@@ -401,15 +403,15 @@ pub enum TickOutcome<'a> {
 - Different outcome enum types reflect distinct effect spaces.
 - The bridge layer code that calls `initialize_*` is structured around the boot-mode decision anyway (e.g., a CLI flag or stored-state probe); a single method would just push the dispatch one level deeper.
 
-**Init parameter rationale (rögzített döntések):**
+**Init parameter rationale (fixed decisions):**
 
-| # | Kérdés | Döntés | Indok |
+| # | Question | Decision | Rationale |
 |---|---|---|---|
-| 1 | `node_zero_pk` minden init-ben paraméter? | **Igen** — mind a 3 init-ben | Kód-szintű védelem (bootstrap of trust): a stored chain validáció során a node_zero_pk-nak out-of-band megbízható forrásból kell jönnie (pl. firmware-be sütve), különben egy sérült storage hamis trust anchor-t adhatna. |
-| 2 | Entrópia-forrás trait vagy egyszerű `prng_seed: u64`? | **`prng_seed: u64`** | A bridge layer felelős értelmes seed előállításáért (RP2040: ROSC-jitter; own_node_id × restart_count hash; stb.). A blockchain egyszerűen elfogadja az u64-et. |
-| 3 | `own_node_id` paraméter a `initialize_genesis`-nél is? | **Implicit 0**, nem paraméter | A genesis kontextusa eleve "én vagyok a node #0"; a típus-szignatúra maga a contract. Az `own_pk` paraméter egyúttal `node_zero_pk` szerepű. |
-| 4 | `chain_config: X` állapota a genesis-nél? | **Üres-state implementor**; az `initial_chain_config_bytes` a Block #1 emit-kor kerül durable-locked állapotba | A chain_config struktúrának a Block #1 acceptance pillanatában válik authoritatív tartalommá. |
-| 5 | `storage: S` preconditions a 3 esetben | genesis: **üres**; join: **üres**; restart: **non-empty + well-formed** | Az init metódus `Rejected` outcome-mal tér vissza, ha a precondition nem teljesül; nem panic. |
+| 1 | Should `node_zero_pk` be a parameter to every init method? | **Yes** — in all 3 init methods | Code-level bootstrap-of-trust protection: during stored-chain validation, `node_zero_pk` must come from an out-of-band trusted source (for example, baked into firmware); otherwise corrupted storage could provide a false trust anchor. |
+| 2 | Entropy-source trait or simple `prng_seed: u64`? | **`prng_seed: u64`** | The bridge layer is responsible for producing a meaningful seed (RP2040 ROSC jitter, `own_node_id × restart_count` hash, etc.). The blockchain simply accepts the `u64`. |
+| 3 | Should `own_node_id` also be a parameter to `initialize_genesis`? | **Implicit 0**, not a parameter | The genesis context is by definition “I am node #0”; the type signature itself is the contract. The `own_pk` parameter also serves the `node_zero_pk` role. |
+| 4 | What is the state of `chain_config: X` at genesis? | **Empty-state implementor**; `initial_chain_config_bytes` becomes durable-locked when Block #1 is emitted | The `chain_config` structure becomes authoritative content at the moment of Block #1 acceptance. |
+| 5 | `storage: S` preconditions in the 3 cases | genesis: **empty**; join: **empty**; restart: **non-empty + well-formed** | The init method returns a `Rejected` outcome if the precondition is not met; it does not panic. |
 
 ---
 
@@ -479,7 +481,7 @@ graph TB
 
 ### 4.2 Module-by-module summary
 
-The full per-module breakdown (folyamatok / adatstruktúrák / kapcsolatok / API) is in `step6-architecture.html` §4. Brief summary:
+The full per-module breakdown (processes / data structures / relationships / API) is in `step6-architecture.html` §4. Brief summary:
 
 | Module | Primary FR | Owns / mutates |
 |---|---|---|
@@ -590,9 +592,9 @@ No standalone struct — only 2 u32 fields. `snake_chain.rs` module remains as o
 
 ```rust
 pub(crate) struct ApprovalAccumulator {
-    // Evidence block in-place builder. A buffer kapacitása = MAX_BLOCK_SIZE;
-    // ennél több supporter nem fér bele függetlenül a crypto backend-től.
-    // Crypto-AGNOSTIC: ~2 KB mind Schnorr-on, mind BLS-en.
+    // Evidence block in-place builder. Buffer capacity = MAX_BLOCK_SIZE;
+    // no additional supporters fit beyond this, regardless of crypto backend.
+    // Crypto-agnostic: ~2 KB on both Schnorr and BLS.
     block_buffer: [u8; MAX_BLOCK_SIZE],          // ~2 KB
     block_len: u16,
     deviation_sequence: u32,
@@ -602,11 +604,11 @@ pub(crate) struct ApprovalAccumulator {
 // total: ~2 KB + ~40 B metadata = ~2 KB
 ```
 
-**Crypto-aware per-supporter cost a 2 KB buffer-en belül:**
-- **Schnorr**: új supporter növekedés = node_id (4 B) + signature (~32 B) ≈ **36 B / supporter** → 50 supporter ≈ 1.8 KB (közel a 2 KB-os limithez).
-- **BLS**: új supporter növekedés = node_id (4 B) only; a signature **egyetlen 96 B-os aggregated signature slotban** él, ami nem nő a supporter-szám-mal. ≈ **4 B / supporter** → 50 supporter ≈ 296 B (bőven férőhely).
+**Crypto-aware per-supporter cost within the 2 KB buffer:**
+- **Schnorr**: each new supporter adds `node_id` (4 B) + signature (~32 B) ≈ **36 B / supporter** → 50 supporters ≈ 1.8 KB (near the 2 KB limit).
+- **BLS**: each new supporter adds only `node_id` (4 B); the signature lives in a single 96 B aggregated-signature slot, which does not grow with supporter count. ≈ **4 B / supporter** → 50 supporters ≈ 296 B (ample room).
 
-BLS itt jelentősen **hatékonyabb** a Schnorr-nál: ugyanaz a 2 KB buffer 5-10× több supporter-t tud befogadni. Az allokált memória azonban változatlan ~2 KB mindkét variantnál.
+Here BLS is significantly **more efficient** than Schnorr: the same 2 KB buffer can hold 5–10× more supporters. The allocated memory remains unchanged at ~2 KB for both variants.
 
 ### 6.6 `EmitScratch` — outcome view source
 
@@ -640,7 +642,7 @@ pub(crate) struct SchedulerState {
 pub struct Mempool<const COMPACT_BYTES: usize, const MAX_ENTRIES: usize, const MAX_NODES: usize> {
     compact_buffer: [u8; COMPACT_BYTES],                // 20 160 B
     index: [Option<IndexEntry>; MAX_ENTRIES],           // 128 × ~10 B ≈ 1.28 KB
-    prng: WyRand,                                        // 8 B sub-seed
+    prng: Xoshiro256PlusPlus,                            // 32 B inner state (seeded from 8 B u64 sub-seed)
     byte_usage: u16,
     entry_count: u8,
 }
@@ -653,7 +655,7 @@ pub struct Mempool<const COMPACT_BYTES: usize, const MAX_ENTRIES: usize, const M
 pub struct VoteEngine<const MAX_NODES: usize> {
     accumulated_vote: [u32; MAX_NODES],     // 4 KB
     cached_top_creator: Option<u32>,  // ~8 B
-    sub_seed_prng: WyRand,            // 8 B
+    sub_seed_prng: Xoshiro256PlusPlus, // 32 B
 }
 // total ~4 KB
 ```
@@ -918,9 +920,9 @@ Selected high-impact decisions from the Step 5 + Step 6 + Step 7 iterations:
 | 17 | Feature-gated introspection getters (`#[cfg(feature = "introspection")]`) | FR65 production binary minimal; simulator/CLI enable for observability |
 | 18 | Three separate `initialize_*` constructors (genesis / join / restart), not one with a mode enum | Distinct precondition contracts, parameter shapes, and outcome enum types; bridge dispatches on boot-mode anyway |
 | 19 | Genesis two-block bootstrap split across `initialize_genesis` + next `on_tick` | Single-outcome scheduling-pull: init returns Block #0 + `NextCall::Immediate`; tick emits Block #1 (`GenesisChainConfigCreated`) |
-| 20 | `node_zero_pk` mind a 3 init-ben paraméter | Bootstrap of trust: out-of-band megbízható forrásból (firmware-be sütve) kell jönnie; sérült storage nem hamisíthat trust anchor-t |
-| 21 | Entrópia: egyszerű `prng_seed: u64` paraméter | Bridge layer felelős a seed előállításáért (RP2040 ROSC-jitter, restart_count hash); blockchain egyszerűen elfogadja |
-| 22 | ApprovalAccumulator fix MAX_BLOCK_SIZE buffer (~2 KB), crypto-agnostic | BLS in-place aggregation hatékonyabb (~4 B/supporter vs. Schnorr ~36 B/supporter), de az allokált memória mérete a max blokk-méret mindkét variantnál |
+| 20 | `node_zero_pk` is a parameter in all 3 init methods | Bootstrap of trust: it must come from an out-of-band trusted source (baked into firmware); corrupted storage cannot forge the trust anchor |
+| 21 | Entropy: simple `prng_seed: u64` parameter | The bridge layer is responsible for seed generation (RP2040 ROSC jitter, `restart_count` hash); the blockchain simply accepts it |
+| 22 | `ApprovalAccumulator` fixed `MAX_BLOCK_SIZE` buffer (~2 KB), crypto-agnostic | BLS in-place aggregation is more efficient (~4 B/supporter vs. Schnorr ~36 B/supporter), but the allocated memory size is the maximum block size for both variants |
 
 ---
 
