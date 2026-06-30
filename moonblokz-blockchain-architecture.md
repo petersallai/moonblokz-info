@@ -121,7 +121,7 @@ graph TB
         BC["Blockchain&lt;C, S, X, const generics...&gt;"]
     end
     subgraph Mempool["moonblokz-mempool (new sub-crate)"]
-        MP["Mempool&lt;COMPACT_BYTES, MAX_ENTRIES, MAX_NODES&gt;"]
+        MP["Mempool&lt;COMPACT_BYTES, MAX_ENTRIES&gt;"]
     end
     subgraph Vote["moonblokz-vote (new sub-crate)"]
         VE["VoteEngine&lt;MAX_NODES&gt;"]
@@ -312,7 +312,6 @@ pub enum ReceiveBlockOutcome<'a> {
 pub struct Mempool<
     const COMPACT_BYTES: usize,    // 20160
     const MAX_ENTRIES: usize,      // 128
-    const MAX_NODES: usize,        // 1000
 > { /* compact_buffer + index + sub-seed PRNG */ }
 
 impl<...> Mempool<...> {
@@ -639,15 +638,18 @@ pub(crate) struct SchedulerState {
 ### 6.8 Mempool internals (recap)
 
 ```rust
-pub struct Mempool<const COMPACT_BYTES: usize, const MAX_ENTRIES: usize, const MAX_NODES: usize> {
-    compact_buffer: [u8; COMPACT_BYTES],                // 20 160 B
-    index: [Option<IndexEntry>; MAX_ENTRIES],           // 128 × ~10 B ≈ 1.28 KB
+pub struct Mempool<const COMPACT_BYTES: usize, const MAX_ENTRIES: usize> {
+    compact_buffer: [u8; COMPACT_BYTES],                // 20 160 B default
+    index: [Option<IndexEntry>; MAX_ENTRIES],           // 128 × ~16-20 B ≈ ~2-2.5 KB straightforward layout
     prng: Xoshiro256PlusPlus,                            // 32 B inner state (seeded from 8 B u64 sub-seed)
     byte_usage: u16,
     entry_count: u8,
+    own_node_id: u32,                                    // local owner classification input for FR33
 }
-// total ~21.5 KB
+// total ~22-23 KB at the default profile before any later index bit-packing
 ```
+
+`IndexEntry` is private mempool storage metadata, not public API. It carries the FR30 storage fields (`start`, `length`, `crc32`) plus support fields for deferred eligibility, local own/non-own classification, and byte-local window-expiry metadata. There is no getter/accessor surface for this internal struct; module-local code and unit tests use direct field access to keep the embedded API surface small. `expiry_sequence` is `NodeTransfer.anchor_sequence`, the minimum complex balance-input `anchor_sequence`, or `u32::MAX` when no byte-local sequence dependency is available (registration, UTXO-only complex, zero-input complex). UTXO-input expiry that depends on the referenced output's containing block sequence requires blockchain / UTXO-cache context rather than a byte-local index field. The FR33 ownership class is local: node-transfer and registration transactions are own when their initializer equals `own_node_id`; complex transactions are own when they have at least one input and either a balance input initializer or a balance output receiver equals `own_node_id`; UTXO-only and zero-input complex transactions are non-own. The current compact-buffer implementation constrains `COMPACT_BYTES` to `u16` offsets and `MAX_ENTRIES` to `u8` entry counts. `MAX_NODES` is intentionally not a mempool const generic: node-roster capacity belongs to `Blockchain` / `NodeInfo` and `VoteEngine`, while the mempool only needs the local `own_node_id` value to classify incoming transactions.
 
 ### 6.9 Vote engine internals (recap)
 
@@ -701,21 +703,21 @@ pub struct VoteEngine<const MAX_NODES: usize> {
 
 | Consumer | Schnorr | BLS |
 |---|---:|---:|
-| moonblokz-blockchain + mempool + vote | ~121 KB | ~185 KB |
+| moonblokz-blockchain + mempool + vote | ~122 KB | ~186 KB |
 | moonblokz-radio-lib (memory-config-medium) | ~60 KB | ~60 KB |
 | moonblokz-crypto-lib scratch | ~4 KB | ~4 KB |
 | moonblokz-storage page buffer | ~4 KB | ~4 KB |
 | Embassy task stacks (5-6 tasks × 4-6 KB) | ~24 KB | ~24 KB |
 | Embassy executor + statics | ~4 KB | ~4 KB |
-| **Subtotal allocated** | **~217 KB** | **~281 KB** |
-| **Margin** (264 KB − allocated) | **~47 KB** (~18%) ✅ | **~−17 KB** (exceeds 264 KB) ❌ |
+| **Subtotal allocated** | **~218 KB** | **~282 KB** |
+| **Margin** (264 KB − allocated) | **~46 KB** (~17%) ✅ | **~−18 KB** (exceeds 264 KB) ❌ |
 
 **Radio figure:** `memory-config-medium` is counted at its source-confirmed ~60 KB (`moonblokz-radio-lib` README + `lib.rs` profile consts); an earlier ~30-40 KB estimate under-counted it and made the BLS default appear feasible.
 
 ### 7.4 Verdict
 
 - **Schnorr build**: comfortable margin, MVP-ready.
-- **BLS build**: does **not** fit at the 1000-node default once the radio `memory-config-medium` profile is counted at its source-confirmed ~60 KB (README + `lib.rs`) instead of the earlier ~30-40 KB estimate — the full-system total is ~281 KB, ~17 KB over the 264 KB ceiling. Const-generic tuning (see §12) is therefore **mandatory** for BLS: `MAX_NODES 1000 → 500` frees ~56 KB, yielding ~39 KB margin.
+- **BLS build**: does **not** fit at the 1000-node default once the radio `memory-config-medium` profile is counted at its source-confirmed ~60 KB (README + `lib.rs`) instead of the earlier ~30-40 KB estimate — the full-system total is ~282 KB, ~18 KB over the 264 KB ceiling. Const-generic tuning (see §12) is therefore **mandatory** for BLS: `MAX_NODES 1000 → 500` frees ~56 KB, yielding ~39 KB margin.
 
 ---
 
@@ -847,7 +849,7 @@ pub trait ChainConfigTrait {
 
 ## 12. BLS deployment-tuning recipe (Step 8 — new)
 
-When a deployment selects the BLS crypto backend, the default const-generic values (1000 nodes, 500 snake-chain window) **do not fit** the 264 KB SRAM ceiling once the radio `memory-config-medium` profile is counted at its source-confirmed ~60 KB (full-system ~281 KB, ~17 KB over). The blockchain code does NOT need to change — tuning happens at the deployment binary's const-generic instantiation site, and for BLS it is mandatory rather than optional.
+When a deployment selects the BLS crypto backend, the default const-generic values (1000 nodes, 500 snake-chain window) **do not fit** the 264 KB SRAM ceiling once the radio `memory-config-medium` profile is counted at its source-confirmed ~60 KB (full-system ~282 KB, ~18 KB over). The blockchain code does NOT need to change — tuning happens at the deployment binary's const-generic instantiation site, and for BLS it is mandatory rather than optional.
 
 ### 12.1 Tuning levers (most impactful first)
 
@@ -866,7 +868,7 @@ When a deployment selects the BLS crypto backend, the default const-generic valu
 
 | Profile | MAX_NODES | SNAKE_CHAIN | Margin (BLS, 264 KB) |
 |---|---:|---:|---:|
-| BLS-large | 1000 | 500 | ~−17 KB (default — does NOT fit) ❌ |
+| BLS-large | 1000 | 500 | ~−18 KB (default — does NOT fit) ❌ |
 | BLS-medium | 500 | 500 | ~39 KB ✅ |
 | BLS-small | 250 | 300 | ~73 KB ✅ |
 
@@ -930,7 +932,7 @@ Selected high-impact decisions from the Step 5 + Step 6 + Step 7 iterations:
 
 | Risk | Severity | Mitigation |
 |---|---|---|
-| BLS does not fit at 1000-node default (~−17 KB) with the ~60 KB radio medium profile | Medium-High | §12 tuning; `MAX_NODES 1000→500` mandatory for BLS → ~39 KB margin |
+| BLS does not fit at 1000-node default (~−18 KB) with the ~60 KB radio medium profile | Medium-High | §12 tuning; `MAX_NODES 1000→500` mandatory for BLS → ~39 KB margin |
 | `moonblokz-configuration` crate not yet scaffolded | Medium | Trait stub per §11; full BMAD as a follow-up |
 | FR45 block creation stack peak (~4 KB) close to default | Low | §13 task #8: 6 KB stack for blockchain task |
 | `MAX_AGGREGATED_SIGNATURES` / `MULTI_SIGNATURE_SIZE` const values not yet ratified beyond ADR-015 default 50 | Low | Step 9 (implementation kickoff) confirms with crypto-lib test vectors |

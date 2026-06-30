@@ -28,6 +28,14 @@ The long-term vision of MoonBlokz is to make it possible to create a functioning
 
 This vision combines blockchain ideas with highly constrained embedded hardware and local radio networking.
 
+## Motivation and Open-Source Principle
+
+Part IX steps back from the engineering narrative to record why MoonBlokz is pursued and why it is fully open source. The project is a deliberately long-term effort released in its entirety under the permissive MIT license, with no expectation of direct revenue.
+
+**Openness as a trust requirement.** In a blockchain the ultimate source of truth is the algorithm itself: the network can stay trustworthy despite malicious actors only when all participants follow the same verifiable rules. Open source is therefore treated as a core requirement rather than a preference — anyone can inspect the implementation, verify the protocol rules, or commission independent audits, so trust emerges from many independent parties validating the same code rather than from the promises of a single organization. A closed-source blockchain reduces this to trusting its operator, which weakens the core promise of the technology; the article contrasts OneCoin, an unverifiable closed system later exposed as a fraud, with the 2010 Bitcoin integer-overflow bug that open code allowed the community to detect and patch within hours.
+
+**Mission and an underexplored problem space.** The guiding motivation is that resilient local communication and coordination will matter more as infrastructure becomes more distributed and as activity extends into harsher, more remote environments. A survey of prior work found very little existing research on radio-based blockchains, a gap MoonBlokz treats as an opportunity to contribute to an unsolved problem; a public comparison of radio-based blockchain projects is maintained at https://moonblokz.com/comparison.
+
 ## Representative Use Cases
 
 Part I presents three illustrative use cases that define the direction of the project.
@@ -208,3 +216,4 @@ This makes the article best understood as the strategic and requirements-level i
 This document is based on:
 
 - **MoonBlokz series part I. — Building a Hyper-Local DePIN Blockchain** by Peter Sallai, published on Medium on February 18, 2025.
+- **MoonBlokz series part IX. — For All Mankind** by Peter Sallai, published on Medium on May 25, 2026 (project motivation and open-source rationale).

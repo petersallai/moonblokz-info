@@ -18,6 +18,22 @@ When a new numeric cap, budget, or limit is introduced anywhere in the knowledge
 
 ---
 
+## 0. Embedded Implementation Discipline (Project-Wide)
+
+MoonBlokz targets constrained embedded environments first. Planning and implementation must therefore treat code size, RAM footprint, API surface, and transient stack use as load-bearing constraints, not as cleanup items.
+
+Project-wide rules:
+
+- **Keep code and memory at the absolute minimum needed for the current story and explicitly planned follow-up stories.** Do not add fields, counters, helper functions, accessors, buffers, or public APIs just because they might be useful someday.
+- **Every new field/function must have a visible consumer.** The consumer can be current code or a concrete upcoming story/FR/ADR. If no consumer is identifiable, leave it out and reintroduce it later with a precise name and rationale.
+- **Avoid convenience getters for internal structs.** If a struct is private module storage metadata, prefer direct field access inside the owning module and tests. Add accessors only when they are part of an intentional public API boundary.
+- **Avoid convenience derives.** Do not add `Debug`, broad `Clone`, or similar derives to production/public types unless a real consumer requires them. If a derive is needed for fixed-array initialization or another concrete embedded reason, keep it narrow and document why.
+- **Prefer private implementation details over public surface.** Public APIs are long-lived contracts; keep them minimal and story-driven.
+- **Document memory impact for new persistent fields/buffers.** Any new bounded array, per-entry field, cache, or scratch buffer should identify what it costs and which requirement/story needs it.
+- **Future-possible is not enough.** A vague future use does not justify embedded RAM/code cost. Reintroduce the element when the future story makes the use concrete.
+
+This rule is intentionally stricter than desktop/server Rust style. It applies across blockchain, mempool, vote, storage, radio, telemetry, and future runtime work unless a subsystem-specific PRD/architecture explicitly overrides it.
+
 ## 1. Blockchain Capacity Caps (Const-Generics)
 
 Authoritative source: [`moonblokz-blockchain-architecture.md`](./moonblokz-blockchain-architecture.md) §5 (Const generic catalog). Tuning levers: §12.
@@ -73,9 +89,9 @@ Authoritative source: [`moonblokz-blockchain-architecture.md`](./moonblokz-block
 | `ApprovalAccumulator` | ~2 KB | ~2 KB | `MAX_BLOCK_SIZE` buffer (crypto-agnostic) |
 | `EmitScratch` + scheduler + lifecycle + PRNG | ~2.1 KB | ~2.1 KB | `MAX_BLOCK_SIZE` buffer + small fields |
 | **`moonblokz-blockchain` subtotal** | **~95 KB** | **~159 KB** | matches architecture §7.1 / §7.2 |
-| `Mempool` (sibling `moonblokz-mempool`) | ~21.5 KB | ~21.5 KB | `MEMPOOL_COMPACT_BYTES` + index |
+| `Mempool` (sibling `moonblokz-mempool`) | ~22–23 KB | ~22–23 KB | `MEMPOOL_COMPACT_BYTES` + compact index + small fields; authoritative layout in blockchain architecture §6.8 |
 | `VoteEngine.accumulated_vote` (sibling `moonblokz-vote`) | ~4 KB | ~4 KB | `MAX_NODES` × 4 B |
-| **blockchain + mempool + vote** | **~121 KB** | **~185 KB** | carried into §3.2 |
+| **blockchain + mempool + vote** | **~122 KB** | **~186 KB** | carried into §3.2 |
 
 Raising `MAX_NODES` costs ~48 B/node (Schnorr) or ~112 B/node (BLS) across the node-id-indexed arrays (`NodeInfo` + `accumulated_vote`), derived from architecture §7.1 and corroborated by its §12.1 tuning levers. The default 1000-node cap already consumes most of the RP2040 budget, so caps an order of magnitude larger (for example a city-scale payment network) exceed RP2040 SRAM and require an MCU with substantially more RAM.
 
@@ -83,16 +99,16 @@ Raising `MAX_NODES` costs ~48 B/node (Schnorr) or ~112 B/node (BLS) across the n
 
 | Consumer | Schnorr | BLS |
 |---|---:|---:|
-| blockchain + mempool + vote | ~121 KB | ~185 KB |
+| blockchain + mempool + vote | ~122 KB | ~186 KB |
 | radio-lib (memory-config-medium) | ~60 KB | ~60 KB |
 | crypto-lib scratch | ~4 KB | ~4 KB |
 | storage page buffer | ~4 KB | ~4 KB |
 | Embassy task stacks (5-6 × 4-6 KB) | ~24 KB | ~24 KB |
 | Embassy executor + statics | ~4 KB | ~4 KB |
-| **Subtotal allocated** | **~217 KB** | **~281 KB** |
-| **Margin (264 KB − allocated)** | **~47 KB (~18%)** ✅ | **~−17 KB (exceeds 264 KB)** ❌ |
+| **Subtotal allocated** | **~218 KB** | **~282 KB** |
+| **Margin (264 KB − allocated)** | **~46 KB (~17%)** ✅ | **~−18 KB (exceeds 264 KB)** ❌ |
 
-The radio figure is the **source-confirmed** `memory-config-medium = ~60 KB` (radio module `README.md` + `lib.rs` profile consts; see §6 and §7/D1), additive to the separately-counted Embassy task stacks. **Consequence:** at the default 1000-node profile the BLS backend **exceeds the 264 KB ceiling by ~17 KB** — const-generic tuning (e.g. `MAX_NODES 1000 → 500`, §3.4) is therefore **mandatory** for BLS, not optional. Schnorr keeps a comfortable ~47 KB (~18%) margin. The authoritative architecture §7.3/§7.4/§12 and the index have been updated to match this source-confirmed figure (radio = 60 KB).
+The radio figure is the **source-confirmed** `memory-config-medium = ~60 KB` (radio module `README.md` + `lib.rs` profile consts; see §6 and §7/D1), additive to the separately-counted Embassy task stacks. **Consequence:** at the default 1000-node profile the BLS backend **exceeds the 264 KB ceiling by ~18 KB** — const-generic tuning (e.g. `MAX_NODES 1000 → 500`, §3.4) is therefore **mandatory** for BLS, not optional. Schnorr keeps a comfortable ~46 KB (~17%) margin. The authoritative architecture §7.3/§7.4/§12 and the index have been updated to match this source-confirmed figure (radio = 60 KB).
 
 ### 3.3 Stack frames
 
@@ -105,7 +121,7 @@ Per-lever savings: [`moonblokz-blockchain-architecture.md`](./moonblokz-blockcha
 
 | Profile | `MAX_NODES` | `SNAKE_CHAIN_LENGTH` | BLS margin (radio = 60 KB) |
 |---|---:|---:|---:|
-| BLS-large (default) | 1000 | 500 | **~−17 KB (does not fit)** ❌ |
+| BLS-large (default) | 1000 | 500 | **~−18 KB (does not fit)** ❌ |
 | BLS-medium | 500 | 500 | ~39 KB ✅ |
 | BLS-small | 250 | 300 | ~73 KB ✅ |
 

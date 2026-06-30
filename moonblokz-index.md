@@ -10,7 +10,7 @@ If you already know your topic, use this table to jump straight to the relevant 
 
 | Topic | Where to look |
 | --- | --- |
-| Project vision, use cases, MVP scope | [Overview](./moonblokz-overview.md) |
+| Project vision, motivation, open-source rationale, use cases, MVP scope | [Overview](./moonblokz-overview.md) |
 | System-wide architecture and how subsystems connect | [Technology & Architecture](./moonblokz-technology.md) |
 | Functional and non-functional requirements (FR/NFR numbers) | Start here to find which requirement covers a topic and how to read just that one: [Blockchain FR/NFR Index](./moonblokz-blockchain-prd-fr-index.md), [Storage FR/NFR Index](./moonblokz-storage-prd-fr-index.md). Full requirement wording: [Blockchain PRD](./moonblokz-blockchain-prd.md) *(authoritative)*, [Storage PRD](./moonblokz-storage-prd.md) *(authoritative)* |
 | Architecture decisions, crate boundaries, public APIs, data-structure layouts | [Blockchain Architecture](./moonblokz-blockchain-architecture.md) *(authoritative)*, [Storage Architecture](./moonblokz-storage-architecture.md) *(authoritative)*, [Blockchain ADR Index](./blockchain-adrs/ADR-INDEX.md) |
@@ -20,7 +20,7 @@ If you already know your topic, use this table to jump straight to the relevant 
 | Simulation, historical replay, desktop validation | [Simulator Concept](./moonblokz-simulator-concept.md), [Simulator Algorithm](./moonblokz-simulator-algorythm.md), [Simulator Implementation](./moonblokz-simulator-implementation.md) |
 | Field testing — telemetry, Probe, HUB, OTA updates, CLI, analyzer | [Telemetry Concept](./moonblokz-telemetry-concept.md), [Telemetry Algorithm](./moonblokz-telemetry-algorythm.md), [Telemetry Implementation](./moonblokz-telemetry-implementation.md) |
 | Storage and flash persistence — backends, block layout, integrity, wear | [Storage PRD](./moonblokz-storage-prd.md), [Storage Architecture](./moonblokz-storage-architecture.md), [Storage Concept](./moonblokz-storage-concept.md), [Storage Algorithm](./moonblokz-storage-algorythm.md), [Storage Implementation](./moonblokz-storage-implementation.md) |
-| Memory and RAM budgets, capacity caps, const-generics, flash and airtime limits | [System Constraints](./moonblokz-system-constraints.md) (first stop), then [Blockchain Architecture](./moonblokz-blockchain-architecture.md) §7/§12 and [Radio Implementation](./moonblokz-radio-implementation.md) |
+| Memory and RAM budgets, embedded-minimal coding discipline, capacity caps, const-generics, flash and airtime limits | [System Constraints](./moonblokz-system-constraints.md) (first stop; see §0 for project-wide embedded implementation discipline), then [Blockchain Architecture](./moonblokz-blockchain-architecture.md) §7/§12 and [Radio Implementation](./moonblokz-radio-implementation.md) |
 | Open gaps, unresolved verification items, known telemetry drift, post-MVP recovery questions | [Open Gaps Register](./moonblokz-open-gaps-register.md) |
 | Term meanings and cross-subsystem disambiguation | [Glossary](./moonblokz-glossary.md) |
 | Public website | [Website Summary](./website.md) |
@@ -40,10 +40,11 @@ These documents are organized by topic rather than by subsystem. They consolidat
 
 ### [MoonBlokz System Constraints & Limits Reference](./moonblokz-system-constraints.md)
 
-A consolidation and navigation layer for the numeric constraints, capacity caps, memory budgets, and physical limits that are spread across the knowledge base.
+A consolidation and navigation layer for the numeric constraints, capacity caps, memory budgets, embedded implementation discipline, and physical limits that are spread across the knowledge base.
 
 This document explains:
 
+- the project-wide embedded-minimal coding discipline: avoid unused fields/functions, unnecessary getters, and convenience derives unless there is a current or explicitly planned consumer,
 - the blockchain capacity caps (const-generics such as `MAX_NODES`) and what they imply for deployment,
 - the crypto constants and bounded-aggregation limits for the Schnorr and BLS families,
 - the 264 KB RP2040 RAM/SRAM budget, per-structure costs, and the Schnorr-versus-BLS margins,
@@ -77,7 +78,7 @@ It is explicitly **not authoritative**: each entry links to the source document 
 
 ### 1. [MoonBlokz Overview](./moonblokz-overview.md)
 
-A strategic introduction to the MoonBlokz project based on Part I of the Medium series.
+A strategic introduction to the MoonBlokz project based on Part I of the Medium series, with the project motivation and open-source rationale added from Part IX.
 
 This document explains:
 
@@ -85,6 +86,7 @@ This document explains:
 - what problem it is trying to solve,
 - which environments and use cases it targets,
 - what its core goals and assumptions are,
+- why the project is fully open source (MIT) and what motivates a multi-year effort,
 - and what conceptual boundaries define the MVP.
 
 Use this file when you want to understand the project from a product, vision, and requirements perspective before diving into implementation details.

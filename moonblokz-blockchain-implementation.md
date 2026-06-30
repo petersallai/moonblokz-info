@@ -57,6 +57,17 @@ The article assumes only a few hundred kilobytes of device memory, much of it ne
 - working sets must stay small,
 - and parsing or validation should avoid large transient allocations.
 
+### 2a. Embedded-minimal coding discipline
+
+The project-wide embedded discipline in [`moonblokz-system-constraints.md`](./moonblokz-system-constraints.md) §0 applies to blockchain and sibling sub-crates (`moonblokz-mempool`, `moonblokz-vote`) during both planning and implementation. In practice:
+
+- private storage metadata should not gain getters unless those getters define a real public boundary,
+- derives such as `Debug` / broad `Clone` should not be added for convenience or test ergonomics alone,
+- fields, counters, helpers, and buffers must have a current or explicitly planned story/FR/ADR consumer,
+- if no such consumer is visible, keep the code out and reintroduce it later with a precise name and memory rationale.
+
+This guidance is stricter than desktop/server Rust style because MoonBlokz is designed for embedded `no_std` deployments where every persistent byte and every public API surface has a long-term cost.
+
 ### 3. Persistent storage is slower and wear-limited
 
 Flash storage has finite write cycles. This means the implementation should minimize write frequency and avoid treating persistent state updates as cheap.
@@ -224,7 +235,7 @@ Part V directly motivates implementation techniques such as in-memory caching an
 
 The current design direction treats the mempool as authoritative runtime state but not as durable blockchain truth. That means mempool contents may be lost across restart, active-chain changes must be allowed to remove now-confirmed transactions from the mempool, and transactions that fall out of the active chain during a chain switch may need to be reintroduced into the mempool. When mempool capacity is exhausted, randomized eviction (per [ADR-010](./blockchain-adrs/ADR-010-randomized-mempool-eviction-under-capacity-pressure.md)) is preferable to deterministic eviction because it increases the chance that the network as a whole retains a more diverse transaction set.
 
-The compact-storage layout, the index entry shape, the eligibility iterator, the deferred-flag handling, the byte-buffer compaction strategy, the CRC32-based duplicate detection, the FR43 sub-seeded PRNG for random eviction with own-transaction prioritization, and the full sub-crate API surface are defined in [`moonblokz-blockchain-architecture.md`](./moonblokz-blockchain-architecture.md) §3.3 (`Mempool<...>` API, 10 method-groups) and §6.8 (internals: compact buffer ~20 KB + 128 index entries + sub-seed PRNG ≈ 21.5 KB total).
+The compact-storage layout, the index entry shape, the eligibility iterator, the deferred-flag handling, the byte-buffer compaction strategy, the CRC32-based duplicate detection, the FR43 sub-seeded PRNG for random eviction with own-transaction prioritization, and the full sub-crate API surface are defined in [`moonblokz-blockchain-architecture.md`](./moonblokz-blockchain-architecture.md) §3.3 (`Mempool<COMPACT_BYTES, MAX_ENTRIES>` API, 10 method-groups) and §6.8 (internals: compact buffer ~20 KB + 128 compact index entries + sub-seed PRNG + small fields ≈ 22–23 KB total). `MAX_NODES` remains a blockchain/vote node-roster capacity parameter and is not part of the mempool storage contract.
 
 ### RAM-side expectations
 
