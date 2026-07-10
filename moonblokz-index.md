@@ -70,7 +70,7 @@ This document explains:
 - flash and storage-geometry gaps such as unquantified wear-lifetime and the storage slot-count divisor verification item,
 - telemetry deployment-model and docs-vs-code drift across Probe, HUB, Collector, CLI, and Update Server,
 - the accepted MVP no-saturation-handling stance for bounded UTXO retention,
-- and the post-MVP open questions around dynamic custodian fees and long-disconnect recovery.
+- and the post-MVP open questions around dynamic custodian fees, long-disconnect recovery, and promoting processing to a concurrent-ingestion lifecycle state.
 
 It is explicitly **not authoritative**: each entry links to the source document where the underlying gap, drift, limitation, or open question is defined. Use this file before planning work that depends on unresolved deployment constraints, telemetry interoperability assumptions, UTXO saturation behavior, or long-disconnect recovery.
 

@@ -500,6 +500,43 @@ The concept introduces tensions that a post-MVP requirement and ADR pass must re
 
 This section captures only the conceptual idea and the open questions. It is not a requirement, does not change any MVP-scope FR, and does not commit to specific parameter ranges, message layouts, or aggregation strategies. The corresponding requirement-level wording — including the watcher-mode exception to the current long-disconnect-intake rule — and any architectural decision records will be created when the post-MVP work begins.
 
+## Processing as a Concurrent-Ingestion State (Post-MVP Concept)
+
+This section captures a concept for promoting **processing** from a transient transition to a first-class operating state that keeps ingesting blocks while it runs, beyond what the MVP supports. In the MVP model, processing is a transient reconstruct-and-validate pass rather than a resting phase (see [Operational Lifecycle Phases](#operational-lifecycle-phases)): it runs as a single forward pass that is not resumable across restarts ([Blockchain PRD](./moonblokz-blockchain-prd.md) FR3 / FR59), and on any contradiction it falls back to the collecting phase under FR5 atomic recovery. Blocks that arrive while the node is in processing are preserved but are not claimed finally valid.
+
+On RP2040-class hardware, reconstruct-and-validate of a long candidate chain can be slow. If that pass behaves as a blocking transition, a slow reconstruction extends the window during which the node cannot advance and complicates keeping up with concurrently arriving blocks. Making processing a real operating state — one that continues to accept and store incoming blocks while the reconstruction proceeds, on equal footing with the collecting and ready phases — lets a node stay abreast of network activity even when its own reconstruction takes a long time. Under this concept the lifecycle becomes a genuine three-state model (**collecting**, **processing**, **ready**) rather than two phases joined by a single processing transition.
+
+The concept here is intentionally pre-design: it captures the operating idea and the questions a post-MVP requirement and architecture pass must answer. It does not change any MVP-scope requirement.
+
+### Operating idea
+
+The proposed mechanism keeps the reconstruct-and-validate work running against a pinned candidate chain while ordinary block intake continues alongside it:
+
+- incoming blocks are parsed, stored, and connected to known ancestry during processing, exactly as the existing [staged validation](#staged-validation) model already allows, instead of being merely held pending completion of the pass;
+- the reconstruction pass targets a specific candidate chain captured when processing begins, so that its forward traversal remains well-defined even as new blocks arrive;
+- when the pass completes successfully the node promotes to ready; when it fails it falls back to collecting under the existing atomic-recovery rule, and the blocks ingested concurrently remain available to the next collecting round rather than being discarded with the failed working set.
+
+### Fit with existing structural decisions
+
+The concept aligns with several ideas already part of the MVP model:
+
+- Staged validation ([Staged Validation](#staged-validation)) already separates parse/store/connect from full semantic validation, so concurrent intake during processing reuses an existing conceptual seam rather than introducing a new one.
+- The two operational phases and the processing transition are already named states in the lifecycle; the concept promotes the transition to a peer state without inventing a new vocabulary.
+- Active-chain-centered query semantics (ADR-008) still define what the node may answer; a processing node continues to have no promoted ready active chain until the pass completes.
+
+### Open questions for the post-MVP design
+
+The concept introduces tensions that a post-MVP requirement and ADR pass must resolve. They are deliberately left open here:
+
+1. **Non-resumability contract.** The current pass is a single forward pass that is not resumable across restarts (FR3 / FR59). A concurrent-ingestion processing state must decide whether the reconstruction pass stays atomic-and-non-resumable while only intake runs alongside it, or whether processing itself becomes interruptible and must define resume semantics. This directly affects FR3 / FR59 and must be reconciled with them.
+2. **Atomic-recovery scope on failure.** FR5 atomic recovery today discards the forward-traversal working set in full on any contradiction. The design must define precisely which state is rolled back and which concurrently-ingested blocks survive into the fallback collecting round, so that recovery stays atomic without throwing away independently-valid intake.
+3. **Candidate stability vs. re-targeting.** Blocks arriving during processing may extend or reveal a stronger candidate branch than the one the pass is reconstructing. The design must decide whether the in-flight pass completes against its pinned candidate and re-evaluates afterward, or whether it is abandoned and re-targeted mid-pass, and how either choice preserves replay determinism.
+4. **Bounded-storage interaction.** Concurrent intake competes with the reconstruction working set for bounded storage and RAM. The design must define how capacity-pressure eviction (and the reconstruction working set’s own footprint) behave while both proceed, so that intake during processing cannot starve or corrupt the pass.
+5. **Lifecycle-model reconciliation.** Promoting processing to a first-class state changes the “two phases joined by a processing transition” model — stated in the [Blockchain PRD](./moonblokz-blockchain-prd.md) FR1–FR5 and echoed across the concept and algorithm documents — into a three-state model. The post-MVP wording must update the authoritative lifecycle contract and reconcile every restatement of the two-phase framing in the same change.
+6. **Observability.** Structured logging should distinguish a processing node that is making reconstruction progress from one that is merely accumulating intake, so that operators and simulator replay can tell a slow-but-advancing pass from a stalled one.
+
+This section captures only the conceptual idea and the open questions. It is not a requirement, does not change any MVP-scope FR (including the current FR3 / FR59 single-forward-pass, non-resumable processing specification), and does not commit to a concurrency model, a resume mechanism, or a revised lifecycle-state contract. The corresponding requirement-level wording and any architectural decision records will be created when the post-MVP work begins.
+
 ## Security Framing
 
 The article series continues to separate algorithmic protection from physical-world limits.
@@ -528,6 +565,10 @@ If live UTXOs occupy all available chain space, the chain may temporarily stop a
 ### Long disconnects can become permanent forks
 
 If no common active-chain overlap remains, rejoin is impossible in the current MVP model. A partial recovery approach based on a known-active-node subgroup is captured as a post-MVP concept under [Long-Disconnect Recovery (Post-MVP Concept)](#long-disconnect-recovery-post-mvp-concept); the limitation above describes the MVP behavior and is not changed by the existence of that concept section.
+
+### Slow processing can stall progress
+
+On constrained hardware the processing reconstruct-and-validate pass can be slow, and in the MVP it behaves as a transient transition rather than a resting state that keeps ingesting blocks. A post-MVP concept for promoting processing to a first-class operating state that continues to accept blocks while it runs is captured under [Processing as a Concurrent-Ingestion State (Post-MVP Concept)](#processing-as-a-concurrent-ingestion-state-post-mvp-concept); the limitation above describes the MVP behavior and is not changed by the existence of that concept section.
 
 ### Configuration mutability is deferred
 
