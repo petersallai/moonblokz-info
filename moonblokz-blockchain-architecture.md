@@ -181,17 +181,17 @@ Outcomes use `BlockView<'_>` to keep enum variants small (~16 B borrow), not 2 K
 graph TB
     Root["Blockchain root PRNG (Xoshiro256PlusPlus, 256-bit state)<br/>Seeded from initial node_id + restart timestamp"]
     Mempool["Mempool sub-seed<br/>FR43 random eviction"]
-    Vote["Vote engine sub-seed<br/>FR38 next-creator ordering"]
     Replay["Snake_chain replay sub-seed<br/>FR50 seed-source selection"]
 
     Root -->|"derive_subseed('mempool')"| Mempool
-    Root -->|"derive_subseed('vote')"| Vote
     Root -->|"derive_subseed('replay')"| Replay
 ```
 
-Each sub-crate (mempool, vote) receives a sub-seed during initialization; the blockchain retains the root. This ensures deterministic, reproducible PRNG behavior across the system without coupling the sub-crates to each other.
+The mempool sub-crate receives a sub-seed during initialization; the blockchain retains the root (the vote sub-crate is fully deterministic and takes no sub-seed). This ensures deterministic, reproducible PRNG behavior across the system without coupling the sub-crates to each other.
 
 **Algorithm choice (2026-06-27 revision).** The original Step 4 framing named WyRand u64 as the root PRNG. The 2026-06-27 implementation pass (Story 1.3) substituted Xoshiro256PlusPlus (Blackman & Vigna, 2018, via the `rand_xoshiro` crate) for the same root + sub-seed-derivation role. The substitution is contained: it does not change the public `derive_subseed(label) -> u64` contract or the sub-crate integration (each sub-crate still receives an opaque `u64` and chooses its own internal PRNG). Rationale: significantly higher statistical quality (PractRand >2 TB vs. ~32 GB) at negligible cost on RP2040 (+24 B per instance, comparable cycle budget per `next_u64`, no new transitive deps beyond `rand_xoshiro` + `rand_core`, both `no_std` with `default-features = false`).
+
+**Vote sub-seed removal (2026-07-04 revision).** The hierarchy originally derived a third sub-seed, `derive_subseed('vote')`, reserved for FR38 creator ordering (AR11). Story 3.3 shipped FR38 fully deterministic (descending accumulated vote, ascending node-id tie-break), ADR-015's approval-subgroup seed is content-derived (`H(snake_chain_tail_hash ‖ proposer_node_id ‖ proposed_sequence)`) inside the blockchain crate, and Epics 8–9 introduce no non-deterministic path — no planned story consumes vote-side randomness. The vote sub-seed, `VoteEngine::new`'s `sub_seed` parameter, and the engine's stored PRNG were removed; `moonblokz-vote` no longer depends on `rand_xoshiro`.
 
 ### 2.4 Sequence diagrams (illustrative)
 
@@ -246,9 +246,16 @@ impl<...> Blockchain<...> {
     ) -> CallResult<InitJoinOutcome>;
 
     /// FR59 — Restart from durable storage after a power cycle.
-    /// Reads `own_node_id` + `node_zero_pk` from storage; resumes
-    /// the previously persisted lifecycle phase (Processing → Ready).
+    /// Reads `own_node_id` from storage; `node_zero_pk` is caller-supplied
+    /// from code (the out-of-band firmware trust anchor that identifies the
+    /// chain, per decision rows 1 / 20), never read from storage — corrupted
+    /// storage therefore cannot forge it. Then enters collecting state
+    /// unconditionally: it rebuilds the block-tree from the retained blocks
+    /// and, once the FR2 stopping conditions hold, runs the FR3 processing
+    /// pass through to ready. No lifecycle-state marker is persisted; any
+    /// prior in-flight processing state is discarded.
     pub fn initialize_from_storage(
+        node_zero_pk: &[u8],
         crypto: C, storage: S, chain_config: X,
         prng_seed: u64,
         now: u64,
@@ -316,13 +323,13 @@ pub struct Mempool<
 
 impl<...> Mempool<...> {
     pub fn new(sub_seed: u64, own_node_id: u32) -> Self;
-    pub fn try_add(&mut self, tx: TransactionView<'_>, is_deferred: bool) -> AddResult;
+    pub fn try_add(&mut self, tx: TransactionView<'_>, transaction_fee: u64, is_deferred: bool) -> AddResult;
     pub fn get_by_hash(&self, hash: &[u8; 32]) -> Option<TransactionView<'_>>;
     pub fn contains(&self, hash: &[u8; 32]) -> bool;
-    pub fn confirm_by_block_acceptance(&mut self, accepted: &impl Iterator<Item = [u8; 32]>);
+    pub fn confirm_by_block_acceptance(&mut self, accepted: &BlockView<'_>);
     pub fn recheck_eligibility(&mut self, balance_check: impl Fn(u32) -> u64);
     pub fn eligible_iter(&self) -> impl Iterator<Item = TransactionView<'_>> + '_;
-    pub fn top_n_for_exchange(&self, n: usize) -> impl Iterator<Item = TransactionView<'_>> + '_;
+    pub fn top_n_for_exchange(&self, n: usize) -> impl Iterator<Item = (TransactionView<'_>, u64)> + '_;
     pub fn entry_count(&self) -> u8;
     pub fn capacity_pressure(&self) -> CapacityPressure;
 
@@ -337,22 +344,32 @@ impl<...> Mempool<...> {
 ### 3.4 Vote sub-crate API
 
 ```rust
+pub enum VoteEngineError {
+    AccumulatedVoteOverflow,
+    AccumulatedVoteUnderflow,
+    UnreachableInterestState,
+}
+
 pub struct VoteEngine<const MAX_NODES: usize> {
     accumulated_vote: [u32; MAX_NODES],      // 4 KB on 1000-node default
-    cached_top_creator: Option<u32>,
-    sub_seed_prng: Xoshiro256PlusPlus,
+    vote_scale: NonZeroU16,                  // one vote credit and interest cap
+    vote_interest: u8,                       // anti-capture growth numerator
+    cap_threshold: u32,                      // derived, not serialized
 }
 
 impl<const MAX_NODES: usize> VoteEngine<MAX_NODES> {
-    pub fn new(sub_seed: u64) -> Self;
-    pub fn apply_block(&mut self, block: BlockView<'_>);                  // FR37 forward
-    pub fn undo_block(&mut self, block: BlockView<'_>);                   // FR23 backward
+    pub fn new(vote_scale: NonZeroU16, vote_interest: u8) -> Self;
+    pub fn apply_block(&mut self, block: BlockView<'_>) -> Result<(), VoteEngineError>; // FR37 forward
+    pub fn undo_block(&mut self, block: BlockView<'_>) -> Result<(), VoteEngineError>;  // FR23 backward
     pub fn seed_from_balance_block(&mut self, block: BlockView<'_>);      // FR50 seed source
-    pub fn top_creator(&self, deadline_seq: u32, now: u64) -> Option<u32>; // FR38
-    pub fn vote_scale(&self, node_id: u32) -> u32;                        // accumulated_vote raw
-    pub fn vote_interest(&self, node_id: u32) -> u32;                     // weighted by recency
+    pub fn top_creator(&self) -> Option<u32>;                             // FR38 top of creator order
+    pub fn creator_at_rank(&self, rank: usize) -> Option<u32>;            // FR38 / FR44 fallback order
+    pub fn is_creator_within_rank(&self, rank: usize, node_id: u32) -> bool; // FR44 band membership (rank = band size; 1 = top)
+    pub fn accumulated_vote_of(&self, node_id: u32) -> u32;               // accumulated_vote raw
 }
 ```
+
+**Query-surface revision (2026-07-04).** `top_creator` originally carried `(deadline_seq: u32, now: u64)` parameters reserved for Epic 8 grace-period progression; they were removed. Deadline handling is the blockchain module's concern (`scheduler.rs` / `creator.rs`, FR44–FR47): it queries `top_creator()` on every block and walks `creator_at_rank(rank)` as the grace-period admitted set expands. The vote crate stays a pure, time-independent projection over accumulated votes. The expected frequent Epic 8 call is `is_creator_within_rank(rank, node_id)` — a single O(MAX_NODES) early-exit membership test for the top-`rank` band (`rank` is the band size; `1` = top creator). Zero-vote nodes are ranked too — they form the ascending-id tail of the order — so the all-zero bootstrap state yields node 0 as top creator and `top_creator()` returns `None` only for the degenerate `MAX_NODES == 0` (2026-07-04). The single-slot top-creator cache was removed (2026-07-04): `top_creator()` is a pure uncached O(MAX_NODES) `&self` scan — block cadence is slow enough that caching a ~1000-element scan is not worth the interior-mutability (`Cell`) surface and its invalidation discipline. Hence no `cached_top_creator` field.
 
 ### 3.5 Introspection (FR65)
 
@@ -366,7 +383,7 @@ FR54 (Genesis) and FR59 (restart) are distinct use-cases with different invarian
 |---|---|---|---|
 | `initialize_genesis(...)` | First node in the network (node #0) creates Blocks #0 + #1 | Storage is empty; caller is the node-zero key holder | `Ready` (after Block #1 emit) |
 | `initialize_join(...)` | New node joining an existing network | Storage is empty; `node_zero_pk` known a priori (trust anchor) | `Collecting` |
-| `initialize_from_storage(...)` | Power-cycle restart of an established node | Storage non-empty; previous lifecycle phase persisted | `Processing` (FR3 forward traversal) → `Ready` |
+| `initialize_from_storage(...)` | Power-cycle restart of an established node | Storage non-empty; `node_zero_pk` supplied from code (trust anchor); no lifecycle phase persisted | `Collecting` (→ `Processing` → `Ready` once FR2 holds) |
 
 **Genesis two-block bootstrap** (per `moonblokz-info` Part IV):
 - **Block #0** — transaction block: node #0's own registration + an initial self-transfer of `initial_total_network_currency`. Emitted as the outcome of `initialize_genesis(...)`.
@@ -486,7 +503,7 @@ The full per-module breakdown (processes / data structures / relationships / API
 |---|---|---|
 | `lifecycle.rs` | FR1-FR8, FR54, FR59 | `lifecycle_phase: LifecyclePhase` (1 B on Blockchain) |
 | `scheduler.rs` | FR46 | `SchedulerState` (~72 B) |
-| `blocks.rs` | FR18 | `BlockTable { blocks: [BlockEntry; 600] }` (44.5 KB) |
+| `blocks.rs` | FR18 | `BlockTable { blocks: [BlockEntry; 600] }` (45.6 KB) |
 | `chain_heads.rs` | FR19 | `ChainHeadsTable { heads: [ChainHeadEntry; 40] }` (1.28 KB) |
 | `snake_chain.rs` | FR48-FR53 | 2 u32 fields on Blockchain (8 B) |
 | `branch_value.rs` | FR21 | (stateless; operates on `ChainHeadEntry.branch_value`) |
@@ -545,7 +562,7 @@ pub(crate) struct BlockEntry {
     hash: [u8; 32],                                // 32 B   FR11 duplicate-detection key
     parent_ref: u32,                               //  4 B   index into blocks (u32::MAX = no parent)
     sequence: u32,                                 //  4 B   FR21/FR19 tie-break (u32::MAX = empty slot)
-    spent_bits: [u8; MAX_BLOCK_UTXO_OUTPUT / 8],   // 32 B   ADR-016 co-located
+    spent_bits: [u8; SPENT_BITS_BYTES],            // 32 B   ADR-016 co-located (see revision note)
     head_ref_count: u8,                            //  1 B   FR19 eviction
     flags: u8,                                     //  1 B   status (Stored/Connected/Active) + is_on_active_chain
 }
@@ -557,6 +574,11 @@ pub(crate) struct BlockEntry {
 - Spent-bits **co-located** in BlockEntry per ADR-016 (no separate `SpentBitTable`)
 - Empty slot sentinel: `sequence == u32::MAX` (FR53 rejects u32::MAX-based chain extension in MVP)
 - Side-branch blocks have spent_bits = all zeros (~3 KB harmless waste, absorbed by Schnorr margin)
+
+**Story 4.1 revision (2026-07-04).** Three clarifications from implementation, none changing the 76 B / 45 600 B budget above:
+- `spent_bits` is a fixed `SPENT_BITS_BYTES = 32` constant, not the generic expression `MAX_BLOCK_UTXO_OUTPUT / 8` shown in earlier drafts — sizing an array from a divided const-generic parameter requires the unstable `generic_const_exprs` feature, which this workspace does not enable (the same constraint already documented for `moonblokz-crypto-lib`'s fixed-size array API). The byte count is unchanged (256 / 8 = 32 at the architecture §5 default); Epic 7 resolves the generic-sizing question if `MAX_BLOCK_UTXO_OUTPUT` ever needs to vary per deployment.
+- `flags` bit assignment is now specified: bit 0 = `is_on_active_chain` (live in Story 4.1); bits 1-2 are reserved for Story 4.2's FR9 status value (`Stored`/`Connected`/`Active`) — Story 4.1 reserves the bits but does not define the enum or its transition map; bits 3-7 are unused.
+- The FR18 chain-head arrival timestamp is **not** a `BlockEntry` field. FR18's actual requirement is "at least for every chain head block," and `BlockEntry`'s table has 600 entries at the default profile — adding a `u64` there would widen every entry to 88 B padded (+7.2 KB total), which is immaterial against the Schnorr backend's ~67-77 KB SRAM margin (§7.3) but eats meaningfully into the BLS backend's already-tight ~7-17 KB margin. `chain_heads.rs`'s `ChainHeadEntry` (§6.3, Story 4.4) has only 40 entries — the same field there costs ~320 B. Story 4.4 adds the arrival timestamp to `ChainHeadEntry` instead.
 
 ### 6.3 `ChainHeadEntry` — FR19 chain_heads table
 
@@ -640,26 +662,27 @@ pub(crate) struct SchedulerState {
 ```rust
 pub struct Mempool<const COMPACT_BYTES: usize, const MAX_ENTRIES: usize> {
     compact_buffer: [u8; COMPACT_BYTES],                // 20 160 B default
-    index: [Option<IndexEntry>; MAX_ENTRIES],           // 128 × ~16-20 B ≈ ~2-2.5 KB straightforward layout
+    index: [Option<IndexEntry>; MAX_ENTRIES],           // 128 × ~24-32 B ≈ ~3-4 KB straightforward layout
     prng: Xoshiro256PlusPlus,                            // 32 B inner state (seeded from 8 B u64 sub-seed)
     byte_usage: u16,
     entry_count: u8,
     own_node_id: u32,                                    // local owner classification input for FR33
 }
-// total ~22-23 KB at the default profile before any later index bit-packing
+// total ~23-25 KB at the default profile before any later index bit-packing
 ```
 
-`IndexEntry` is private mempool storage metadata, not public API. It carries the FR30 storage fields (`start`, `length`, `crc32`) plus support fields for deferred eligibility, local own/non-own classification, and byte-local window-expiry metadata. There is no getter/accessor surface for this internal struct; module-local code and unit tests use direct field access to keep the embedded API surface small. `expiry_sequence` is `NodeTransfer.anchor_sequence`, the minimum complex balance-input `anchor_sequence`, or `u32::MAX` when no byte-local sequence dependency is available (registration, UTXO-only complex, zero-input complex). UTXO-input expiry that depends on the referenced output's containing block sequence requires blockchain / UTXO-cache context rather than a byte-local index field. The FR33 ownership class is local: node-transfer and registration transactions are own when their initializer equals `own_node_id`; complex transactions are own when they have at least one input and either a balance input initializer or a balance output receiver equals `own_node_id`; UTXO-only and zero-input complex transactions are non-own. The current compact-buffer implementation constrains `COMPACT_BYTES` to `u16` offsets and `MAX_ENTRIES` to `u8` entry counts. `MAX_NODES` is intentionally not a mempool const generic: node-roster capacity belongs to `Blockchain` / `NodeInfo` and `VoteEngine`, while the mempool only needs the local `own_node_id` value to classify incoming transactions.
+`IndexEntry` is private mempool storage metadata, not public API. It carries the FR30 storage fields (`start`, `length`, `hash_crc32`, `transaction_fee`) plus support fields for deferred eligibility, local own/non-own classification, and byte-local window-expiry metadata. `hash_crc32` is IEEE CRC32 over the canonical transaction hash; lookup uses it only as a prefilter before full-hash verification, while FR43 replenishment uses it as the compact exclusion identifier. `transaction_fee` is the already-resolved fee supplied by the blockchain validation path at mempool admission, avoiding repeated UTXO block lookups during priority iteration and block assembly. There is no getter/accessor surface for this internal struct; module-local code and unit tests use direct field access to keep the embedded API surface small. `expiry_sequence` is `NodeTransfer.anchor_sequence`, the minimum complex balance-input `anchor_sequence`, or `u32::MAX` when no byte-local sequence dependency is available (registration, UTXO-only complex, zero-input complex). UTXO-input expiry that depends on the referenced output's containing block sequence requires blockchain / UTXO-cache context rather than a byte-local index field. The FR33 ownership class is local: node-transfer and registration transactions are own when their initializer equals `own_node_id`; complex transactions are own when they have at least one input and either a balance input initializer or a balance output receiver equals `own_node_id`; UTXO-only and zero-input complex transactions are non-own. The current compact-buffer implementation constrains `COMPACT_BYTES` to `u16` offsets and `MAX_ENTRIES` to `u8` entry counts. `MAX_NODES` is intentionally not a mempool const generic: node-roster capacity belongs to `Blockchain` / `NodeInfo` and `VoteEngine`, while the mempool only needs the local `own_node_id` value to classify incoming transactions.
 
 ### 6.9 Vote engine internals (recap)
 
 ```rust
 pub struct VoteEngine<const MAX_NODES: usize> {
     accumulated_vote: [u32; MAX_NODES],     // 4 KB
-    cached_top_creator: Option<u32>,  // ~8 B
-    sub_seed_prng: Xoshiro256PlusPlus, // 32 B
+    vote_scale: NonZeroU16,                 // 2 B
+    vote_interest: u8,                      // 1 B
+    cap_threshold: u32,                     // 4 B derived threshold
 }
-// total ~4 KB
+// total ~4 KB plus a few scalar config fields
 ```
 
 ---

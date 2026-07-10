@@ -131,11 +131,11 @@ This invariant directly underpins empty-slot detection in the memory backend.
 
 The chain-types crate defines:
 
-- `calculate_hash(input: &[u8]) -> [u8; HASH_SIZE]`
-- using SHA-256,
-- with fixed `HASH_SIZE = 32`.
+- typed object hash methods (`Block::hash()`, `BlockView::hash()`, `TransactionView::hash()`, and owned transaction builders' `hash()` methods),
+- `calculate_hash(input: &[u8]) -> [u8; HASH_SIZE]` as the raw-byte SHA-256 helper behind those methods,
+- fixed `HASH_SIZE = 32`.
 
-Storage must treat this as the canonical hashing contract rather than defining a storage-local hash algorithm.
+Storage must treat this as the canonical hashing contract rather than defining a storage-local hash algorithm. For storage-integrity metadata over fixed slot byte ranges, storage may call `calculate_hash` directly because the hashed byte range is deliberately storage-specific rather than a typed block identity.
 
 ## Section B — Compile-Time Structural Rules
 

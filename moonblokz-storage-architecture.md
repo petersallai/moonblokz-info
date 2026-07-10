@@ -695,12 +695,13 @@ This appendix defines architecture-level data structure contracts and ownership 
 
 ### Hashing Contract
 
-- Canonical hashing utility is exposed by `moonblokz-chain-types` as:
+- Canonical typed hash methods are exposed by `moonblokz-chain-types` on chain objects (`Block::hash()`, `BlockView::hash()`, `TransactionView::hash()`, and owned transaction builders' `hash()` methods).
+- The raw-byte hashing utility remains exposed as:
   - `const HASH_SIZE: usize = 32`
   - `fn calculate_hash(input: &[u8]) -> [u8; HASH_SIZE]`
 - Hash algorithm is SHA-256.
-- Storage backends and chain logic use this function directly for deterministic hash computation.
-- Hash algorithm or output-size changes are cross-crate compatibility events.
+- Chain logic should prefer typed `hash()` methods for canonical block/transaction identity; storage backends may still use `calculate_hash` directly for fixed-size slot-integrity byte ranges.
+- Hash algorithm, output-size, or typed hash-byte-range changes are cross-crate compatibility events.
 
 ### Backend Conformance Data Requirements
 

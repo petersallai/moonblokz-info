@@ -89,9 +89,9 @@ Authoritative source: [`moonblokz-blockchain-architecture.md`](./moonblokz-block
 | `ApprovalAccumulator` | ~2 KB | ~2 KB | `MAX_BLOCK_SIZE` buffer (crypto-agnostic) |
 | `EmitScratch` + scheduler + lifecycle + PRNG | ~2.1 KB | ~2.1 KB | `MAX_BLOCK_SIZE` buffer + small fields |
 | **`moonblokz-blockchain` subtotal** | **~95 KB** | **~159 KB** | matches architecture §7.1 / §7.2 |
-| `Mempool` (sibling `moonblokz-mempool`) | ~22–23 KB | ~22–23 KB | `MEMPOOL_COMPACT_BYTES` + compact index + small fields; authoritative layout in blockchain architecture §6.8 |
+| `Mempool` (sibling `moonblokz-mempool`) | ~23–25 KB | ~23–25 KB | `MEMPOOL_COMPACT_BYTES` + compact index including stored `transaction_fee` + small fields; authoritative layout in blockchain architecture §6.8 |
 | `VoteEngine.accumulated_vote` (sibling `moonblokz-vote`) | ~4 KB | ~4 KB | `MAX_NODES` × 4 B |
-| **blockchain + mempool + vote** | **~122 KB** | **~186 KB** | carried into §3.2 |
+| **blockchain + mempool + vote** | **~123–124 KB** | **~187–188 KB** | carried into §3.2 |
 
 Raising `MAX_NODES` costs ~48 B/node (Schnorr) or ~112 B/node (BLS) across the node-id-indexed arrays (`NodeInfo` + `accumulated_vote`), derived from architecture §7.1 and corroborated by its §12.1 tuning levers. The default 1000-node cap already consumes most of the RP2040 budget, so caps an order of magnitude larger (for example a city-scale payment network) exceed RP2040 SRAM and require an MCU with substantially more RAM.
 

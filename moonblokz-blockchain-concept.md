@@ -129,7 +129,8 @@ Conceptually, `moonblokz-blockchain` is best understood as a **stateful semantic
 It:
 
 - receives blockchain-relevant semantic events from network, local, and timer directions,
-- maintains authoritative blockchain knowledge about known blocks, mempool contents, and current operating mode,
+- maintains authoritative blockchain knowledge — the retained known blocks, the node's own identity, and the saved chain-configuration,
+- treats the mempool as independent, network-held state and the operating mode as non-durable runtime state rather than durable truth,
 - derives the active chain and current economic state from that authoritative base,
 - and answers local blockchain-facing queries needed by higher-level payment or application interfaces.
 
@@ -141,8 +142,10 @@ The current design direction also clarifies that not every useful blockchain-fac
 
 Conceptually, MoonBlokz distinguishes between:
 
-- **authoritative blockchain knowledge** such as known blocks, runtime mempool contents, and the current operating mode,
-- and **derived operational views** such as the currently selected active chain and the currently usable balance and UTXO state.
+- **durable authoritative truth** — the retained known blocks, the node's own identity (its `node_id` and private key), and the saved chain-configuration,
+- and **derived operational views** — the currently selected active chain and the currently usable balance, UTXO, and vote state — recomputed from that durable base rather than stored as primary truth.
+
+The mempool and the current operating mode sit outside this durable base: the mempool is independent, network-held runtime state (empty after a restart and repopulated from ordinary network activity), and the operating mode is never persisted, since a node always restarts in the collecting phase. The authoritative persistence boundary is defined in the [Blockchain PRD](./moonblokz-blockchain-prd.md) FR59, and the derived projections in FR34.
 
 This matters because MoonBlokz must operate under bounded storage and staged validation. A node may safely retain some blockchain knowledge before it is able to derive a fully usable active state from it.
 
@@ -164,13 +167,13 @@ Conceptually, MoonBlokz is therefore not just a fork-tolerant chain. It is a **m
 
 The combined model implies a practical lifecycle rather than one uniform runtime mode.
 
-Conceptually, MoonBlokz moves through three phases:
+Conceptually, MoonBlokz operates in **two phases** joined by a single validating **processing transition**:
 
-- **collection phase** — the node gathers blocks and looks for a dominant chain candidate,
-- **processing phase** — the node reconstructs and validates enough state from that candidate chain to become operational,
+- **collecting phase** — the node gathers blocks and looks for a dominant chain candidate,
+- **processing transition** — once a candidate chain of sufficient length has been found, the node reconstructs and validates the state that chain implies; this is a transient pass rather than a resting phase, and it has two outcomes: if every validation passes the node advances to the ready phase, and if a contradiction surfaces the candidate is rejected and the node falls back to the collecting phase to keep looking,
 - **ready phase** — the node tracks an active chain, validates new arrivals, and maintains bounded retention.
 
-This lifecycle matters because MoonBlokz does not start from immediate full confidence. It must first discover, then reconstruct, and only after that operate continuously. The companion algorithm document describes the state transitions and operational consequences in more detail.
+This lifecycle matters because MoonBlokz does not start from immediate full confidence. It must first discover, then reconstruct-and-validate, and only after that operate continuously. The companion algorithm document describes the transitions and operational consequences in more detail; the authoritative lifecycle contract is the [Blockchain PRD](./moonblokz-blockchain-prd.md) FR1–FR5 (the processing transition, its non-resumability, and the FR5 atomic recovery that returns a failed processing pass to the collecting phase).
 
 ## Dominant Chain Acquisition as the First Objective
 

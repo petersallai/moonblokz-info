@@ -157,9 +157,9 @@ The exact parser constraints belong primarily in [moonblokz-storage-algorythm.md
 
 ## Hashing semantics have two engineering uses
 
-`moonblokz-chain-types` documents `calculate_hash(block.serialized_bytes())` as the normal canonical hashing pattern.
+`moonblokz-chain-types` exposes `Block::hash()` / `BlockView::hash()` as the normal canonical block-identity hashing pattern.
 
-The RP2040 backend uses the same hash function but applies it to the fixed 2016-byte slot block area.
+The RP2040 backend uses the same SHA-256 helper behind that typed API, but applies `calculate_hash` directly to the fixed 2016-byte slot block area for storage-integrity metadata.
 
 Engineering consequence:
 

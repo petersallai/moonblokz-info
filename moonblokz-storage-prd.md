@@ -379,7 +379,7 @@ With a 1-engineer MVP team, scope discipline is critical. Mitigate by excluding 
 ### Blockchain Types Boundary
 
 - FR41: MoonBlokz Chain Developer can use block data structures from a dedicated blockchain types crate separated from storage.
-- FR42: Storage can consume canonical block definitions and the `calculate_hash(&[u8]) -> [u8; HASH_SIZE]` contract via the blockchain types boundary.
+- FR42: Storage can consume canonical block definitions, typed object hash methods (`Block::hash()` / `BlockView::hash()`), and the raw `calculate_hash(&[u8]) -> [u8; HASH_SIZE]` helper contract via the blockchain types boundary.
 - FR43: Storage can operate without owning chain-policy metadata semantics beyond required persistence integrity metadata.
 
 ### Developer Experience & Distribution

@@ -96,7 +96,7 @@ These define:
 
 - **ADR-001** — The blockchain core operates on semantic events, not transport-level byte handling.
 - **ADR-002** — The blockchain module has a narrow domain boundary and excludes transport, storage mechanics, crypto backend details, and the scoring module.
-- **ADR-003** — Known blocks, mempool, and operation mode are authoritative; active chain, balances/UTXOs, and vote state are derived.
+- **ADR-003** — Durable authoritative truth is the node identity, the `chain_config` block, and the retained blocks; the six FR34 projections are derived and recomputable, while the mempool (network-held) and operation mode (always collecting on restart) are non-durable runtime state outside the durable set.
 - **ADR-005** — The Chain Knowledge Core is the main orchestration source for chain truth and reconciliation.
 - **ADR-006** — The blockchain core remains single-threaded, synchronous, and deterministic.
 - **ADR-008** — The local query surface is active-chain-centered by default.

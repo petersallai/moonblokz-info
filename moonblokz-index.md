@@ -114,7 +114,7 @@ This document explains:
 - how MoonBlokz distinguishes nodes from addresses,
 - why unreliable radio communication turns the chain into a block-tree,
 - why bounded storage leads to the `snake_chain` model,
-- how collection, processing, and ready phases shape blockchain behavior,
+- how the collecting and ready phases, joined by a validating processing transition, shape blockchain behavior,
 - why parseability, connectivity, and full validity may emerge in stages,
 - why the blockchain module is now best understood as a semantic event state machine,
 - which blockchain-facing states are primary versus derived operational views,
@@ -168,7 +168,7 @@ This document explains:
 
 - how the block-tree is reconstructed,
 - how missing parents are detected and recovered,
-- how startup collection and reconstruction phases lead into ready operation,
+- how startup collecting and the processing transition lead into ready operation,
 - how creator selection now consumes radio-derived scoring input at the blockchain boundary,
 - how grace periods and approval fallback work,
 - how `snake_chain` preserves balances, configuration, and live UTXOs,

@@ -31,7 +31,7 @@ This file captures the algorithmic structure explicitly described or directly im
 - essential-state replay at the chain tail,
 - UTXO carry-forward with custodian-fee reduction,
 - node registration and bootstrap rules,
-- lifecycle transitions between collection, reconstruction, and ready operation,
+- lifecycle transitions between collecting, reconstruction, and ready operation,
 - startup dominant-chain acquisition,
 - storage-pressure branch pruning,
 - block status progression,
@@ -61,11 +61,11 @@ The algorithm therefore has to solve five related problems:
 4. tail deletion must not destroy balances, configuration, or live UTXOs,
 5. and all core blockchain data must be representable compactly enough for radio transport and constrained storage.
 
-## Runtime Lifecycle States
+## Runtime Lifecycle
 
 The combined blockchain behavior is best understood as a staged runtime lifecycle rather than one uniform mode. The canonical conceptual definition of these phases belongs in [`moonblokz-blockchain-concept.md`](./moonblokz-blockchain-concept.md); this algorithm document uses the same terminology and focuses on the operational consequences of those phases.
 
-Across the blockchain knowledge-base set, **collection**, **processing**, and **ready** are the preferred phase names.
+Across the blockchain knowledge-base set, the two operating phases are **collecting** and **ready**, joined by a single validating **processing transition** (the [Blockchain PRD](./moonblokz-blockchain-prd.md) FR1 "processing transition"). Processing is a transient reconstruct-and-validate pass, not a resting phase: it promotes a candidate chain to the ready phase only if every validation passes, and on failure the node falls back to the collecting phase under FR5 atomic recovery.
 
 ## Blockchain Boundary at Algorithm Level
 
@@ -84,13 +84,13 @@ Communication transport, fragment handling, serialization/deserialization mechan
 
 ## Authoritative and Derived Algorithmic State
 
-The canonical statement of the authoritative-versus-derived distinction belongs in [`moonblokz-blockchain-concept.md`](./moonblokz-blockchain-concept.md) and is formalized normatively in [ADR-003](./blockchain-adrs/ADR-003-authoritative-vs-derived-state-in-moonblokz-blockchain.md).
+The canonical statement of the authoritative-versus-derived distinction belongs in [`moonblokz-blockchain-concept.md`](./moonblokz-blockchain-concept.md); it is normative in the [Blockchain PRD](./moonblokz-blockchain-prd.md) (FR59 durable persistence boundary, FR34 derived projections), with the archived decision rationale in [ADR-003](./blockchain-adrs/ADR-003-authoritative-vs-derived-state-in-moonblokz-blockchain.md).
 
 Within this algorithm document, the important consequence is that algorithmic workflows operate over a deliberately small authoritative base while treating active-chain selection, balance / UTXO truth, and vote / next-creator state as maintained operational views that may need recomputation or reconciliation.
 
-### Collection state
+### Collecting phase
 
-In this state the node does not yet have an active valid chain. Its main objective is to discover and extend a dominant candidate chain quickly enough to reach an operational state.
+In this phase the node does not yet have an active valid chain. Its main objective is to discover and extend a dominant candidate chain quickly enough to reach an operational state.
 
 Typical responsibilities include:
 
@@ -100,9 +100,9 @@ Typical responsibilities include:
 - maintaining branch-end or chain-part bookkeeping,
 - identifying when a candidate chain is long enough to justify transition into reconstruction.
 
-### Processing state
+### Processing transition
 
-In this state the node has identified a candidate chain with sufficient length, but it still needs to reconstruct usable state from it.
+This is a transient transition rather than a resting phase: the node has identified a candidate chain of sufficient length and now reconstructs the usable state that chain implies before it can operate. It runs as a single forward pass — not resumable across restarts (per [Blockchain PRD](./moonblokz-blockchain-prd.md) FR3 / FR59) — with two outcomes: success promotes the node to the ready phase, while any contradiction rejects the candidate and returns the node to the collecting phase under FR5 atomic recovery.
 
 Typical responsibilities include:
 
@@ -111,9 +111,9 @@ Typical responsibilities include:
 - rebuilding node, balance, and vote state,
 - rejecting the candidate chain if contradictions appear during reconstruction.
 
-### Ready state
+### Ready phase
 
-In this state the node has an active chain and maintains it continuously.
+In this phase the node has an active chain and maintains it continuously.
 
 Typical responsibilities include:
 
@@ -134,7 +134,7 @@ Across all lifecycle states, the todo material implies a practical block-accepta
 5. If the parent is missing, schedule or trigger parent recovery.
 6. If the parent is known, connect the block into the known block-tree or chain-part structure.
 7. Apply state-specific follow-up logic:
-   - in collection state, use it to extend candidate-chain knowledge,
+   - in collecting state, use it to extend candidate-chain knowledge,
    - in processing state, preserve it but avoid claiming final validity too early,
    - in ready state, treat it as an active-chain extension candidate or a side-branch candidate.
 
@@ -693,7 +693,7 @@ Source: the per-replay-type content rules originate in Parts III–V; the always
 
 To stay prepared for becoming the block creator at any later moment, the blockchain module shall periodically emit an outbound mempool-replenishment request to the network whenever its mempool does not hold enough transactions to reach the transactional fill threshold. This behavior is not gated on the local node being the currently expected creator: any node whose mempool is below that threshold solicits additional content continuously, so that if the creator role shifts to it (through normal vote progression or through grace-period expansion), it already has the transactions needed to produce a sufficiently filled block.
 
-The request carries the CRC32 values of the transactions the module already holds in the mempool — the same CRC32 values used as the canonical mempool identifier in the compacted mempool index. Responding nodes treat any of their own mempool transactions whose CRC32 matches an entry in the request as already-known to the requester and skip them; the responder selects at most one transaction the requester is still missing, prioritizing higher fee-per-byte and own-transaction precedence. CRC32 collisions across different transaction byte sequences are accepted as benign over-exclusion at this surface (the over-excluded transaction is simply skipped on this round and may be supplied on a later replenishment exchange); no full byte comparison happens during replenishment evaluation, because CRC32 is the canonical mempool identifier in MoonBlokz.
+The request carries the hash CRC32 values of the transactions the module already holds in the mempool — IEEE CRC32 over each canonical transaction hash, matching the `hash_crc32` values in the compacted mempool index. Responding nodes treat any of their own mempool transactions whose `hash_crc32` matches an entry in the request as already-known to the requester and skip them; the responder selects at most one transaction the requester is still missing, prioritizing higher fee-per-byte and own-transaction precedence. CRC32 collisions across different canonical transaction hashes are accepted as benign over-exclusion at this surface (the over-excluded transaction is simply skipped on this round and may be supplied on a later replenishment exchange); no full byte comparison happens during replenishment evaluation, because `hash_crc32` is the compact mempool replenishment identifier in MoonBlokz.
 
 - The request period is a configurable timing parameter owned by the blockchain module.
 - Requests are emitted only while the mempool content is below the transactional fill threshold; once the threshold is reached, no replenishment traffic is generated until the mempool drops below the threshold again (for example, after a block is accepted and its transactions are removed).
@@ -783,7 +783,7 @@ A small group may try to dominate block creation by generating many transactions
 
 ### Interest rule
 
-If a node has accumulated vote `x`, then each accepted block updates that node's accumulated vote in integer arithmetic as `x := x + floor(x × vote_interest / vote_scale)`, where `vote_scale` is both the numeric value of one received vote credit and the denominator of the anti-capture rule, and `vote_interest` is the per-block growth numerator. `floor(a / b)` here is ordinary unsigned integer division.
+If a node has accumulated vote `x`, then each accepted block updates that node's accumulated vote in checked integer arithmetic as `raw_bump := floor(x × vote_interest / vote_scale)`, `interest_bump := min(raw_bump, vote_scale)`, and `x := x + interest_bump`, where `vote_scale` is the numeric value of one received vote credit, the denominator of the anti-capture rule, and the maximum per-block interest bump, while `vote_interest` is the per-block growth numerator. `floor(a / b)` here is ordinary unsigned integer division. This interest pass applies to every node, including the block creator; the creator's accumulated vote is then reset by the later FR37 creator-reset step, so the creator's `consumed_votes` value is the post-interest, post-credit, pre-reset value. The checked update does not saturate: an overflow would be invalid because it would make the FR23 reverse walk ambiguous.
 
 ## Algorithm 10: snake_chain Tail Advancement
 
@@ -969,7 +969,7 @@ The stronger rule is the `snake_chain` repeat-block rule.
 
 ### Objective
 
-The todo material suggests a practical intermediate structure for collection- and pruning-time bookkeeping: a chain-part model that tracks partial chains by their current start and end references together with a stable identifier.
+The todo material suggests a practical intermediate structure for collecting- and pruning-time bookkeeping: a chain-part model that tracks partial chains by their current start and end references together with a stable identifier.
 
 ### Intended responsibilities
 
