@@ -13,7 +13,7 @@ This register currently consolidates gaps already documented in:
 - [`moonblokz-system-constraints.md`](./moonblokz-system-constraints.md) — numeric, capacity, airtime, flash, and storage-geometry gaps.
 - [`moonblokz-telemetry-implementation.md`](./moonblokz-telemetry-implementation.md) — telemetry deployment-model drift, docs-vs-code drift, and implementation sharp edges.
 - [`blockchain-adrs/ADR-013-bounded-utxo-retention-requires-an-explicit-preservation-strategy.md`](./blockchain-adrs/ADR-013-bounded-utxo-retention-requires-an-explicit-preservation-strategy.md) — accepted bounded-UTXO preservation strategy and explicit no-saturation-handling stance.
-- [`moonblokz-blockchain-concept.md`](./moonblokz-blockchain-concept.md) — post-MVP dynamic custodian-fee and long-disconnect recovery concepts.
+- [`moonblokz-blockchain-concept.md`](./moonblokz-blockchain-concept.md) — post-MVP dynamic custodian-fee, long-disconnect recovery, and concurrent-ingestion processing-state concepts.
 
 ## Register
 
@@ -25,6 +25,7 @@ This register currently consolidates gaps already documented in:
 | OG-004 | Telemetry / operations | Drift / sharp edges | Probe, HUB, Collector, CLI, and Update Server docs and deployment assumptions partially diverge from reviewed code. | Interoperability, operator expectations, update activation, command behavior, and log-collection reliability can be misunderstood if docs are treated as current without checking code-grounded notes. | [`moonblokz-telemetry-implementation.md` §Current Deployment-Model and Documentation Drift](./moonblokz-telemetry-implementation.md#current-deployment-model-and-documentation-drift), [`§Current Code-Grounded Inconsistencies and Sharp Edges`](./moonblokz-telemetry-implementation.md#current-code-grounded-inconsistencies-and-sharp-edges) |
 | OG-005 | Blockchain / bounded UTXO retention | Accepted MVP limitation + post-MVP concept | The MVP uses a fixed chain-config-derived custodian fee and explicitly performs no special UTXO-saturation detection, status reporting, structured logging, mempool backpressure, or replay deferral. A dynamic saturation-aware custodian fee is only a post-MVP concept. | Under high live-UTXO accumulation, replay obligations can consume block capacity and ordinary mempool transactions may wait until fixed-fee erosion self-clears capacity. | [`ADR-013`](./blockchain-adrs/ADR-013-bounded-utxo-retention-requires-an-explicit-preservation-strategy.md#no-explicit-utxo-saturation-handling), [`moonblokz-blockchain-concept.md` §Dynamic Custodian Fee](./moonblokz-blockchain-concept.md#dynamic-custodian-fee-post-mvp-concept) |
 | OG-006 | Blockchain / long-disconnect recovery | Post-MVP concept | Long-disconnect resynchronization is out of MVP scope: the current model logs the condition and relies on external operator intervention. A chain-internal watcher/subgroup/anchor recovery path is conceptual only. | Deployments that expect long but recoverable disconnections need future requirement and architecture work before relying on chain-internal recovery. | [`moonblokz-blockchain-concept.md` §Long-Disconnect Recovery](./moonblokz-blockchain-concept.md#long-disconnect-recovery-post-mvp-concept) |
+| OG-007 | Blockchain / processing lifecycle state | Post-MVP concept | In the MVP, processing is a transient, non-resumable reconstruct-and-validate transition (BC-FR3 / BC-FR59), not a resting state that ingests blocks. A concept promotes it to a first-class operating state that keeps accepting blocks while reconstruction runs, making the lifecycle a three-state model (collecting, processing, ready). | On constrained hardware a slow processing pass extends the window during which the node cannot advance; without concurrent ingestion the node struggles to keep up with arriving blocks during that window. Realizing the concept requires reconciling the non-resumability contract, FR5 atomic-recovery scope, and the two-phase lifecycle framing. | [`moonblokz-blockchain-concept.md` §Processing as a Concurrent-Ingestion State](./moonblokz-blockchain-concept.md#processing-as-a-concurrent-ingestion-state-post-mvp-concept) |
 
 ## Detail Notes
 
@@ -85,6 +86,19 @@ The long-disconnect recovery concept is intentionally pre-design. It leaves thes
 13. and Sybil exposure against a long-disconnected trusted set.
 
 The concept does not change MVP requirements and does not commit to parameter ranges, message layouts, or aggregation strategies.
+
+### OG-007 — Processing as a concurrent-ingestion lifecycle state
+
+The MVP treats processing as a transient reconstruct-and-validate pass: a single forward pass, not resumable across restarts (BC-FR3 / BC-FR59), that falls back to collecting under FR5 atomic recovery on any contradiction. The post-MVP concept promotes processing to a first-class operating state that continues to ingest blocks while reconstruction runs. It leaves these questions open:
+
+1. whether the reconstruction pass stays atomic-and-non-resumable while only intake runs alongside it, or processing itself becomes resumable (reconciling BC-FR3 / BC-FR59),
+2. which state FR5 atomic recovery rolls back on failure, and which concurrently-ingested blocks survive into the fallback collecting round,
+3. whether an in-flight pass completes against its pinned candidate or is re-targeted when a stronger candidate arrives mid-pass, and how either choice preserves replay determinism,
+4. how bounded-storage capacity pressure is shared between concurrent intake and the reconstruction working set,
+5. how the authoritative FR1–FR5 two-phase-plus-transition lifecycle contract and its restatements are updated to a three-state model,
+6. and what structured observability should expose to distinguish a slow-but-advancing pass from a stalled one.
+
+The concept does not change MVP requirements and does not commit to a concurrency model, a resume mechanism, or a revised lifecycle-state contract.
 
 ## Related Documents
 
