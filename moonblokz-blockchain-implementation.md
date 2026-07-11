@@ -418,7 +418,7 @@ Part IV clearly states that once active-chain overlap is gone, resynchronization
 
 ### 7. Chain-config payload envelope vs. open parameter catalog
 
-The outer chain-config payload envelope is now fixed: it carries canonical configuration-content bytes plus a content-signature by node `#0`'s registering key, and replay chain-config blocks reproduce both byte-for-byte. What remains open is the inner parameter catalog and any future dynamic-formula mechanism discussed by later articles.
+The outer chain-config payload envelope is now fixed: it carries canonical configuration-content bytes plus a content-signature by node `#0`'s registering key, and replay chain-config blocks reproduce both byte-for-byte. The framing of the configuration content is also fixed — an override set of `config_key` / `config_value_length` / `config_value` entries prefixed by a `config_value_count`, where any parameter absent from the payload falls back to its code-defined default (see the algorithm model's [configuration-content override-set structure](./moonblokz-blockchain-algorythm.md#configuration-content-override-set-structure)). What remains open is the inner parameter catalog — the meaning of each key and the encoding of each value — and any future dynamic-formula mechanism discussed by later articles.
 
 ## Practical Engineering Cautions
 
