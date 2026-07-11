@@ -525,6 +525,29 @@ This content-signature is distinct from the ordinary block-creator signature in 
 
 The exact inner configuration parameter catalog and any future formula language remain separate design concerns, but the envelope rule above is now part of the algorithmic model.
 
+### Configuration-content override-set structure
+
+The configuration-content bytes carry an **override set**, not a full parameter dump. A chain-config payload lists only the parameters that deviate from the defaults defined in code; any parameter absent from the payload resolves to its code-defined default value. This is consistent with the fall-back-to-default behavior the concept model already assumes when a payload omits an accessor (see [Chain-config blocks concept](./moonblokz-blockchain-concept.md#3-chain-config-blocks)).
+
+Following the block header, the configuration content is a count followed by a contiguous run of entries:
+
+1. **`config_value_count: u16`** — the number of configuration entries that follow.
+2. Then `config_value_count` entries, stored back-to-back with no padding. Each entry is:
+   - **`config_key: u8`** — identifies which configuration parameter this entry sets,
+   - **`config_value_length: u8`** — byte length of the value that follows,
+   - **`config_value: [u8; config_value_length]`** — the parameter value, variable length.
+
+The meaning of each `config_key` and the internal encoding of each `config_value` (which may itself be a small bytecode rather than a literal) are defined separately and remain open, exactly as the inner parameter catalog is left open above. Only the framing that carries them is fixed here.
+
+#### Reserved forward-extension paths (not implemented)
+
+Two extension paths are recorded so the format can grow later without giving up present-day compactness. Neither is implemented in the current design, which assumes up to 254 distinct keys and a maximum 255-byte value are sufficient even when a `config_value` is a small bytecode:
+
+- **Multi-byte keys.** `config_key == 255` is reserved to mean "the next byte continues the key," extending the key space beyond the single-byte range once more than 254 keys are needed.
+- **Two-byte value lengths.** Above a designated key range, `config_value_length` could be widened from 1 to 2 bytes to permit longer values.
+
+Recording these paths now keeps the current 1-byte `config_key` / 1-byte `config_value_length` layout maximally compact while preserving a defined, non-breaking growth direction if either limit is later reached.
+
 ## 9. Approval Payload
 
 Part V also keeps approval payload details intentionally deferred. It states that approval is represented by a multi-signature plus a list of supporting nodes.
