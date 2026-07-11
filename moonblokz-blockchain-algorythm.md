@@ -529,7 +529,7 @@ The exact inner configuration parameter catalog and any future formula language 
 
 The configuration-content bytes carry an **override set**, not a full parameter dump. A chain-config payload lists only the parameters that deviate from the defaults defined in code; any parameter absent from the payload resolves to its code-defined default value. This is consistent with the fall-back-to-default behavior the concept model already assumes when a payload omits an accessor (see [Chain-config blocks concept](./moonblokz-blockchain-concept.md#3-chain-config-blocks)).
 
-Following the block header, the configuration content is a count followed by a contiguous run of entries:
+Within the configuration-content bytes, the data is a count followed by a contiguous run of entries:
 
 1. **`config_value_count: u16`** — the number of configuration entries that follow.
 2. Then `config_value_count` entries, stored back-to-back with no padding. Each entry is:
