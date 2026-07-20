@@ -798,7 +798,7 @@ The blockchain design is **fully compatible** with the existing `moonblokz-radio
 | `no_std` | All three new crates (`moonblokz-blockchain`, `moonblokz-mempool`, `moonblokz-vote`) are `#![no_std]` | ✓ |
 | Runs on std host | no_std crates compile on std targets if no `alloc` dependency | ✓ |
 | No `'static` requirement | Sync API + owned `Blockchain` instance — no `'static` queues, no globals | ✓ |
-| Multiple parallel instances | Const-generic + owned struct — independent `Blockchain::<...>::new(...)` per simulated node | ✓ |
+| Multiple parallel instances | Const-generic + owned struct — independent `Blockchain::<...>::init_in_place(...)` (via a local `MaybeUninit`) per simulated node | ✓ |
 | No alloc dependency | heapless / array / const-generic everywhere | ✓ |
 | External crates (crypto, storage) trait-based | Simulator can supply mock implementations | ✓ |
 | Deterministic sync execution | Sync API + monotonic `now: u64` input → replay-friendly (FR63) | ✓ |
