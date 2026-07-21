@@ -44,7 +44,7 @@ A consolidation and navigation layer for the numeric constraints, capacity caps,
 
 This document explains:
 
-- the project-wide embedded-minimal coding discipline: avoid unused fields/functions, unnecessary getters, and convenience derives unless there is a current or explicitly planned consumer,
+- the project-wide embedded-minimal coding discipline: add only code the current task requires; minimize both RAM data-structure size and compiled binary size; avoid unused fields/functions, unnecessary getters, convenience derives, and needless host/simulator divergence unless there is a current or explicitly planned consumer,
 - the blockchain capacity caps (const-generics such as `MAX_NODES`) and what they imply for deployment,
 - the crypto constants and bounded-aggregation limits for the Schnorr and BLS families,
 - the 264 KB RP2040 RAM/SRAM budget, per-structure costs, and the Schnorr-versus-BLS margins,

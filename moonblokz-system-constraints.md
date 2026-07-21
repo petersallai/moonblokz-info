@@ -20,11 +20,13 @@ When a new numeric cap, budget, or limit is introduced anywhere in the knowledge
 
 ## 0. Embedded Implementation Discipline (Project-Wide)
 
-MoonBlokz targets constrained embedded environments first. Planning and implementation must therefore treat code size, RAM footprint, API surface, and transient stack use as load-bearing constraints, not as cleanup items.
+MoonBlokz targets constrained embedded environments first, and it does so as a complex system that deliberately pushes the hardware limits of the target MCU. Minimalism is therefore a primary design goal, not a cleanup item: both the size of in-RAM data structures and the size of the compiled binary are load-bearing constraints, alongside API surface and transient stack use. Only code that is genuinely required by the work at hand may be added. This restraint is not only a resource concern — less code means less noise, which keeps an already complex system easier to understand and review.
 
 Project-wide rules:
 
-- **Keep code and memory at the absolute minimum needed for the current story and explicitly planned follow-up stories.** Do not add fields, counters, helper functions, accessors, buffers, or public APIs just because they might be useful someday.
+- **Keep code and memory at the absolute minimum needed for the current story and explicitly planned follow-up stories.** Do not add fields, counters, helper functions, accessors, buffers, or public APIs just because they might be useful someday. If the current task does not require a piece of code, it does not belong in the change.
+- **Minimize compiled code size, not only RAM.** Binary/flash size is as constrained as RAM. Prefer a single code path over parallel variants; avoid redundant helpers, gratuitous generics, and dead branches. Every function and match arm that survives compilation costs flash and adds reading noise.
+- **Do not introduce unnecessary divergence for host/simulator execution.** Share one implementation between embedded and simulator/test builds; add a platform-specific path only when the target genuinely requires it, and keep that divergence as small as possible. A simulator-only convenience variant that the embedded target does not need is exactly the redundancy to avoid.
 - **Every new field/function must have a visible consumer.** The consumer can be current code or a concrete upcoming story/FR/ADR. If no consumer is identifiable, leave it out and reintroduce it later with a precise name and rationale.
 - **Avoid convenience getters for internal structs.** If a struct is private module storage metadata, prefer direct field access inside the owning module and tests. Add accessors only when they are part of an intentional public API boundary.
 - **Avoid convenience derives.** Do not add `Debug`, broad `Clone`, or similar derives to production/public types unless a real consumer requires them. If a derive is needed for fixed-array initialization or another concrete embedded reason, keep it narrow and document why.
