@@ -243,12 +243,17 @@ impl<...> Blockchain<...> {
     /// broadcasts them over the radio, lowest-sequence first. Refused with
     /// `GenesisRejectReason::StorageNotEmpty` on a non-empty (already
     /// bootstrapped) chain, or `LocalNodeIdNotZero` off node #0.
+    ///
+    /// Genesis is a one-per-chain bootstrap with no immediately-scheduled
+    /// follow-up work, so — unlike the recurring methods — it carries **no
+    /// `NextCall`** (a plain `Result`, not a `CallResult`) and takes **no `now`**.
+    /// It sits deliberately outside the AR4 single-outcome scheduling-pull
+    /// contract; normal scheduling resumes with the caller's regular `on_tick`.
     pub fn process_genesis(
         &mut self,
         initial_total_network_currency: u64,
         initial_chain_config_bytes: &[u8],
-        now: u64,
-    ) -> Result<CallResult<InitGenesisOutcome>, GenesisRejectReason>;
+    ) -> Result<GenesisBlocks, GenesisRejectReason>;
 
     // ⚠️ INCONSISTENCY TO RECONCILE (flagged per governance; resolution left to
     // the maintainer): with genesis now `init_in_place` + `process_genesis`, the
@@ -416,7 +421,7 @@ Construction is a single infallible in-place constructor, `init_in_place`, used 
 
 | Boot mode | Construction + bootstrap | Precondition | Phase after |
 |---|---|---|---|
-| Genesis (node #0) | `init_in_place(...)` then `process_genesis(...)` — creates Blocks #0 **and** #1 in the one `process_genesis` call | Chain is empty; caller holds the node-zero key | `Collecting` (walking-skeleton; `Ready` after FR2/FR3 reconstruction — Story 5.x) |
+| Genesis (node #0) | `init_in_place(...)` then `process_genesis(...)` — creates Blocks #0 **and** #1 in the one `process_genesis` call | Chain is empty; caller holds the node-zero key | `Ready` — node #0 authored a complete chain, so no FR2 acquisition / FR3 reconstruction is needed (join/restart still pass through `Collecting`) |
 | Join | `initialize_join(...)` *(to be reframed as `init_in_place` + mesh intake)* | Storage is empty; `node_zero_pk` known a priori (trust anchor) | `Collecting` |
 | Restart | `initialize_from_storage(...)` *(to be reframed as `init_in_place` + an FR59 storage-load)* | Storage non-empty; `node_zero_pk` supplied from code (trust anchor); no lifecycle phase persisted | `Collecting` (→ `Processing` → `Ready` once FR2 holds) |
 
@@ -424,11 +429,15 @@ Construction is a single infallible in-place constructor, `init_in_place`, used 
 - **Block #0** — transaction block: node #0's own registration + an initial self-transfer of `initial_total_network_currency`.
 - **Block #1** — chain-config block: encodes `initial_chain_config_bytes`; its `previous_hash` chains to Block #0 and it is signed over its full canonical content. It is **not** emitted from a later `on_tick` — that split (former decision row 19) is superseded.
 
+Besides persisting both blocks, `process_genesis` mirrors them into the in-memory block-tree as node #0's active chain (both `on_active_chain`, Block #1 the active head, one `chain_heads` entry) so the tree stays consistent with storage, and sets the lifecycle phase directly to **`Ready`**. Genesis blocks are valid by construction and bypass the tier1 intake gate. Walking-skeleton scope: the full `Stored`→`Active` status promotion (Epic 6) and the FR3 derived projections — roster, balances, etc. (Epic 7) — still land later, so `Ready` here is at the chain-structure level.
+
 ```rust
-pub enum InitGenesisOutcome {
-    // Both genesis blocks, owned — broadcast both (lowest sequence first).
-    Created { block_zero: Block, block_one: Block },
-    Rejected(GenesisRejectReason),                     // chain not empty, etc.
+// Plain product of the two success blocks — NOT a single-outcome enum:
+// refusal is carried by the `Err(GenesisRejectReason)` half of the Result,
+// so there is no `Rejected` variant here.
+pub struct GenesisBlocks {
+    pub block_zero: Block,                             // broadcast both,
+    pub block_one: Block,                              // lowest sequence first
 }
 
 pub enum InitJoinOutcome {
@@ -989,7 +998,7 @@ Selected high-impact decisions from the Step 5 + Step 6 + Step 7 iterations:
 | 16 | Chain-lib hosting embassy task gets 6 KB stack (not 4 KB) | §8 FR45 block creation peak ~4 KB |
 | 17 | Feature-gated introspection getters (`#[cfg(feature = "introspection")]`) | FR65 production binary minimal; simulator/CLI enable for observability |
 | 18 | ~~Three separate `initialize_*` constructors (genesis / join / restart)~~ **Superseded:** a single in-place constructor `init_in_place` for every node + role-specific follow-ups (genesis = `process_genesis`). Distinct precondition contracts remain, now as follow-ups rather than constructors. Join/restart reframing still pending (see §3.1 flag). |
-| 19 | ~~Genesis two-block bootstrap split across `initialize_genesis` + next `on_tick`~~ **Superseded:** `process_genesis` builds **both** Block #0 and Block #1 in one call and returns both for radio broadcast; there is no `GenesisChainConfigCreated` tick effect. New reject reason `GenesisRejectReason::StorageNotEmpty` guards re-genesis of a non-empty chain. |
+| 19 | ~~Genesis two-block bootstrap split across `initialize_genesis` + next `on_tick`~~ **Superseded:** `process_genesis` builds **both** Block #0 and Block #1 in one call and returns both for radio broadcast; there is no `GenesisChainConfigCreated` tick effect. New reject reason `GenesisRejectReason::StorageNotEmpty` guards re-genesis of a non-empty chain. The return is a plain `Result<GenesisBlocks, GenesisRejectReason>` — a bare `GenesisBlocks { block_zero, block_one }` struct (no `Rejected` variant; refusal is the `Err`) and **no `NextCall`/`now`**: genesis is one-per-chain with no immediately-scheduled follow-up, so it is kept out of the AR4 scheduling-pull contract. |
 | 20 | `node_zero_pk` is a parameter in all 3 init methods | Bootstrap of trust: it must come from an out-of-band trusted source (baked into firmware); corrupted storage cannot forge the trust anchor |
 | 21 | Entropy: simple `prng_seed: u64` parameter | The bridge layer is responsible for seed generation (RP2040 ROSC jitter, `restart_count` hash); the blockchain simply accepts it |
 | 22 | `ApprovalAccumulator` fixed `MAX_BLOCK_SIZE` buffer (~2 KB), crypto-agnostic | BLS in-place aggregation is more efficient (~4 B/supporter vs. Schnorr ~36 B/supporter), but the allocated memory size is the maximum block size for both variants |
