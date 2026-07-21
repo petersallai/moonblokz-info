@@ -304,13 +304,23 @@ pub enum ReceiveBlockOutcome<'a> {
     DuplicateKnown,                                                   // FR11
     Rejected(RejectReason),                                           // FR9 tier failure
     AcceptedSilently,                                                 // FR16 storage-only
-    AcceptedAndSendBlock(BlockView<'a>),                              // FR26 relay
-    AcceptedAndSendSupport(SupportView<'a>),                          // FR12 deviance support
-    AcceptedAndSendParentRecoveryRequest(ParentRecoveryRequest),      // FR19 missing parent
+    AcceptedAndSendBlock(BlockView<'a>),                              // FR26 relay (Epic 8)
+    AcceptedAndSendSupport(SupportView<'a>),                          // FR12 deviance support (Epic 6)
+    // FR19 parent-recovery is NOT a ReceiveBlockOutcome (revised 2026-07-12,
+    // Story 4.4): it is scheduler-driven, not a reaction to the just-received
+    // block — it is emitted from on_tick as TickOutcome::SendParentRecoveryRequest,
+    // gated by the FR46 global cooldown, and the receiving block only schedules
+    // the tick (NextCall::At). Keeping it off receive_block also avoids the radio
+    // immediately relaying + emitting a recovery request in the same receive step
+    // (send-side contention). The relay/support variants above ARE receive-driven
+    // and correctly stay here.
     // ... one per FR-defined effect, exactly one variant per call
 }
 
-// Similar for ReceiveTransactionOutcome, ReceiveSupportOutcome, TickOutcome, InitOutcome
+// Similar for ReceiveTransactionOutcome, ReceiveSupportOutcome, InitOutcome.
+// TickOutcome carries the scheduler-driven effects, incl.
+// SendParentRecoveryRequest(ParentRecoveryRequest) (FR19, Story 4.4) and
+// GenesisChainConfigCreated (§3.6).
 ```
 
 ### 3.3 Mempool sub-crate API (10 method-groups)
@@ -409,6 +419,8 @@ pub enum InitRestartOutcome {
 // TickOutcome — new variant for genesis bootstrap second block:
 pub enum TickOutcome<'a> {
     // ... existing variants
+    Idle,                                              // no time-driven behavior fired
+    SendParentRecoveryRequest(ParentRecoveryRequest),  // FR19 — Story 4.4 (scheduler-driven)
     GenesisChainConfigCreated(BlockView<'a>),          // FR54 — Block #1
 }
 ```
@@ -504,7 +516,7 @@ The full per-module breakdown (processes / data structures / relationships / API
 | `lifecycle.rs` | FR1-FR8, FR54, FR59 | `lifecycle_phase: LifecyclePhase` (1 B on Blockchain) |
 | `scheduler.rs` | FR46 | `SchedulerState` (~72 B) |
 | `blocks.rs` | FR18 | `BlockTable { blocks: [BlockEntry; 600] }` (45.6 KB) |
-| `chain_heads.rs` | FR19 | `ChainHeadsTable { heads: [ChainHeadEntry; 40] }` (1.28 KB) |
+| `chain_heads.rs` | FR19 | `ChainHeadsTable { heads: [ChainHeadEntry; 40] }` (2.88 KB — Story 4.4, §6.3) |
 | `snake_chain.rs` | FR48-FR53 | 2 u32 fields on Blockchain (8 B) |
 | `branch_value.rs` | FR21 | (stateless; operates on `ChainHeadEntry.branch_value`) |
 | `intake.rs` | FR10/FR14/FR16/FR26 | (stateless dispatcher) |
@@ -586,11 +598,13 @@ pub(crate) struct BlockEntry {
 pub(crate) struct ChainHeadEntry {
     head_idx: u32,                  //  4 B   index into blocks (u32::MAX = empty slot)
     tail_or_connection_idx: u32,    //  4 B   Stored → tail-point; Connected/Active → connection-point
+    missing_parent_hash: [u8; 32],  // 32 B   Stored-only: tail-point's previous_hash (Story 4.4)
     last_request_timestamp: u64,    //  8 B   FR19 parent-recovery scheduling
+    arrival_timestamp: u64,         //  8 B   FR18 head-scoped arrival time (Story 4.4; Epic 8 consumer)
     branch_value: u64,              //  8 B   FR21 cumulative (Connected/Active only)
-    flags: u8,                      //  1 B   state (Stored/Connected/Active)
+    flags: u8,                      //  1 B   state (bit 0 = connected; Active derived globally)
 }
-// effective 25 B, aligned to 8 → padded 32 B; total 40 × 32 B = 1 280 B
+// effective 65 B, aligned to 8 → padded 72 B; total 40 × 72 B = 2 880 B
 ```
 
 **Key decisions:**
@@ -598,6 +612,9 @@ pub(crate) struct ChainHeadEntry {
 - No `head_sequence` cache → resolved via `blocks[head_idx].sequence` (single deref, padding makes the cache free-of-charge anyway)
 - `tail_or_connection_idx` overlaid (state-dependent semantics) → saves 480 B
 - Empty slot sentinel: `head_idx == u32::MAX`
+- No per-head Active flag — active membership is derived globally (`head_idx == active_chain_head_idx`, §6.4).
+
+**Story 4.4 revision (2026-07-12, ratified).** `arrival_timestamp: u64` (the FR18 head-scoped arrival timestamp Story 4.1 deferred here — populated but read by Epic 8 for FR9 Tier 3 block-creation pacing, never a tie-break input) and `missing_parent_hash: [u8; 32]` (a Stored-only cache of the tail-point's `previous_hash`, so the parent-recovery scheduler and mutation event (ii) need no durable-storage read) were added and accepted, taking the entry from 25 B / 1 280 B to 65 B effective / 72 B padded (2 880 B, +1 600 B — trivial against the Schnorr ~67-77 KB margin).
 
 ### 6.4 Snake_chain fields (directly on Blockchain)
 
@@ -698,7 +715,7 @@ pub struct VoteEngine<const MAX_NODES: usize> {
 | NodeInfo.seed_source_idx | 1000 × 4 B | 4 000 |
 | NodeInfo.max_known_node_id | 4 B | 4 |
 | BlockTable | 600 × 76 B | 45 600 |
-| ChainHeadsTable | 40 × 32 B | 1 280 |
+| ChainHeadsTable | 40 × 72 B | 2 880 |
 | snake_chain fields | 2 × 4 B | 8 |
 | ApprovalAccumulator | MAX_BLOCK_SIZE buffer (crypto-agnostic) | ~2 048 |
 | EmitScratch.block_buffer | MAX_BLOCK_SIZE | ~2 000 |
@@ -714,7 +731,7 @@ pub struct VoteEngine<const MAX_NODES: usize> {
 | NodeInfo.public_keys | 1000 × 96 B | 96 000 |
 | NodeInfo.balances + seed_source_idx + max_known | 12 004 | 12 004 |
 | BlockTable | 600 × 76 B | 45 600 |
-| ChainHeadsTable | 40 × 32 B | 1 280 |
+| ChainHeadsTable | 40 × 72 B | 2 880 |
 | snake_chain fields | 8 | 8 |
 | ApprovalAccumulator | MAX_BLOCK_SIZE buffer (crypto-agnostic) | ~2 048 |
 | EmitScratch + lifecycle + scheduler + PRNG | ~2 081 | 2 081 |
