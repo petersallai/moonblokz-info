@@ -421,13 +421,15 @@ Construction is a single infallible in-place constructor, `init_in_place`, used 
 
 | Boot mode | Construction + bootstrap | Precondition | Phase after |
 |---|---|---|---|
-| Genesis (node #0) | `init_in_place(...)` then `process_genesis(...)` — creates Blocks #0 **and** #1 in the one `process_genesis` call | Chain is empty; caller holds the node-zero key | `Collecting` (walking-skeleton; `Ready` after FR2/FR3 reconstruction — Story 5.x) |
+| Genesis (node #0) | `init_in_place(...)` then `process_genesis(...)` — creates Blocks #0 **and** #1 in the one `process_genesis` call | Chain is empty; caller holds the node-zero key | `Ready` — node #0 authored a complete chain, so no FR2 acquisition / FR3 reconstruction is needed (join/restart still pass through `Collecting`) |
 | Join | `initialize_join(...)` *(to be reframed as `init_in_place` + mesh intake)* | Storage is empty; `node_zero_pk` known a priori (trust anchor) | `Collecting` |
 | Restart | `initialize_from_storage(...)` *(to be reframed as `init_in_place` + an FR59 storage-load)* | Storage non-empty; `node_zero_pk` supplied from code (trust anchor); no lifecycle phase persisted | `Collecting` (→ `Processing` → `Ready` once FR2 holds) |
 
 **Genesis two-block bootstrap** (per `moonblokz-info` Part IV) — both blocks are built in the single `process_genesis` call and returned together so the bridge broadcasts both, lowest-sequence first:
 - **Block #0** — transaction block: node #0's own registration + an initial self-transfer of `initial_total_network_currency`.
 - **Block #1** — chain-config block: encodes `initial_chain_config_bytes`; its `previous_hash` chains to Block #0 and it is signed over its full canonical content. It is **not** emitted from a later `on_tick` — that split (former decision row 19) is superseded.
+
+Besides persisting both blocks, `process_genesis` mirrors them into the in-memory block-tree as node #0's active chain (both `on_active_chain`, Block #1 the active head, one `chain_heads` entry) so the tree stays consistent with storage, and sets the lifecycle phase directly to **`Ready`**. Genesis blocks are valid by construction and bypass the tier1 intake gate. Walking-skeleton scope: the full `Stored`→`Active` status promotion (Epic 6) and the FR3 derived projections — roster, balances, etc. (Epic 7) — still land later, so `Ready` here is at the chain-structure level.
 
 ```rust
 // Plain product of the two success blocks — NOT a single-outcome enum:
