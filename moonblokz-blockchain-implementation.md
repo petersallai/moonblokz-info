@@ -351,7 +351,7 @@ The vote-interest mechanism is parameterized by two configuration values: `vote_
 
 Part IV defines a special two-block bootstrap (block `#0` with node-`#0` registration and initial self-transfer; block `#1` with chain configuration), and Part V reinforces that those blocks use the same byte-structured blockchain model with some special validation exceptions. This must be treated as explicit startup logic rather than a quirky exception hidden in general validation code.
 
-The bootstrap is realized in [`moonblokz-blockchain-architecture.md`](./moonblokz-blockchain-architecture.md) §3.6 as three separate `initialize_*` constructors (`initialize_genesis`, `initialize_join`, `initialize_from_storage`). The genesis path emits block `#0` as the outcome of `initialize_genesis` and block `#1` on the next `on_tick` via `TickOutcome::GenesisChainConfigCreated` — the single-outcome scheduling-pull pattern naturally splits the two-block sequence across two calls.
+The bootstrap is realized in [`moonblokz-blockchain-architecture.md`](./moonblokz-blockchain-architecture.md) §3.6. Every node is constructed by the single in-place constructor `init_in_place`; node `#0` then runs the genesis bootstrap as a plain `&mut self` method, `process_genesis`, which builds **both** block `#0` and block `#1` in one call and returns both so the bridge broadcasts them over the radio (lowest sequence first). This supersedes the earlier split where block `#1` was emitted from a later `on_tick`. Genesis is refused with `GenesisRejectReason::StorageNotEmpty` on a non-empty chain.
 
 ## Active-Chain Switch Consequences
 
