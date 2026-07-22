@@ -24,6 +24,7 @@ If you already know your topic, use this table to jump straight to the relevant 
 | Open gaps, unresolved verification items, known telemetry drift, post-MVP recovery questions | [Open Gaps Register](./moonblokz-open-gaps-register.md) |
 | Term meanings and cross-subsystem disambiguation | [Glossary](./moonblokz-glossary.md) |
 | Public website | [Website Summary](./website.md) |
+| AI-assisted review &amp; tooling process skills (not domain knowledge) | [Process Skills](#process-skills) → e.g. [Story Review HTML Companion](./skills/story-review-html-companion.md) |
 
 ## Document Authority Model
 
@@ -73,6 +74,16 @@ This document explains:
 - and the post-MVP open questions around dynamic custodian fees, long-disconnect recovery, and promoting processing to a concurrent-ingestion lifecycle state.
 
 It is explicitly **not authoritative**: each entry links to the source document where the underlying gap, drift, limitation, or open question is defined. Use this file before planning work that depends on unresolved deployment constraints, telemetry interoperability assumptions, UTXO saturation behavior, or long-disconnect recovery.
+
+## Process Skills
+
+The [`skills/`](./skills/) directory holds reusable, English process playbooks for AI-assisted MoonBlokz work — how to carry out a recurring task such as reviewing, documenting, or validating a change — rather than MoonBlokz domain facts. They are **not authoritative** and state no MoonBlokz knowledge; on any domain question the subsystem documents win. They are lookup recipes, not part of the linear reading order below.
+
+### [Story Review HTML Companion](./skills/story-review-html-companion.md)
+
+A recipe for building a single self-contained, navigable HTML page that makes the deep review of one implemented story tractable: per-file, per-method whole-method git-diffs, each preceded by a plain-language what/why explanation and carrying hover tooltips on the changed lines, plus orientation diagrams, an API-surface table, an AC-to-code-to-test traceability table, a code-review findings panel, and a reviewer checklist — published as a private Artifact.
+
+Use this after a story's implementation is complete, when a reviewer wants a companion that explains the diff before reading the source line by line.
 
 ## Contents
 
@@ -516,3 +527,5 @@ Use this file when you need a quick orientation to the current public web presen
 > **Cross-cutting reference (not part of the linear flow):** Consult [MoonBlokz Open Gaps Register](./moonblokz-open-gaps-register.md) when planning around unresolved deployment constraints, telemetry docs-vs-code drift, UTXO saturation behavior, or post-MVP recovery questions.
 
 > **Cross-cutting reference (not part of the linear flow):** Consult the [MoonBlokz Glossary](./moonblokz-glossary.md) when a term such as `score` or `verification horizon` reads ambiguously across documents; it disambiguates the senses and links to each authoritative definition site.
+
+> **Process skill (not part of the linear flow):** Consult [Process Skills](#process-skills) when you need a reusable recipe for AI-assisted MoonBlokz work — for example the [Story Review HTML Companion](./skills/story-review-html-companion.md) for building a reviewer-facing HTML page from a completed story's diff.
