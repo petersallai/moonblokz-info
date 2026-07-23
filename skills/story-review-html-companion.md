@@ -63,7 +63,7 @@ Each card = an explanation block, then the code.
 - **Tags** — `add` / `mod` badges and the FR(s) the change serves.
 - **Explanation block** (the "what & why"), in short labelled fields: **What** (what changed), **Why it matters / process it participates in** (where this code sits in the runtime flow), and, where useful, a compact bullet list of **implementation notes** (invariants, non-obvious constraints, forward-tags).
 - **Scrutiny callout** on risky units only — a coloured box (warn `▲` / risk `⚠` / info `i`) naming exactly what the reviewer should verify (a subtle invariant, a panic path, a security-relevant assumption). Do not put one on every card; reserve them for the genuinely load-bearing changes.
-- **Code block** — the whole method, git-diff-styled: `+` lines green, `-` lines red, context neutral, with a small file/line caption. Trim long doc-comments (mark the elision) since the explanation block already carries the "why"; always show the actual changed lines in full.
+- **Code block** — the changed method, git-diff-styled: `+` lines green, `-` lines red, context neutral, with a small file/line caption. Show every changed (`+`/`-`) line **verbatim from the source**; the only thing you may drop is a long doc-comment, replaced by the visible elision-marker line (`⋯`). **Never paraphrase a body into a `/* … */` or `// …` summary comment** — that is an elision disguised as code, and worse than an honest marker. A small added method (a reset, an accessor, a helper) is therefore always shown whole. Only a genuinely large method may collapse *repetitive, non-load-bearing* branches, and then only behind the `⋯` marker (never a fake comment) and never over a load-bearing changed line (a gate/guard, sentinel, return, or arithmetic op). If one card bundles several units, each is still shown whole — otherwise split them into separate cards.
 - **Tooltips** — attach a `data-tip` to the meaningful changed lines (signature, the gate/guard line, the return, notable enum variants) explaining what that line does and why it came in or out. Not every line — the load-bearing ones.
 
 ## Step 4 — Visual design system
@@ -122,7 +122,7 @@ Write the HTML to a scratch file, set a `<title>`, then publish with the `Artifa
 
 ## Quality rules
 
-- **Accuracy over polish** — every shown line must come from the real diff/source; if a doc-comment is elided for length, mark it, and never elide a changed line.
+- **Accuracy over polish** — every shown line must come from the real diff/source **verbatim**; a paraphrased or `/* … */`-summarized body is a defect. Drop only doc-comments (or, in a large method, repetitive non-load-bearing branches), always behind the visible `⋯` marker; never elide a changed line and never disguise an elision as source.
 - **Match density to the story** — a mechanical change needs fewer aids than a subsystem-spanning one; do not manufacture diagrams or findings that encode nothing.
 - **One scrutiny callout per genuinely load-bearing change**, no more — over-flagging hides the real risks.
 - **Self-contained** — no CDN scripts, fonts, or images; embed everything; both themes legible.
