@@ -613,14 +613,17 @@ pub(crate) struct BlockEntry {
     sequence: u32,                                 //  4 B   FR21/FR19 tie-break (u32::MAX = empty slot)
     spent_bits: [u8; SPENT_BITS_BYTES],            // 32 B   ADR-016 co-located (see revision note)
     head_ref_count: u8,                            //  1 B   FR19 eviction
-    flags: u8,                                     //  1 B   status (Stored/Connected/Active) + is_on_active_chain
+    flags: u8,                                     //  1 B   is_on_active_chain (bit 0) + status (bits 1-2, Stored/Connected/Active) + payload_type (bits 3-4)
+    len: u16,                                      //  2 B   exact serialized length (FR6 byte-exact checks; fills the former tail padding)
 }
-// effective 74 B, aligned to 4 → padded 76 B; total 600 × 76 B = 45 600 B
+// effective 76 B, aligned to 4 → 76 B; total 600 × 76 B = 45 600 B
 ```
 
 **Key decisions** (Step 6):
 - No `storage_index` field — `blocks[i] ⟷ storage_index = i` 1:1 mapping
 - Spent-bits **co-located** in BlockEntry per ADR-016 (no separate `SpentBitTable`)
+- `flags` bits 3-4 cache the block's `payload_type` as `payload_type - 1`, so the FR3 backward mark can locate the candidate segment's earliest balance block — the `max_known_node_id` existence-floor seed source of FR6's referenced-node-existence check — without one storage read per marked block (free: previously-unused flag bits)
+- `len` records the exact serialized length at intake because durable backends read blocks back zero-padded to a fixed slot; the FR6 byte-exact checks trim to it first (not recoverable across restart — see the Story-5.7 length-recovery decision)
 - Empty slot sentinel: `sequence == u32::MAX` (FR53 rejects u32::MAX-based chain extension in MVP)
 - Side-branch blocks have spent_bits = all zeros (~3 KB harmless waste, absorbed by Schnorr margin)
 
