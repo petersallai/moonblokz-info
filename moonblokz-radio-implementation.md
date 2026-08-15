@@ -289,6 +289,16 @@ The current code defines `RadioConfiguration` with these fields:
 
 This struct is the current main behavioral tuning surface for the runtime. It is narrower and more explicit than article-only descriptions.
 
+### Chain configuration as the source of these values (specified, not yet implemented)
+
+In the current code the caller supplies `RadioConfiguration` at `initialize(...)`, and each spawned task keeps its own copy of the fields it needs; the simulator reads the values from its scene file. [the Configuration Module Specification](./moonblokz-configuration-specification.md) §10.2 changes where the values come from: all nine become chain-configuration parameters (registry identifiers 11–19), their defaults become code-baked defaults owned by the `moonblokz-configuration` crate, and a scene file becomes a source of overrides in a generated configuration rather than a separate configuration path. The motivation is the same one that puts any parameter into chain configuration — these values must be identical on every node of a chain, and a per-node tuning surface cannot guarantee that.
+
+Three consequences shape the radio side:
+
+- **The radio consumes a snapshot, not accessors.** It runs on the other core, its real-time paths must stay non-blocking, and it cannot supply arguments: the chain-derived quantities live on the blockchain core, and the quantity the radio does know locally — its neighbour count — is node-specific and would defeat the purpose. Radio parameters are therefore argument-less by rule.
+- **Distribution is an `embassy_sync::watch::Watch` owned by the node runtime.** Its latest-value, multi-consumer semantics match the case: several tasks hold their own copies, a superseded snapshot must never arrive after a newer one, and no queue may grow. `embassy-sync` 0.7 is already the pinned version.
+- **Updates are not retroactive.** New values apply to decisions taken after the update; deadlines already scheduled — pending echo-request and echo-gathering deadlines, wait-pool entries queued with the previous relay-position delay, the TX scheduler's next scheduled instant — run to completion unchanged. Updates are rare by construction: a node typically publishes once, when the chain configuration first becomes available.
+
 ## `ScoringMatrix` as Compact Relay Policy
 
 The current code defines a concrete `ScoringMatrix` type containing:
@@ -528,6 +538,7 @@ Even with the codebase as source of truth, several implementation areas remain i
 
 ## Related Documents
 
+- [MoonBlokz Configuration Module Specification](./moonblokz-configuration-specification.md) — authoritative for the chain-config parameters that the radio runtime-tuning values become (registry identifiers 11–19) and for the snapshot distribution described here.
 - [`moonblokz-radio-concept.md`](./moonblokz-radio-concept.md) — conceptual role and design philosophy of the radio subsystem.
 - [`moonblokz-radio-algorythm.md`](./moonblokz-radio-algorythm.md) — the formal message flow this code implements.
 - [`moonblokz-simulator-implementation.md`](./moonblokz-simulator-implementation.md) — reuses this radio library crate in host-mode simulation.

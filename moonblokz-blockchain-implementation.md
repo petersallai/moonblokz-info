@@ -275,11 +275,11 @@ This tradeoff should be documented explicitly because it affects:
 
 ## Configuration Boundaries Suggested by Parts III, IV, and V
 
-The combined articles explicitly or implicitly suggest that several values should remain configurable at chain level or later design level. The blockchain interface to those values is the `ChainConfigTrait` outlined in [`moonblokz-blockchain-architecture.md`](./moonblokz-blockchain-architecture.md) §11; the state and execution model behind the trait lives in the future `moonblokz-configuration` crate, which will receive its own BMAD covering FR7, FR8, FR17, FR49, and FR56. The categories below preserve the conceptual rationale for what must remain configurable; the concrete trait surface and its delegation contract belong to the Architecture Decision Document.
+The combined articles explicitly or implicitly suggest that several values should remain configurable at chain level or later design level. The blockchain interface to those values is the `ChainConfigTrait` recorded in [`moonblokz-blockchain-architecture.md`](./moonblokz-blockchain-architecture.md) §11; the state and execution model behind the trait lives in the `moonblokz-configuration` crate, which owns FR7, FR8, FR17, FR49, and FR56 and drives `moonblokz-vm` for computed parameters. The categories below preserve the conceptual rationale for what must remain configurable; the concrete trait surface and its delegation contract belong to the Architecture Decision Document.
 
 ### Formula execution boundary
 
-If chain configuration eventually contains formulas, the open question is whether they are evaluated by a constrained expression evaluator or by a more general virtual machine. The current architecture defers this decision to the future `moonblokz-configuration` crate (FR56 mini-VM capability is the placeholder term). Whichever mechanism is chosen must preserve the boundary conditions any such evaluator would have to satisfy:
+Chain configuration can carry formulas, and the mechanism is settled: a general stack-based virtual machine in the separate `moonblokz-vm` crate, driven by the `moonblokz-configuration` crate and specified in [the Configuration Module Specification](./moonblokz-configuration-specification.md) §7. It executes unsigned saturating `u64` arithmetic with loops, bounded by a chain-configured per-invocation fuel budget; exhausting that budget — like any other runtime trap, such as an undefined opcode, an out-of-range jump, or exceeding the operand-stack or parameter-nesting limits — falls through to the next resolution tier rather than raising an error. There is deliberately no separate load-time verification pass: the runtime has to be total in any case, so a verifier would duplicate a subset of the same checks in a second code path. The mechanism satisfies the boundary conditions any such evaluator has to meet:
 
 - deterministic behavior across all nodes,
 - bounded runtime,
@@ -410,7 +410,7 @@ Resolved by [ADR-015](./blockchain-adrs/ADR-015-approval-subgroup-selection.md).
 
 ### 5. Mutable configuration support
 
-Partly addressed. [`moonblokz-blockchain-architecture.md`](./moonblokz-blockchain-architecture.md) §11 outlines a `ChainConfigTrait` (tentative/durable transitions per FR8, lock/discard per FR17, replay handling per FR49) that the blockchain consumes via a trait handle, with state living in a future separate `moonblokz-configuration` crate. The mini-VM capability suggested by FR56 (programmable governance) is explicitly deferred to that future crate's own BMAD; the current architecture treats `ChainConfigTrait` as opaque to the blockchain core. What remains open is the precise content shape, the approval mechanics for configuration changes mid-chain, and the mini-VM execution model.
+Addressed. [`moonblokz-blockchain-architecture.md`](./moonblokz-blockchain-architecture.md) §11 records the `ChainConfigTrait` surface (optional active-configuration handle, tentative/durable state per FR8, lock/discard per FR17) that the blockchain consumes via a trait handle, with the state, the parameter registry, and the FR56 mini-VM living in the `moonblokz-configuration` and `moonblokz-vm` crates per [Configuration Module Specification](./moonblokz-configuration-specification.md). What remains open is not the mechanism but two value-level decisions: the defaults of the parameters that no current source establishes, and whether the active-chain length `W` is chain configuration bounded by a compile-time capacity or a compile-time parameter only. Mid-chain configuration change remains out of scope: the configuration is locked for the lifetime of the chain and no runtime change path exists.
 
 ### 6. Exact long-disconnect recovery strategy
 
@@ -418,7 +418,7 @@ Part IV clearly states that once active-chain overlap is gone, resynchronization
 
 ### 7. Chain-config payload envelope vs. open parameter catalog
 
-The outer chain-config payload envelope is now fixed: it carries canonical configuration-content bytes plus a content-signature by node `#0`'s registering key, and replay chain-config blocks reproduce both byte-for-byte. The framing of the configuration content is also fixed — an override set of `config_key` / `config_value_length` / `config_value` entries prefixed by a `config_value_count`, where any parameter absent from the payload falls back to its code-defined default (see the algorithm model's [configuration-content override-set structure](./moonblokz-blockchain-algorythm.md#configuration-content-override-set-structure)). What remains open is the inner parameter catalog — the meaning of each key and the encoding of each value — and any future dynamic-formula mechanism discussed by later articles.
+The outer chain-config payload envelope is now fixed: it carries canonical configuration-content bytes plus a content-signature by node `#0`'s registering key, and replay chain-config blocks reproduce both byte-for-byte. The framing of the configuration content is also fixed — an override set of `config_key` / `config_value_length` / `config_value` entries prefixed by a `config_value_count`, where any parameter absent from the payload falls back to its code-defined default (see the algorithm model's [configuration-content override-set structure](./moonblokz-blockchain-algorythm.md#configuration-content-override-set-structure)). The inner parameter catalog is fixed too: a single flat key space shared by every consuming subsystem, with the key byte's high bit selecting between a literal and a bytecode value, and the registry itself treated as permanent wire format (see the algorithm model's [configuration-content override-set structure](./moonblokz-blockchain-algorythm.md#configuration-content-override-set-structure) and [the Configuration Module Specification](./moonblokz-configuration-specification.md) §4).
 
 ## Practical Engineering Cautions
 
@@ -484,5 +484,6 @@ This separation should make later evolution easier when data structures, communi
 
 ## Related Documents
 
+- [MoonBlokz Configuration Module Specification](./moonblokz-configuration-specification.md) — authoritative for the configuration boundary this document motivates — the wire format, the parameter registry, the VM execution model, and the commitment surface.
 - [`moonblokz-blockchain-concept.md`](./moonblokz-blockchain-concept.md) — the conceptual role and design philosophy of the blockchain subsystem.
 - [`moonblokz-blockchain-algorythm.md`](./moonblokz-blockchain-algorythm.md) — the formal algorithm-level behavior this code realizes.

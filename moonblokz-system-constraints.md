@@ -43,7 +43,7 @@ Authoritative source: [`moonblokz-blockchain-architecture.md`](./moonblokz-block
 | Const generic | Default | Meaning / deployment implication |
 |---|---:|---|
 | `MAX_NODES` | 1000 | **Network-wide registered-node cap.** Sizes all node-id-indexed arrays (`NodeInfo`, `VoteEngine.accumulated_vote`); every node holds an entry for every registered node. Dominant RAM driver — see §3. |
-| `SNAKE_CHAIN_LENGTH` (W) | 500 | Active-chain window length (bounded retention). |
+| `SNAKE_CHAIN_LENGTH_MAX` | 500 | **Capacity** of the active-chain window, not its length. The length in force, `W`, is chain configuration ([BC-FR56](./moonblokz-blockchain-prd.md)) and acceptance requires `W ≤ SNAKE_CHAIN_LENGTH_MAX`; a build whose capacity is below the chain's `W` cannot join. See D2 in §7. |
 | `VERIFICATION_HORIZON` (H) | 20 | [BC-FR58](./moonblokz-blockchain-prd.md) cheap-zone boundary; retained knowledge beyond the active window for rare chain switches. |
 | `MAX_BLOCKS` | 600 | In-RAM block-table slots; 1:1 with RP2040 durable flash capacity (see §4). |
 | `MAX_BRANCH_COUNT` | 40 | Chain-heads table capacity; collecting-state branch headroom. |
@@ -121,7 +121,7 @@ The radio figure is the **source-confirmed** `memory-config-medium = ~60 KB` (ra
 
 Per-lever savings: [`moonblokz-blockchain-architecture.md`](./moonblokz-blockchain-architecture.md) §12.1. The BLS margins below apply those levers on top of the source-confirmed ~60 KB radio figure (§3.2); architecture §12.2 now carries the same figures.
 
-| Profile | `MAX_NODES` | `SNAKE_CHAIN_LENGTH` | BLS margin (radio = 60 KB) |
+| Profile | `MAX_NODES` | `SNAKE_CHAIN_LENGTH_MAX` | BLS margin (radio = 60 KB) |
 |---|---:|---:|---:|
 | BLS-large (default) | 1000 | 500 | **~−18 KB (does not fit)** ❌ |
 | BLS-medium | 500 | 500 | ~39 KB ✅ |
@@ -195,6 +195,7 @@ Per [`AGENTS.md`](./AGENTS.md), divergences must be flagged, not silently resolv
 | # | Type | Detail | Impact |
 |---|---|---|---|
 | D1 | **Resolved (source-confirmed)** | Radio `memory-config-medium` RAM is **~60 KB**, confirmed in the radio module source (`moonblokz-radio-lib/README.md` states `~60KB RAM`; `lib.rs` sets `CONNECTION_MATRIX_SIZE=30` and the medium-profile queue/buffer consts). [`moonblokz-radio-implementation.md`](./moonblokz-radio-implementation.md) §Medium was correct; [`moonblokz-blockchain-architecture.md`](./moonblokz-blockchain-architecture.md) §7.3's ~30-40 KB is an under-count. | **Material — propagated.** §3.2 and §3.4 here are corrected to 60 KB: BLS at the 1000-node default **exceeds 264 KB by ~17 KB** (tuning mandatory); Schnorr keeps ~47 KB (~18%). Architecture §7.3/§7.4/§12 and index line 101 have been updated to match (radio = 60 KB; BLS requires mandatory `MAX_NODES` tuning at the default profile). |
+| D2 | **Open (KB ahead of source)** | The active-chain window was split into a compile-time capacity and a chain-configured length ([`moonblokz-blockchain-architecture.md`](./moonblokz-blockchain-architecture.md) §5, decision #23, 2026-08-14). The `moonblokz-blockchain` source still carries a single const generic named `SNAKE_CHAIN_LENGTH` (`intake.rs`, `snake_chain.rs`) that plays the capacity role. | **Naming only, for now.** Behaviour is unchanged while no chain configuration exists, so the current code is correct at its own stage. The rename and the `W ≤ SNAKE_CHAIN_LENGTH_MAX` acceptance check land with Story 5.11; until then, `SNAKE_CHAIN_LENGTH` in source and `SNAKE_CHAIN_LENGTH_MAX` in the KB denote the same value. |
 | G1 | Gap | No regional LoRa **duty-cycle** limit documented anywhere. | Capacity/airtime planning for real deployments cannot be grounded in KB values. |
 | G2 | Gap | Flash **wear-lifetime** not quantified ([`moonblokz-storage-algorythm.md`](./moonblokz-storage-algorythm.md) explicitly defers it). | Long-term durability budgeting is undefined. |
 | G3 | Verify | Storage general slot-count formula divides by `MAX_BLOCK_SIZE` (2016), while the RP2040 placement contract uses `SLOT_SIZE_BYTES` (2048, includes the per-slot hash). | General capacity estimate may slightly over-count slots vs. the hardware geometry; confirm intended divisor. |
