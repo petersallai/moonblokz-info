@@ -539,17 +539,19 @@ The VM does not know what a parameter is. Host-backed instructions are dispatche
 
 ```rust
 pub trait VmHost {
-    fn call(&self, func_id: u16, args: &[u64], fuel: &mut Fuel) -> Option<u64>;
+    fn call(&self, func_id: u16, selector: u8, args: &[u64], fuel: &mut Fuel) -> Option<u64>;
 }
 
-pub const HOST_RESOLVE_PARAMETER: u16 = 0;   // args[0] = parameter id, args[1..] = its arguments
+pub const HOST_RESOLVE_PARAMETER: u16 = 0;   // selector = parameter id, args = its arguments
 ```
 
 One host function is defined today. The entry point is general rather than parameter-specific so that later host capabilities are new `func_id` values rather than new trait methods — an added method is a breaking change for every implementor, an added identifier is not.
 
+The selector travels beside the arguments rather than inside them so that the machine can hand over a slice of its operand stack exactly as it stands. Folding the parameter identifier into `args` would mean assembling `[key, a₀ …]` somewhere, and the only place to assemble it without a second array is the operand stack itself — which borrows a free slot and makes `GETPARAM` overflow a full stack even where its net stack effect is zero. Keeping them separate is what leaves the instruction's stack effect precisely what §7.2.3 states.
+
 The remaining fuel is threaded through the call so that nested evaluation draws from the caller's budget. `None` propagates as a failed evaluation of the calling program.
 
-`args.len() − 1` is the count the *program* declared, not the arity the registry records, so validating that the two agree is the host's responsibility and no one else's — it holds the registry, and the machine deliberately does not (§7.2.3). Declining is the whole of the remedy: it reaches the program as a failed host call and resolution falls to the next tier.
+`args.len()` is the count the *program* declared, not the arity the registry records, so validating that the two agree is the host's responsibility and no one else's — it holds the registry, and the machine deliberately does not (§7.2.3). Declining is the whole of the remedy: it reaches the program as a failed host call and resolution falls to the next tier.
 
 This is the whole of the VM's coupling to MoonBlokz: an identifier it does not interpret, and a callback it does not implement.
 
@@ -663,7 +665,9 @@ Three tools, split by the same boundary as the crates: whatever operates on **by
 
 Each is a `std` binary in a **separate tool package** within its repository, not a feature of the library. Separation at the package level rather than by feature flag is deliberate: Cargo unifies features per package, so a `std` tool target sharing a package with the `no_std` library could pull `std` into the library's own build and quietly break the dependency gate of §2.
 
-**`vm-asm` — assembler.** Translates the textual form of §7.2.4 to bytecode and is the only place where structural mistakes in a program are diagnosed. Because the runtime carries no verifier (§7.3), an undefined opcode, a truncated immediate, a jump out of range, or an operand index above the declared arity merely trap and fall back on-device — correct behaviour, but a poor diagnostic. Static checking belongs here, where it costs no device code size and can produce a message that names the offending instruction. The assembler also enforces the 255-byte program limit of §7.2.1, which is otherwise only discovered when the framing refuses the value.
+**`vm-asm` — assembler.** Translates the textual form of §7.2.4 to bytecode and is the only place where structural mistakes in a program are diagnosed. Because the runtime carries no verifier (§7.3), an undefined opcode, a truncated immediate, or a jump out of range merely trap and fall back on-device — correct behaviour, but a poor diagnostic. Static checking belongs here, where it costs no device code size and can produce a message that names the offending instruction.
+
+An out-of-range operand index is the exception and stays a runtime condition. `ARG` is bounded by the invocation's arity and `LOAD` / `STORE` by the local-slot count, and neither bound is the assembler's to know: the first is registry knowledge and the second a deployment constant chosen by whoever hosts the VM (§12). The assembler validates immediate *width* only. The assembler also enforces the 255-byte program limit of §7.2.1, which is otherwise only discovered when the framing refuses the value.
 
 **`vm-dis` — disassembler.** Renders bytecode back to readable form: for tests, for reviewing a proposed genesis configuration before it is signed, and for diagnosing a chain whose configuration is known only as bytes. It is the counterpart the assembler is tested against — a round-trip through both is the conformance test for the ISA, and it is meaningful because §7.2.4 pins the canonical text both ends target.
 
