@@ -234,7 +234,7 @@ This document explains:
 - the virtual machine: machine model, full instruction set with opcode map and textual form, fuel accounting, trap model, host seam, and the capabilities deliberately left absent,
 - the commitment lifecycle, who calls storage, what is persisted, and the defined error branches,
 - how parameters reach consumers outside the blockchain — the change-notification seam and the radio snapshot,
-- the host-side tooling and the constants that remain to be measured,
+- the host-side tooling, and the constant and budget catalogue including the measured interpreter frame cost,
 - and, explicitly out of scope, the direction a later smart-contract capability would take, including the rent model that would bound its state.
 
 Use this file whenever a question concerns a chain-configurable parameter's identity, encoding, default or resolution, the bytecode format or the VM's behaviour, or the configuration commitment surface the blockchain consumes. Divergence from it in any other document is a knowledge-base inconsistency.

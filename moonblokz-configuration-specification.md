@@ -27,7 +27,7 @@ In scope:
 - the change-notification seam and the radio-parameter integration,
 - the host-side tooling: the bytecode assembler and disassembler in `moonblokz-vm`, and the configuration encoder in `moonblokz-configuration`.
 
-Out of scope: governance of runtime configuration changes (no runtime change path exists — configuration is locked for the lifetime of the chain), and the post-MVP smart-contract system. `moonblokz-vm` is the intended substrate for that system, and §14 records the thinking that should be the starting point when it is picked up — but nothing in §14 is built now, and no requirement follows from it beyond keeping the VM a self-contained crate.
+Out of scope: governance of runtime configuration changes (no runtime change path exists — configuration is locked for the lifetime of the chain), and the post-MVP smart-contract system. `moonblokz-vm` is the intended substrate for that system, and §13 records the thinking that should be the starting point when it is picked up — but nothing in §13 is built now, and no requirement follows from it beyond keeping the VM a self-contained crate.
 
 ---
 
@@ -175,7 +175,7 @@ Values are stored and returned in their **native unit** — the unit the paramet
 
 | ID | Parameter | Type | Width | Default | Form | Args |
 |---:|---|---|---:|---|:--:|:--:|
-| 29 | `vm_fuel_limit` | u32 | 4 | *ratify* | L | 0 |
+| 29 | `vm_fuel_limit` | u32 | 4 | 20_000 | L | 0 |
 
 `vm_fuel_limit` is **literal-only** for a bootstrapping reason: it bounds every program evaluation, so resolving it must not itself require running a program.
 
@@ -322,7 +322,7 @@ Bytecode is permanent: once a chain exists, a program's bytes cannot be reinterp
 
 `0x00` is permanently unallocated on purpose: zero is what a truncated, padded, or zero-initialized buffer is made of, and the most likely accidental "program" is a run of zero bytes. Keeping `0x00` undefined means such a buffer traps on its first instruction instead of executing something.
 
-Every reserved opcode is undefined and traps at runtime (§7.3). The reservations record intent only — nothing behind them is designed or implemented, and §14 explains why they are worth writing down at this stage.
+Every reserved opcode is undefined and traps at runtime (§7.3). The reservations record intent only — nothing behind them is designed or implemented, and §13 explains why they are worth writing down at this stage.
 
 #### 7.2.3 Instruction reference
 
@@ -521,7 +521,7 @@ pub enum VmOutcome {
 }
 ```
 
-The configuration module maps both non-`Completed` outcomes onto the next resolution tier (§5.1), so within this specification every condition above has the same effect: the tier fails, resolution moves on, and nothing is observable to the accessor's caller, whose surface remains total. The separation matters beyond this specification — a different caller may need a different policy for the same outcomes (§14.5) — and a VM that folded the policy into itself could not serve one.
+The configuration module maps both non-`Completed` outcomes onto the next resolution tier (§5.1), so within this specification every condition above has the same effect: the tier fails, resolution moves on, and nothing is observable to the accessor's caller, whose surface remains total. The separation matters beyond this specification — a different caller may need a different policy for the same outcomes (§13.5) — and a VM that folded the policy into itself could not serve one.
 
 **Fuel is charged per instruction from a cost table**, not one unit per instruction. Every instruction defined in §7.2 costs one unit today, which makes the table trivially uniform at present; `GETPARAM` additionally consumes whatever the nested evaluation spends from the shared budget. The table exists in this form from the start because it is consensus-critical and effectively permanent: a cost change changes which programs exhaust their budget, and therefore changes returned values. Introducing a table later — when an instruction whose real cost is not one unit first appears — would be a retroactive change to every chain's results.
 
@@ -565,7 +565,7 @@ Two capabilities are absent by decision, not by omission. Both are cheap to add 
 
 Configuration bytecode carries **no instruction-set version marker**, and this is a decision rather than an oversight. The configuration content is signed by node #0, is byte-invariant for the lifetime of the chain, and is reproduced byte-identically in every replay; the chain's configuration therefore pins its own interpretation, and an in-band version field would be a permanently stored constant that can never vary.
 
-That reasoning is specific to configuration content and does not generalize. Any future artifact whose bytecode is authored independently of the chain's genesis — a deployed program, in the sense of §14 — must carry a version marker in its own deployment record, or the engine that executes it can never be revised. The absence of a version field here should not be read as a precedent for that case.
+That reasoning is specific to configuration content and does not generalize. Any future artifact whose bytecode is authored independently of the chain's genesis — a deployed program, in the sense of §13 — must carry a version marker in its own deployment record, or the engine that executes it can never be revised. The absence of a version field here should not be read as a precedent for that case.
 
 ---
 
@@ -688,26 +688,24 @@ Named here, valued after measurement — this specification does not invent numb
 | `SNAKE_CHAIN_LENGTH_MAX` | Compile-time active-chain capacity; bounds the chain-configured `W` | 500 (existing default) |
 | `SIGNATURE_SIZE` | Content-signature width | from `moonblokz-crypto` |
 | Maximum program length | Bytecode value size, bounded by the framing | 255 B (`value_length: u8`) |
-| VM operand stack depth | Fixed maximum | *ratify after measurement* |
-| VM local slot count | Fixed array size | *ratify after measurement* |
-| `GETPARAM` nesting depth | Fixed maximum | *ratify after measurement* |
-| `vm_fuel_limit` default | Code-baked default of ID 29 | *ratify after measurement* |
+| VM operand stack depth | Fixed maximum | 16 |
+| VM local slot count | Fixed array size | 8 |
+| `GETPARAM` nesting depth | Fixed maximum | 3 |
+| `vm_fuel_limit` default | Code-baked default of ID 29 | 20_000 |
 
 The module's own RAM footprint is one `MAX_PAYLOAD_SIZE` buffer plus its state flag — unchanged from the retention the blockchain performs today — plus the VM's fixed stack and slot array, which are the only new allocations and are sized by the four values above.
 
----
+The VM's operand stack and slot array are stack-resident rather than owned, so they cost a frame rather than a static footprint. Measured on `thumbv6m-none-eabi` at the firmware's release profile, one interpreter frame is `8 × (stack depth + slot count) + 112` bytes — 304 B at the values above. The nesting depth costs nothing itself, but it multiplies the frame count, because a nested evaluation re-enters the interpreter through the host: the worst case is four frames, 1216 B, plus the host's own frame at each level. This has to fit beside the FR45 block-creation peak within the blockchain task's stack, since parameter resolution runs at that peak.
 
-## 13. Items requiring ratification
-
-The values in §12 marked *ratify after measurement* follow from the first implementation's stack-frame and timing measurements on the thumbv6m target, and from the observed cost of the most expensive parameter program.
+`vm_fuel_limit` bounds evaluation *time*, not program size — a program with a backward jump has no size-derived bound — so it is set against how long a runaway evaluation may hold the core. A static estimate of 55–70 cycles per instruction puts 20_000 units near 9 ms at 133 MHz, against the 118 units the most expensive worked example of §7.2.4 spends. The timing half of that estimate has not been confirmed on hardware.
 
 ---
 
-## 14. Future direction: smart contracts
+## 13. Future direction: smart contracts
 
 **Nothing in this section is in scope.** No part of it is designed, specified, or built by this document, and no implementation obligation follows from it. It is recorded for one reason: `moonblokz-vm` is the intended substrate of a later smart-contract capability, and a handful of decisions taken now either keep that path open or quietly close it. When the capability is picked up, this is where the thinking starts — not from a blank page, and not from a general-purpose contract platform's assumptions, which do not survive contact with this environment.
 
-### 14.1 The constraint envelope
+### 13.1 The constraint envelope
 
 Four numbers decide the shape of anything that could run here. Contract code must fit **one block** (`MAX_BLOCK_SIZE`, 2016 B, less header and signature). The chain's whole throughput is on the order of **tens of bytes per second**. There is **no global time** — only block sequence. And persistent state is subject to `snake_chain` bounded retention, so it is either **small and replayed, or gone**.
 
@@ -715,7 +713,7 @@ The consequence is that a contract interaction is a **rare, high-value event** �
 
 One environmental property works in the opposite direction, and it is decisive: participants are **registered, identified nodes**, not anonymous keys. That is what dissolves the oracle problem, which is normally the hardest part of making contracts useful. A fact about the physical world enters the chain as a **signature by a known node** — the site supervisor, the inspector, the weighbridge, the gate controller. Essentially every viable contract family below runs on that one pattern.
 
-### 14.2 Contract families that fit
+### 13.2 Contract families that fit
 
 Grounded in the use cases the project targets (industrial worksites, agriculture, logistics and ports, community backup payments, disaster response, off-grid communities, machine-to-machine coordination, research expeditions, humanitarian relief):
 
@@ -730,13 +728,13 @@ Grounded in the use cases the project targets (industrial worksites, agriculture
 - **Local issuance and rationing** — ration, fuel, or water credits issued by an authorized node and spent by holders. Per-holder balances, structurally identical to what the chain already carries.
 - **Mutual risk pool** — small communal fund paying out on attested events; escrow inverted, with many contributors.
 
-### 14.3 What does not fit
+### 13.3 What does not fit
 
 Anything needing **external data** (price feeds, weather, an internet API): there is no oracle and determinism forbids one. Anything keyed to **wall-clock time**: only sequence exists. Anything with **large or growing state** — AMMs, order books, metadata-bearing tokens, long-history logic — because bounded retention removes the history underneath it. Anything iterating a **large collection**: fuel and a few hundred bytes of memory do not permit it. And anything **interaction-frequent**: at a 60-second inter-block interval over LoRa, a contract call is an occasional event.
 
 These are consequences of the hyper-local, infrastructure-independent positioning, not temporary gaps to be closed later.
 
-### 14.4 State under `snake_chain`: the rent model
+### 13.4 State under `snake_chain`: the rent model
 
 This is the hard problem, and MoonBlokz already contains its solution in miniature.
 
@@ -772,7 +770,7 @@ Deterministic on every node, and the termination point is known **in advance**, 
 
 **A wider observation.** Contract state would be the first state class that pays for its own permanence in full. The open-gaps register notes that bounded UTXO retention has no saturation handling in the MVP; the same mechanism is a candidate answer there later. Not a reason to touch it now — a reason to know the pattern generalizes.
 
-### 14.5 What this asks of the VM today
+### 13.5 What this asks of the VM today
 
 Most of what a contract system needs is **additive** and can be built later without disturbing anything specified here: linear memory, persistent state behind host functions, byte-valued results, call frames, execution context, cryptographic host functions, and an effect-list model in which the VM returns proposed effects for the blockchain to validate and apply rather than mutating anything itself.
 
