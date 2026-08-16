@@ -123,7 +123,7 @@ The registry is a single flat key space shared by every consuming subsystem. It 
 
 **Next free ID: 30.**
 
-Value-form column: `L` = literal only; `L/B` = literal or bytecode. Args column: the arity of the accessor, and hence of any bytecode program for that key.
+Value-form column: `L` = literal only; `L/B` = literal or bytecode. Args column: the arity of the accessor, hence of any bytecode program for that key, and the count a `GETPARAM` naming that key must declare (§7.2.3).
 
 ### 4.1 Blockchain parameters
 
@@ -398,9 +398,13 @@ Stack effects are written left-to-right with the **top of stack on the right**: 
 
 | Op | Mnemonic | Immediate | Stack | Semantics |
 |---|---|---|---|---|
-| `0x70` | `GETPARAM` | `key_id: u8` | `[a₀ … aₙ₋₁] → [v]` | Resolves parameter `key_id` through the host (§7.4) and pushes its value. Consumes exactly the parameter's declared arity `n` from the stack, with argument `0` deepest and argument `n−1` on top — the order in which they were pushed. |
+| `0x70` | `GETPARAM` | `key_id: u8`, `argc: u8` | `[a₀ … a_{argc−1}] → [v]` | Resolves parameter `key_id` through the host (§7.4) and pushes its value. Consumes exactly `argc` operands from the stack, with argument `0` deepest and argument `argc−1` on top — the order in which they were pushed. |
 
 `GETPARAM` is how one parameter is defined in terms of another. It is the only host-backed instruction defined today, and it is dispatched through the general host entry point of §7.4 rather than as a special case, so later host functions need no new machinery. Its nested evaluation draws from the same fuel budget as its caller (§7.3).
+
+**The instruction is self-describing**: it carries the argument count rather than the VM obtaining it from the registry. The alternative would require the machine to ask the host how many operands to take before it could assemble the call, since the arity of a key is registry knowledge and the registry belongs to the configuration module — which would make the VM's coupling to MoonBlokz a two-way conversation rather than the single callback of §7.4. Encoding the count keeps the machine ignorant of what a parameter is, and it is the form that generalizes: a future call instruction (opcode group `0xB0`–`0xBF`) addresses a callee with no registry behind it at all.
+
+The cost is that `argc` and the registry's `Args` column (§4) can disagree, so **the host validates the count**. It is the only party that can: it owns the registry. A mismatch is declined like any unresolved parameter, which is a runtime fallback rather than a live hazard — the `config-encoder` resolves each key through the registry when it assembles the content (§11), so the authoring path cannot emit a mismatch in the first place, and an argument-less program is additionally evaluated once at acceptance (§6).
 
 Three definitional choices above are worth naming, because each removes a failure mode rather than merely picking a behaviour: division and modulo by zero yield `0`, shifts of 64 or more yield `0`, and subtraction saturates at `0`. Together with saturating addition and multiplication, this makes **every arithmetic instruction total** — no operand combination can trap. What remains able to fail is structural (fuel, stack depth, nesting), never arithmetic.
 
@@ -418,18 +422,18 @@ Bytecode has a readable form, and it is specified here rather than left to the a
 
 **Canonical form.** `vm-dis` emits exactly one text for a given program: uppercase mnemonics, one instruction per line, a single space before an operand, decimal immediates, explicit `PUSH_*` widths, no comments, labels named `L0`, `L1`, … numbered by ascending target offset and placed on their own lines, LF line endings. Therefore `assemble(disassemble(bytes)) == bytes` for every program the decoder accepts, and `disassemble(assemble(text))` is the canonical rendering of whatever the author wrote.
 
-**`GETPARAM` takes a number, not a name.** The assembler belongs to `moonblokz-vm`, which knows nothing about the parameter registry (§2), so the operand is the numeric identifier. Parameter names are a `config-encoder` convenience: in its input, `@inter_block_interval_ms` resolves through the registry to the identifier before the source reaches the assembler. The layering is visible in the syntax on purpose.
+**`GETPARAM` takes a number, not a name.** The assembler belongs to `moonblokz-vm`, which knows nothing about the parameter registry (§2), so the first operand is the numeric identifier and the second is the argument count. Both operands are written on one line, separated by a comma. Parameter names are a `config-encoder` convenience: in its input, `@inter_block_interval_ms` resolves through the registry to the identifier before the source reaches the assembler, and the encoder is also where an argument count that contradicts the registry is caught. The layering is visible in the syntax on purpose.
 
 **Example — a derived parameter.** The grace-period window as half the inter-block interval, reading parameter 1 rather than restating its value:
 
 ```
-GETPARAM 1        ; inter_block_interval_ms
+GETPARAM 1, 0     ; inter_block_interval_ms, no arguments
 PUSH 2
 DIV
 RET
 ```
 
-Six bytes: `70 01 10 02 43 01`. Written in the encoder's input the first line would be `GETPARAM @inter_block_interval_ms`.
+Seven bytes: `70 01 00 10 02 43 01`. Written in the encoder's input the first line would be `GETPARAM @inter_block_interval_ms, 0`.
 
 **Example — an argument-taking parameter.** The registration price growing with network size, clamped:
 
@@ -497,7 +501,7 @@ A program terminates without a result when:
 - **an instruction is truncated** — an immediate, or the opcode itself, extends past the end of the program,
 - **control flow leaves the program** — a jump destination or the program counter falls outside the byte range,
 - **an operand index is out of range** — an `ARG` index at or above the invocation's arity, or a `LOAD` / `STORE` slot outside the local-slot array,
-- **a host call does not resolve** — `GETPARAM` names a parameter the host declines.
+- **a host call does not resolve** — `GETPARAM` names a parameter the host declines, either because it is unallocated or because the declared `argc` disagrees with the registry's arity for that key.
 
 **The VM reports; it does not decide.** Execution returns a typed outcome and applies no policy of its own:
 
@@ -536,6 +540,8 @@ pub const HOST_RESOLVE_PARAMETER: u16 = 0;   // args[0] = parameter id, args[1..
 One host function is defined today. The entry point is general rather than parameter-specific so that later host capabilities are new `func_id` values rather than new trait methods — an added method is a breaking change for every implementor, an added identifier is not.
 
 The remaining fuel is threaded through the call so that nested evaluation draws from the caller's budget. `None` propagates as a failed evaluation of the calling program.
+
+`args.len() − 1` is the count the *program* declared, not the arity the registry records, so validating that the two agree is the host's responsibility and no one else's — it holds the registry, and the machine deliberately does not (§7.2.3). Declining is the whole of the remedy: it reaches the program as a failed host call and resolution falls to the next tier.
 
 This is the whole of the VM's coupling to MoonBlokz: an identifier it does not interpret, and a callback it does not implement.
 
