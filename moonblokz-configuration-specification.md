@@ -139,15 +139,15 @@ Value-form column: `L` = literal only; `L/B` = literal or bytecode. Args column:
 | 8 | `parent_recovery_per_head_retry_interval_ms` | u64 | 8 | 120_000 | L/B | 0 | FR19 / FR46 |
 | 9 | `parent_recovery_min_emit_interval_ms` | u64 | 8 | 10_000 | L/B | 0 | FR46 |
 | 10 | `required_support` | u8 | 1 | 3 | L | 0 | Bound-checked, §6 |
-| 20 | `block_fill_threshold_percent` | u8 | 1 | *ratify* | L/B | 0 | FR45 (a) |
+| 20 | `block_fill_threshold_percent` | u8 | 1 | 80 | L/B | 0 | FR45 (a) |
 | 21 | `active_chain_length` | u16 | 2 | 500 | L | 0 | `W`; bound-checked against the compile-time capacity, §6 |
-| 22 | `mempool_replenishment_interval_ms` | u64 | 8 | *ratify* | L/B | 0 | FR56 |
-| 23 | `custodian_fee` | u64 | 8 | *ratify* | L/B | 0 | FR51 carry-forward |
-| 24 | `registration_price` | u64 | 8 | *ratify* | L/B | 1 | Arg: registered-node count |
-| 25 | `tx_fee_per_byte_min` | u64 | 8 | *ratify* | L/B | 0 | FR56 fee policy |
-| 26 | `tx_fee_per_byte_max` | u64 | 8 | *ratify* | L/B | 0 | FR56 fee policy |
-| 27 | `deviation_replay_insertion_delay_ms` | u64 | 8 | *ratify* | L/B | 0 | FR29 pacing |
-| 28 | `replay_block_reward` | u64 | 8 | *ratify* | L/B | 0 | FR36 (c) |
+| 22 | `mempool_replenishment_interval_ms` | u64 | 8 | 500_000 | L/B | 0 | FR56 |
+| 23 | `custodian_fee` | u64 | 8 | 1 | L/B | 0 | FR51 carry-forward |
+| 24 | `registration_price` | u64 | 8 | 100 | L/B | 1 | Arg: registered-node count |
+| 25 | `tx_fee_per_byte_min` | u64 | 8 | 0 | L/B | 0 | FR56 fee policy |
+| 26 | `tx_fee_per_byte_max` | u64 | 8 | 1000 | L/B | 0 | FR56 fee policy |
+| 27 | `deviation_replay_insertion_delay_ms` | u64 | 8 | 300_000 | L/B | 0 | FR29 pacing |
+| 28 | `replay_block_reward` | u64 | 8 | 100 | L/B | 0 | FR36 (c) |
 
 ### 4.2 Radio parameters
 
@@ -166,6 +166,8 @@ Every radio parameter is argument-less by rule (§10.2).
 | 19 | `tx_maximum_random_delay` | u16 | 2 | 200 | milliseconds | L/B |
 
 Values are stored and returned in their **native unit** — the unit the parameter is already expressed in throughout the radio code. No normalisation to milliseconds: it would move every default and the radio API for no gain, since the VM works in `u64` internally regardless.
+
+`registration_price` keeps arity 1 while its default is a plain literal: the accessor still takes the registered-node count, and the default simply does not vary with it. A chain that wants a size-dependent price overrides the key with a program of the same arity.
 
 `scoring_matrix` is literal-only because it is not a scalar: the VM returns a `u64` and has no array-valued result form. Should a computed matrix ever be needed, it requires a distinct result form and a distinct opcode group, and is a deliberate future extension rather than an oversight.
 
@@ -669,7 +671,7 @@ Both belong to `moonblokz-vm` because they encode the instruction set, and the i
 
 **`config-encoder`.** Produces the configuration content handed to `initiateGenesis(...)`: it takes a description of parameter overrides — literal values, and assembly source for computed parameters, where a parameter may be referenced by name as `@name` (§7.2.4) — resolves each name to its registry identifier, frames the override set per §3, and appends the node #0 content-signature. It applies the framing checks of §3.4 and the acceptance checks of §6, including the acceptance-time evaluation of argument-less bytecode, so that a configuration the tool accepts is one the network accepts.
 
-For the bytecode entries it **calls `vm-asm` as a library**: `moonblokz-configuration` already depends on `moonblokz-vm`, so the tool package enables that dependency's tooling feature rather than reimplementing an assembler or forcing the author to run a two-step pipeline by hand. The dependency direction matches the crate layering — configuration knows about bytecode, the VM knows nothing about configuration.
+For the bytecode entries it **calls `vm-asm` as a library**: `moonblokz-configuration` already depends on `moonblokz-vm`, so the `config-encoder` package depends on the `moonblokz-vm-asm` package directly, which exposes the assembler as a library beside its binary, rather than reimplementing an assembler or forcing the author to run a two-step pipeline by hand. The dependency direction matches the crate layering — configuration knows about bytecode, the VM knows nothing about configuration.
 
 The specification fixes each tool's input and output formats and the checks it must apply; the implementations are separate work.
 
@@ -697,13 +699,7 @@ The module's own RAM footprint is one `MAX_PAYLOAD_SIZE` buffer plus its state f
 
 ## 13. Items requiring ratification
 
-### 13.1 Default values not yet established
-
-The parameters marked *ratify* in §4 have no default recorded in any current source. They are listed with their identity, type, and width fixed — those are wire format and must be settled now — but their default values need to be decided before the crate can ship. Inventing them here would put unsourced numbers into the knowledge base.
-
-### 13.2 Measurement-dependent VM limits
-
-The four values in §12 marked *ratify after measurement* follow from the first implementation's stack-frame and timing measurements on the thumbv6m target, and from the observed cost of the most expensive parameter program.
+The values in §12 marked *ratify after measurement* follow from the first implementation's stack-frame and timing measurements on the thumbv6m target, and from the observed cost of the most expensive parameter program.
 
 ---
 
