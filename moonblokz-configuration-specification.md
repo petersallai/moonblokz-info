@@ -420,7 +420,11 @@ Bytecode has a readable form, and it is specified here rather than left to the a
 
 **`PUSH` is an alias.** Written without a width, `PUSH n` assembles to the **narrowest** encoding that holds `n` — `PUSH_U8`, then `PUSH_U16`, `PUSH_U32`, `PUSH_U64`. The rule is deterministic, and it matters: programs live in a 255-byte budget, and an author who reaches for `PUSH_U64` out of habit spends five bytes where one would do. The explicit forms remain available and are what the disassembler emits.
 
-**Canonical form.** `vm-dis` emits exactly one text for a given program: uppercase mnemonics, one instruction per line, a single space before an operand, decimal immediates, explicit `PUSH_*` widths, no comments, labels named `L0`, `L1`, … numbered by ascending target offset and placed on their own lines, LF line endings. Therefore `assemble(disassemble(bytes)) == bytes` for every program the decoder accepts, and `disassemble(assemble(text))` is the canonical rendering of whatever the author wrote.
+**Canonical form.** `vm-dis` emits exactly one text for a given program: uppercase mnemonics, one instruction per line, a single space before an operand and a comma-and-space between the two operands of `GETPARAM`, decimal immediates, explicit `PUSH_*` widths, no comments, labels named `L0`, `L1`, … numbered by ascending target offset and placed on their own lines, LF line endings.
+
+A jump whose destination does not begin a linearly decoded instruction is rendered as an explicit signed decimal displacement rather than a label: there is no line to attach a label to, and the displacement is what keeps the round trip exact.
+
+Therefore `assemble(disassemble(bytes)) == bytes` for every program `vm-asm` accepts, and `disassemble(assemble(text))` is the canonical rendering of whatever the author wrote. The qualification matters in one case: a program whose jump destination leaves the byte range decodes and disassembles, but `vm-asm` refuses to reassemble it, because diagnosing exactly that is what §11 asks of the assembler. Its bytes remain inspectable through `vm-dis`.
 
 **`GETPARAM` takes a number, not a name.** The assembler belongs to `moonblokz-vm`, which knows nothing about the parameter registry (§2), so the first operand is the numeric identifier and the second is the argument count. Both operands are written on one line, separated by a comma. Parameter names are a `config-encoder` convenience: in its input, `@inter_block_interval_ms` resolves through the registry to the identifier before the source reaches the assembler, and the encoder is also where an argument count that contradicts the registry is caught. The layering is visible in the syntax on purpose.
 
@@ -498,10 +502,12 @@ A program terminates without a result when:
 - **the operand stack overflows or underflows** — it exceeds its maximum depth, or an instruction consumes an absent operand,
 - **the nesting depth is exceeded** — `GETPARAM` recursion passes the fixed maximum,
 - **the opcode is undefined** — a reserved or unassigned byte is decoded (§7.2.2),
-- **an instruction is truncated** — an immediate, or the opcode itself, extends past the end of the program,
-- **control flow leaves the program** — a jump destination or the program counter falls outside the byte range,
+- **an instruction is truncated** — an immediate, or the opcode itself, extends past the end of the program; this is what a program running past its last instruction reaches,
+- **control flow leaves the program** — a jump computes a destination outside the byte range,
 - **an operand index is out of range** — an `ARG` index at or above the invocation's arity, or a `LOAD` / `STORE` slot outside the local-slot array,
 - **a host call does not resolve** — `GETPARAM` names a parameter the host declines, either because it is unallocated or because the declared `argc` disagrees with the registry's arity for that key.
+
+The program counter moves only by sequential advance or by a jump, so the two conditions above that concern leaving the program partition every way of doing so.
 
 **The VM reports; it does not decide.** Execution returns a typed outcome and applies no policy of its own:
 
