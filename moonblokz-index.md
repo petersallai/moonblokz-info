@@ -31,7 +31,7 @@ If you already know your topic, use this table to jump straight to the relevant 
 
 The subsystem documents fall into two deliberately different classes:
 
-- **Requirements-driven (authoritative).** Blockchain and storage each have a Product Requirements Document and an Architecture Decision Document, authored ahead of their implementation-facing docs. These carry the *(authoritative)* marker above and win on any divergence; their concept, algorithm, and implementation docs describe how that intent is realized. The [Configuration Module Specification](./moonblokz-configuration-specification.md) belongs to the same class: it was ratified ahead of the `moonblokz-configuration` and `moonblokz-vm` crates and is authoritative for everything it covers, even though neither crate is scaffolded yet.
+- **Requirements-driven (authoritative).** Blockchain and storage each have a Product Requirements Document and an Architecture Decision Document, authored ahead of their implementation-facing docs. These carry the *(authoritative)* marker above and win on any divergence; their concept, algorithm, and implementation docs describe how that intent is realized. The [Configuration Module Specification](./moonblokz-configuration-specification.md) belongs to the same class: it was ratified ahead of the `moonblokz-configuration` and `moonblokz-vm` crates and remains authoritative for everything it covers now that both exist.
 - **Current-code-grounded.** Crypto, radio, simulator, and telemetry have no PRD or Architecture Decision Document. Their concept, algorithm, and implementation docs are grounded in the current code, which is the source of truth for those subsystems and wins on any divergence.
 
 The asymmetry is intentional: the requirements-first workflow that produces the PRD and Architecture documents was introduced only partway through the project, so blockchain and storage were captured under it while the earlier subsystems were documented from their existing code and have not been retrofitted with requirements artifacts.
@@ -153,7 +153,7 @@ For FR/NFR lookups, start with its companion navigation index, [MoonBlokz Blockc
 
 ### 5. [MoonBlokz Blockchain Architecture Decision Document](./moonblokz-blockchain-architecture.md) — Authoritative
 
-The authoritative source for the architecture of the `moonblokz-blockchain` crate and its sibling sub-crates (`moonblokz-mempool`, `moonblokz-vote`, `moonblokz-node-runtime`, future `moonblokz-configuration`).
+The authoritative source for the architecture of the `moonblokz-blockchain` crate and its sibling sub-crates (`moonblokz-mempool`, `moonblokz-vote`, `moonblokz-node-runtime`, `moonblokz-configuration`).
 
 This document explains:
 

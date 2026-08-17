@@ -139,8 +139,8 @@ graph TB
         Crypto["moonblokz-crypto-lib (Schnorr 32B / BLS 96B PK)"]
         Storage["moonblokz-storage (flash page management)"]
         Radio["moonblokz-radio-lib (LoRa mesh, M.P.R. enum)"]
-        Config["moonblokz-configuration (specified — not yet scaffolded)"]
-        Vm["moonblokz-vm (specified — not yet scaffolded)"]
+        Config["moonblokz-configuration (registry, resolution, FR8 state)"]
+        Vm["moonblokz-vm (bytecode engine)"]
     end
 
     BC --> MP
@@ -901,10 +901,16 @@ pub trait ChainConfigTrait {
     fn active_configuration(&self) -> Option<ActiveConfig<'_>>;
 
     // FR8 tentative/durable state operations (the lifecycle that drives them
-    // stays in the blockchain; the state lives here)
-    fn load_tentative(&mut self, content: &[u8]) -> Result<(), ConfigError>;
+    // stays in the blockchain; the state lives here). `payload` is the whole
+    // chain-config block payload — content region plus FR7 content signature —
+    // so the module derives the content boundary from the same envelope walk
+    // the blockchain's Tier-1 check used.
+    fn load_tentative(&mut self, payload: &[u8]) -> Result<(), ChainConfigError>;
+    fn load_durable(&mut self, payload: &[u8]) -> Result<(), ChainConfigError>;
+    fn promote_durable(&mut self) -> Result<(), ChainConfigError>;   // set-once
     fn discard_tentative(&mut self);
-    fn promote_to_durable(&mut self) -> Result<(), ConfigError>;   // set-once
+    fn tentative_content(&self) -> Option<&[u8]>;   // FR8 byte-identity compare
+    fn durable_content(&self) -> Option<&[u8]>;     // FR17 commitment key
     fn is_durable_locked(&self) -> bool;
 }
 
@@ -1020,7 +1026,7 @@ Selected high-impact decisions from the Step 5 + Step 6 + Step 7 iterations:
 | Risk | Severity | Mitigation |
 |---|---|---|
 | BLS does not fit at 1000-node default (~−18 KB) with the ~60 KB radio medium profile | Medium-High | §12 tuning; `MAX_NODES 1000→500` mandatory for BLS → ~39 KB margin |
-| `moonblokz-configuration` and `moonblokz-vm` crates not yet scaffolded | Medium | Surface per §11; full design in the [Configuration Module Specification](./moonblokz-configuration-specification.md) |
+| Blockchain still reads the fixed-value chain-config stub, not `moonblokz-configuration` | Medium | Both crates exist and carry the §11 surface; the blockchain's path-dep migration is its own change, held to a behaviour-neutrality bar |
 | FR45 block creation stack peak (~4 KB) close to default | Low | §13 task #8: 6 KB stack for blockchain task |
 | `MAX_AGGREGATED_SIGNATURES` / `MULTI_SIGNATURE_SIZE` const values not yet ratified beyond ADR-015 default 50 | Low | Step 9 (implementation kickoff) confirms with crypto-lib test vectors |
 | Simulator blockchain integration not yet implemented | Out-of-scope (post-MVP) | §10 confirms architectural compatibility; integration is separate work |

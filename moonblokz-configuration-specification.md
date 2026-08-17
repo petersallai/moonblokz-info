@@ -6,7 +6,7 @@ This document specifies the `moonblokz-configuration` crate and its companion `m
 
 It is the **authoritative source** for those two crates, in the same sense as the blockchain and storage Architecture Decision Documents are for theirs: any other knowledge-base document that describes the chain-config wire format, a parameter identifier, the resolution model, the VM execution model, or the configuration commitment surface defers to this one, and divergence from it is evidence of a knowledge-base inconsistency. Where its ratification changed decisions recorded elsewhere, those documents were amended in the same change rather than left to diverge; this specification therefore carries no divergence register of its own.
 
-Neither crate is scaffolded yet: the specification is written ahead of the implementation, which is planned as Epic 5 Stories 5.6–5.9 and 5.11 of the blockchain BMAD flow.
+Both crates now exist. The specification was written ahead of them, and the remaining implementation work — wiring the blockchain onto the module, the FR7 / FR8 commitment lifecycle, restart equivalence, and threading the chain-configured `W` — is planned as Epic 5 Stories 5.8–5.11 of the blockchain BMAD flow.
 
 ---
 
@@ -674,6 +674,10 @@ An out-of-range operand index is the exception and stays a runtime condition. `A
 Both belong to `moonblokz-vm` because they encode the instruction set, and the instruction set is what that crate owns. A disassembler in the configuration repository would mean two places that must agree on opcode meanings.
 
 **`config-encoder`.** Produces the configuration content handed to `initiateGenesis(...)`: it takes a description of parameter overrides — literal values, and assembly source for computed parameters, where a parameter may be referenced by name as `@name` (§7.2.4) — resolves each name to its registry identifier, frames the override set per §3, and appends the node #0 content-signature. It applies the framing checks of §3.4 and the acceptance checks of §6, including the acceptance-time evaluation of argument-less bytecode, so that a configuration the tool accepts is one the network accepts.
+
+**Parameter names live in the encoder, not in the registry.** The runtime registry records identifiers, widths, arities, value forms and defaults, but no names: a name table would be flash the firmware pays for a facility only this tool uses. The encoder holds the table and a test there pins it against the registry — every allocated identifier named exactly once, every name allocated — so the two cannot drift.
+
+Its input is one `name = value` assignment per line, with `#` beginning a comment. A value is an integer (decimal or `0x`-prefixed), a byte list such as `[255, 243, 65, 82, 143]` for an array-typed parameter, or an assembly program in braces where a parameter may be referenced as `@name`. An argument count that contradicts the registry is caught here rather than left to fall back silently on-device.
 
 For the bytecode entries it **calls `vm-asm` as a library**: `moonblokz-configuration` already depends on `moonblokz-vm`, so the `config-encoder` package depends on the `moonblokz-vm-asm` package directly, which exposes the assembler as a library beside its binary, rather than reimplementing an assembler or forcing the author to run a two-step pipeline by hand. The dependency direction matches the crate layering — configuration knows about bytecode, the VM knows nothing about configuration.
 
