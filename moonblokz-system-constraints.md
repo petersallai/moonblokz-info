@@ -54,6 +54,8 @@ Authoritative source: [`moonblokz-blockchain-architecture.md`](./moonblokz-block
 | `MAX_AGGREGATED_SIGNATURES` | 50 | Approval subgroup cap (ADR-015). Matches Schnorr per-block supporter capacity (§2). |
 | `PUBLIC_KEY_SIZE` | 32 (Schnorr) / 96 (BLS) | Crypto-feature-dependent; see §2. |
 
+**Using one of these to bound a chain-config parameter has a rule.** A capacity above is a compile-time constant of *one build*, so it may bound a chain-config parameter **only at acceptance**, where the answer is refusing the chain — never as a resolution-time fallback, which would leave a node participating with a different value than a differently-built node resolves. That is why the parameters bounded this way are literal-only, and why a parameter that needs a per-build ceiling but must stay computable has the *chain* declare the ceiling instead. The rule and the full checklist for allocating a parameter live in [Configuration Module Specification](./moonblokz-configuration-specification.md) §4.5, which wins on any divergence.
+
 ---
 
 ## 2. Crypto Constants & Bounded Aggregation
@@ -72,6 +74,8 @@ Authoritative source: [`moonblokz-crypto-algorythm.md`](./moonblokz-crypto-algor
 Global, all families:
 - `MAX_AGGREGATED_SIGNATURES = 50` (count cap).
 - Practical per-approval-block supporter capacity within a ~2 KB block budget (minus header + 4 B node-id/signer): **~50 supporters Schnorr**, **~450 supporters BLS**. The global cap of 50 currently matches the Schnorr ceiling; a BLS-centered deployment could carry more if the cap were raised.
+
+`MAX_AGGREGATED_SIGNATURES` is also the ceiling the chain-declared `max_aggregated_signatures` is checked against at acceptance, and the one `required_support` is clamped to at resolution — see [Configuration Module Specification](./moonblokz-configuration-specification.md) §4.5 for why the clamp reads the chain's value rather than this constant.
 
 Cross-check: this is why the `ApprovalAccumulator` (§3) costs ~36 B/supporter on Schnorr (`4 + 32`) and ~4 B/supporter on BLS (`4 + 0`), at an identical ~2 KB allocated buffer — see [`moonblokz-blockchain-architecture.md`](./moonblokz-blockchain-architecture.md) §6.5.
 

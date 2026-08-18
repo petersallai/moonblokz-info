@@ -193,6 +193,38 @@ Not chain configuration, and never allocated a key:
 
 ---
 
+### 4.5 Adding a parameter: the rules to check
+
+Every rule below exists because breaking it produces a **silent** failure — a value that differs between nodes with no error anywhere, or a chain that cannot be corrected once founded. Work through them in order when allocating a parameter; the crate enforces four of them at compile time, and those are marked.
+
+**1. The identifier is permanent.** Take the next free number, densely. Never reuse, never renumber: FR7 requires the content signature to be invariant for the chain's lifetime and reproduced byte-identically in every FR49 replay block, so an identifier's meaning is fixed the moment any chain exists. *(Compile-time: the table position is asserted to equal `id - 1`.)*
+
+**2. The declared width is permanent, and exact.** A literal must be exactly the declared width; there is no variable-length form. Every duration is milliseconds in a `u32` (four bytes carry 49 days), and no value may exceed eight bytes, since every value travels through a `u64`. *(Compile-time: widths are asserted `<= 8`.)*
+
+**3. The default is permanent too, and may never be derived from a build constant.** A chain that omits a parameter validates against the local build's default for it, so two firmware versions whose default tables differ by one value validate the same chain differently — the split of §3.4 reached through the defaults instead of the keys. For the same reason a default must be a plain literal: writing `MAX_AGGREGATED_SIGNATURES` as a default would make the default itself backend-dependent.
+
+**4. The value form follows from the parameter's bound, not from taste.** Classify the *limit*:
+
+| The limit is… | Enforced | Value form | Also do |
+|---|---|---|---|
+| **universal** — 0, 1, 100, or a constant of the wire format such as `HEADER_SIZE` / `MAX_BLOCK_SIZE` | at acceptance on a declared literal, and at resolution on a computed one | may be `L/B` | add the arm to `check_bound`; the resolution guard picks it up automatically |
+| **a compile-time constant of the local build** — `UTXO_UNSPENT_BITS`, `SNAKE_CHAIN_LENGTH_MAX`, `MAX_AGGREGATED_SIGNATURES` | at acceptance only | must be `L` | add the identifier to `PER_BUILD_LIMITED_IDS` |
+| **a ceiling that is per-build, but the parameter should stay computable** | the ceiling at acceptance; the value by a clamp at resolution | `L/B`, clamped | have the *chain* declare the ceiling as a separate `L` parameter and clamp the accessor to it |
+
+The middle row is the one that is easy to get wrong. Such a bound is safe at acceptance *because the response is refusal*: a node that cannot honour the declared value rejects the chain and stops participating, and a node that is absent cannot diverge. The same bound as a resolution-time fallback is unsafe — a fallback keeps the node participating with a *different value* than a differently-built node resolves, with no error on either side. *(Compile-time: every identifier in `PER_BUILD_LIMITED_IDS` is asserted literal-only.)*
+
+The third row is how `required_support` stays computable: the chain declares its ceiling in `max_aggregated_signatures`, and `min(support, ceiling)` uses two operands that both come from the content, so every node reaches the same value. Prefer reusing an existing chain-declared ceiling over adding one — two ceilings for the same quantity can contradict each other.
+
+**5. A bounded parameter takes no arguments.** No acceptance-time check can cover every argument value, so a bound and an arity are mutually exclusive. *(Compile-time: every identifier in `BOUNDED_IDS` is asserted to have arity zero.)*
+
+**6. A relation between two parameters is not this module's to enforce.** No per-parameter predicate can see two values, so neither the acceptance check nor the resolution guard can be made total for a relation. Acceptance may check it on *declared literals* as a **founder-facing diagnostic** — `config-encoder` runs the same pass, so a typo is caught before a chain exists — but it must not be presented as a guarantee, and the module must not clamp one value to the other: choosing which of the two is authoritative is the consumer's decision, not configuration's. **The consumer resolves an inconsistent pair at the point of use, deterministically.** Record the obligation on both accessors, so whoever reads the value meets the warning. (Ratified 2026-08-18 for the fee range; it is the general rule.)
+
+**7. Choose the accessor's type for the consumer, and let acceptance uphold it.** A narrower or niche-carrying return type — `u8`, `NonZeroU16` — is legitimate precisely when the bound that makes it safe is enforced upstream. Narrowing is by saturation, so a type must never be the *only* thing standing between a declared value and an invariant.
+
+**8. Radio parameters are argument-less by rule** (§10.2), because the only chain-derived quantities live on the blockchain core and the quantity the radio knows locally is node-specific.
+
+Two questions worth asking before allocating at all: does this value have to be identical on every node of the chain (if not, it is node-level configuration and belongs nowhere near this registry — §4.4), and can it be derived from a parameter that already exists (a derived value belongs in a program, not in a second key).
+
 ## 5. Resolution model
 
 ### 5.1 Three tiers
