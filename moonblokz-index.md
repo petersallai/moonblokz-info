@@ -230,7 +230,7 @@ This document explains:
 - the chain-config payload envelope, the key-byte encoding, and the value forms that make the decoder total,
 - the shared parameter registry — one flat, permanent key space across blockchain, radio and VM parameters — with its defaults, value forms and accessor arities,
 - the three-tier resolution model (chain-config override, code-baked default, code-baked fallback literal) and the optional active-configuration handle that carries the tentative-versus-durable commitment state,
-- content acceptance and the structural bound checks, including the acceptance-time evaluation that stands in for a bytecode verifier,
+- content acceptance and the structural bound checks on declared literals (acceptance runs no program — a partial check in front of the total runtime fallback would buy no coverage),
 - the virtual machine: machine model, full instruction set with opcode map and textual form, fuel accounting, trap model, host seam, and the capabilities deliberately left absent,
 - the commitment lifecycle, who calls storage, what is persisted, and the defined error branches,
 - how parameters reach consumers outside the blockchain — the change-notification seam and the radio snapshot,
