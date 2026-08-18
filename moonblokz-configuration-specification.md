@@ -134,11 +134,11 @@ Value-form column: `L` = literal only; `L/B` = literal or bytecode. Args column:
 | 3 | `block_size_limit` | u16 | 2 | 2016 | L | 0 | Bound-checked, §6 (`HEADER_SIZE` < value ≤ `MAX_BLOCK_SIZE`) |
 | 4 | `max_block_utxo_output` | u8 | 1 | 255 | L | 0 | Bound-checked, §6 |
 | 5 | `max_aggregated_signatures` | u8 | 1 | 50 | L | 0 | Bound-checked, §6 |
-| 6 | `vote_scale` | u16 (non-zero) | 2 | 1000 | L | 0 | FR37; zero is invalid |
+| 6 | `vote_scale` | u16 (non-zero) | 2 | 1000 | L/B | 0 | FR37; zero is invalid, enforced at resolution |
 | 7 | `vote_interest` | u8 | 1 | 5 | L/B | 0 | FR37 |
 | 8 | `parent_recovery_per_head_retry_interval_ms` | u32 | 4 | 120_000 | L/B | 0 | FR19 / FR46 |
 | 9 | `parent_recovery_min_emit_interval_ms` | u32 | 4 | 10_000 | L/B | 0 | FR46 |
-| 10 | `required_support` | u8 | 1 | 3 | L | 0 | Bound-checked, §6 |
+| 10 | `required_support` | u8 | 1 | 3 | L/B | 0 | Bound-checked, §6; enforced at resolution |
 | 20 | `block_fill_threshold_percent` | u8 | 1 | 80 | L/B | 0 | FR45 (a); bound-checked, §6 |
 | 21 | `active_chain_length` | u16 | 2 | 500 | L | 0 | `W`; bound-checked against the compile-time capacity, §6 |
 | 22 | `mempool_replenishment_interval_ms` | u32 | 4 | 500_000 | L/B | 0 | FR56 |
@@ -202,6 +202,8 @@ Every parameter resolves through the same chain:
 1. **Chain-config override** — the entry present in the configuration content, literal or bytecode.
 2. **Code-baked default** — used when the parameter is absent from the content. May itself be a literal or a bytecode program with the same argument semantics.
 3. **Code-baked fallback literal** — a plain constant, used when the tier above fails at evaluation time.
+
+A tier **fails** — and resolution moves to the next one — when its program traps, exhausts its budget, or **returns a value outside the parameter's bound**. That last condition is what allows a parameter to carry a structural bound and still admit a program: acceptance evaluates nothing (§6), so a computed value is held to the bound here instead, by the same predicate a declared literal is checked with. A violation is not an error the caller sees; it is a tier that failed.
 
 Each tier is attempted in order and each evaluation starts with a **fresh fuel budget**. This matters: if the default inherited an exhausted budget, then whenever fuel exhaustion was the failure cause, the default tier could never run and every such failure would drop straight to the fallback, making the middle tier dead code.
 
@@ -273,8 +275,12 @@ The last of these is worth spelling out, because it settles what `W` is. The act
 
 **Bound checks and value forms.** What that leaves uncovered is bounded by the registry's own value forms, which is why the forms are assigned as they are:
 
-- Parameters carrying a bound that must actually hold are **literal-only** (IDs 3, 4, 5, 6, 10, 21) — the declared value is checked directly, and no program can bypass the check because no program is admitted. Since acceptance evaluates nothing, the value form *is* the enforcement mechanism: refusing bytecode is what makes the value knowable, and therefore checkable. The literal-only set is those parameters plus the array-typed ID 17 (the VM has no array-valued result form) and the execution budget ID 29 (resolving the budget must not itself require running a program).
-- One bounded parameter still admits a program — ID 20 `block_fill_threshold_percent` — and its bound is therefore **advisory**: a program can drive it out of range and nothing checks the result. The consequence is confined, which is why the form is left open: the bound guards a *rule*, not a representation, so a threshold above 100 simply never triggers, alike on every node of the chain. That is founder self-harm on node-#0-signed content, not a consensus split and not a value this node cannot hold. The same holds for the relational fee-range check when either fee is program-valued.
+- A bound is enforced on a **declared literal** here, and on a **computed value** at resolution (§5.1), by the same predicate. A program that returns an out-of-range value therefore fails its tier and the chain falls back to the code-baked default — so a bounded parameter may admit a program (IDs 6, 10, 20) without any node ever reading an illegal value.
+- A bound whose limit is a **compile-time constant of the local build** must not be enforced by fallback. At acceptance such a bound is safe: a node that cannot honour the declared value rejects the chain and stops participating, so there is no divergence. At resolution it is not — a fallback keeps the node participating with a *different value*, so two builds that disagreed about the limit would resolve the same content differently, with no error on either side. Those limits are `UTXO_UNSPENT_BITS` (ID 4), `SNAKE_CHAIN_LENGTH_MAX` (ID 21) and `MAX_AGGREGATED_SIGNATURES` (IDs 5, 10), and the first two make their parameters **literal-only**, which keeps the decision at acceptance where rejection — not substitution — is the answer.
+- ID 10 `required_support` is the exception that needs watching. Its floor is universal, but its ceiling is `MAX_AGGREGATED_SIGNATURES`, which ADR-015 calls backend-dependent. It admits a program only because every current backend reports the same ceiling, so the fallback decision is identical everywhere; a test in the crate pins the constant as a tripwire. Should a backend ever change it, ID 10 must return to literal-only, or its ceiling must be checked at acceptance only. ID 5 carries the same caveat and stays literal-only.
+- ID 3 `block_size_limit` is literal-only by ruling rather than by necessity: its limits — `HEADER_SIZE` and `MAX_BLOCK_SIZE` — are fixed by the block format itself, identical on every build, so the resolution guard would have been safe for it. Recorded so the distinction between the two reasons stays visible.
+- The remaining literal-only parameters are so for unrelated reasons: the array-typed ID 17 (the VM has no array-valued result form) and the execution budget ID 29 (resolving the budget must not itself require running a program).
+- The one bound that cannot be enforced at resolution at all is the **relational** fee-range check: no per-parameter predicate can see two values, so when either fee is program-valued the relation is unchecked. Its failure mode is a rule the whole chain applies alike, on node-#0-signed content.
 - Parameters that take arguments may not carry a structural bound, since no acceptance-time check could ever cover every argument value. The registry records the arity, and this rule constrains which parameters may ever be given one. It is a registry invariant rather than a convention: the bounded identifiers are named as a table and asserted at compile time to have arity zero, so giving a bounded parameter an argument fails the build.
 
 Because nothing is evaluated, acceptance spends no fuel; the `vm_fuel_limit` bound of check 12 exists for **resolution**, which does spend it on every accessor call that reaches a program.
