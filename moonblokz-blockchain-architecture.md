@@ -916,8 +916,8 @@ pub trait ChainConfigTrait {
 
 impl ActiveConfig<'_> {
     pub fn commitment(&self) -> Commitment;                        // Tentative | Durable
-    pub fn inter_block_interval_ms(&self) -> u64;                  // FR45 (b)
-    pub fn grace_period_window_ms(&self) -> u64;                   // FR47
+    pub fn inter_block_interval_ms(&self) -> u32;                  // FR45 (b), ms
+    pub fn grace_period_window_ms(&self) -> u32;                   // FR47, ms
     pub fn block_size_limit(&self) -> u16;
     pub fn max_utxo_outputs(&self) -> u8;
     pub fn max_aggregated_signatures(&self) -> u8;

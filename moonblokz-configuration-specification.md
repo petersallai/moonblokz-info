@@ -129,24 +129,24 @@ Value-form column: `L` = literal only; `L/B` = literal or bytecode. Args column:
 
 | ID | Parameter | Type | Width | Default | Form | Args | Notes |
 |---:|---|---|---:|---|:--:|:--:|---|
-| 1 | `inter_block_interval_ms` | u64 | 8 | 60_000 | L/B | 0 | FR45 (b) |
-| 2 | `grace_period_window_ms` | u64 | 8 | 30_000 | L/B | 0 | FR47 |
+| 1 | `inter_block_interval_ms` | u32 | 4 | 60_000 | L/B | 0 | FR45 (b) |
+| 2 | `grace_period_window_ms` | u32 | 4 | 30_000 | L/B | 0 | FR47 |
 | 3 | `block_size_limit` | u16 | 2 | 2016 | L/B | 0 | Bound-checked, §6 (`HEADER_SIZE` < value ≤ `MAX_BLOCK_SIZE`) |
 | 4 | `max_block_utxo_output` | u8 | 1 | 255 | L | 0 | Bound-checked, §6 |
 | 5 | `max_aggregated_signatures` | u8 | 1 | 50 | L | 0 | Bound-checked, §6 |
 | 6 | `vote_scale` | u16 (non-zero) | 2 | 1000 | L | 0 | FR37; zero is invalid |
 | 7 | `vote_interest` | u8 | 1 | 5 | L/B | 0 | FR37 |
-| 8 | `parent_recovery_per_head_retry_interval_ms` | u64 | 8 | 120_000 | L/B | 0 | FR19 / FR46 |
-| 9 | `parent_recovery_min_emit_interval_ms` | u64 | 8 | 10_000 | L/B | 0 | FR46 |
+| 8 | `parent_recovery_per_head_retry_interval_ms` | u32 | 4 | 120_000 | L/B | 0 | FR19 / FR46 |
+| 9 | `parent_recovery_min_emit_interval_ms` | u32 | 4 | 10_000 | L/B | 0 | FR46 |
 | 10 | `required_support` | u8 | 1 | 3 | L | 0 | Bound-checked, §6 |
 | 20 | `block_fill_threshold_percent` | u8 | 1 | 80 | L/B | 0 | FR45 (a); bound-checked, §6 |
 | 21 | `active_chain_length` | u16 | 2 | 500 | L | 0 | `W`; bound-checked against the compile-time capacity, §6 |
-| 22 | `mempool_replenishment_interval_ms` | u64 | 8 | 500_000 | L/B | 0 | FR56 |
+| 22 | `mempool_replenishment_interval_ms` | u32 | 4 | 500_000 | L/B | 0 | FR56 |
 | 23 | `custodian_fee` | u64 | 8 | 1 | L/B | 0 | FR51 carry-forward |
 | 24 | `registration_price` | u64 | 8 | 100 | L/B | 1 | Arg: registered-node count |
 | 25 | `tx_fee_per_byte_min` | u64 | 8 | 0 | L/B | 0 | FR56 fee policy |
 | 26 | `tx_fee_per_byte_max` | u64 | 8 | 1000 | L/B | 0 | FR56 fee policy |
-| 27 | `deviation_replay_insertion_delay_ms` | u64 | 8 | 300_000 | L/B | 0 | FR29 pacing |
+| 27 | `deviation_replay_insertion_delay_ms` | u32 | 4 | 300_000 | L/B | 0 | FR29 pacing |
 | 28 | `replay_block_reward` | u64 | 8 | 100 | L/B | 0 | FR36 (c) |
 
 ### 4.2 Radio parameters
@@ -166,6 +166,8 @@ Every radio parameter is argument-less by rule (§10.2).
 | 19 | `tx_maximum_random_delay` | u16 | 2 | 200 | milliseconds | L/B |
 
 Values are stored and returned in their **native unit** — the unit the parameter is already expressed in throughout the radio code. No normalisation to milliseconds: it would move every default and the radio API for no gain, since the VM works in `u64` internally regardless.
+
+**Every duration is milliseconds in a `u32`** (IDs 1, 2, 8, 9, 22, 27). Four bytes carry 49 days against defaults measured in seconds and minutes, so the narrower width costs nothing and saves four bytes on the wire per override. A caller that mixes a duration into timestamp arithmetic widens it at the use site, where the widening is visible rather than assumed. Ratified 2026-08-18; possible only because no chain exists yet, since a declared width is permanent wire format.
 
 `registration_price` keeps arity 1 while its default is a plain literal: the accessor still takes the registered-node count, and the default simply does not vary with it. A chain that wants a size-dependent price overrides the key with a program of the same arity.
 
@@ -223,7 +225,7 @@ pub struct ActiveConfig<'a> { /* borrows the module */ }
 
 impl ActiveConfig<'_> {
     pub fn commitment(&self) -> Commitment;          // Tentative | Durable
-    pub fn inter_block_interval_ms(&self) -> u64;
+    pub fn inter_block_interval_ms(&self) -> u32;
     pub fn registration_price(&self, registered_nodes: u32) -> u64;
     // ... one accessor per registry entry, arity per the registry
 }
