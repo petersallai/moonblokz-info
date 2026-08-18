@@ -131,7 +131,7 @@ Value-form column: `L` = literal only; `L/B` = literal or bytecode. Args column:
 |---:|---|---|---:|---|:--:|:--:|---|
 | 1 | `inter_block_interval_ms` | u32 | 4 | 60_000 | L/B | 0 | FR45 (b) |
 | 2 | `grace_period_window_ms` | u32 | 4 | 30_000 | L/B | 0 | FR47 |
-| 3 | `block_size_limit` | u16 | 2 | 2016 | L/B | 0 | Bound-checked, §6 (`HEADER_SIZE` < value ≤ `MAX_BLOCK_SIZE`) |
+| 3 | `block_size_limit` | u16 | 2 | 2016 | L | 0 | Bound-checked, §6 (`HEADER_SIZE` < value ≤ `MAX_BLOCK_SIZE`) |
 | 4 | `max_block_utxo_output` | u8 | 1 | 255 | L | 0 | Bound-checked, §6 |
 | 5 | `max_aggregated_signatures` | u8 | 1 | 50 | L | 0 | Bound-checked, §6 |
 | 6 | `vote_scale` | u16 (non-zero) | 2 | 1000 | L | 0 | FR37; zero is invalid |
@@ -273,8 +273,8 @@ The last of these is worth spelling out, because it settles what `W` is. The act
 
 **Bound checks and value forms.** What that leaves uncovered is bounded by the registry's own value forms, which is why the forms are assigned as they are:
 
-- Parameters whose bound must hold for the local node to **represent** the chain at all are **literal-only** (IDs 4, 5, 6, 10, 21) — the declared value is checked directly, and no program can bypass the check because no program is admitted. The literal-only set is those parameters plus the array-typed ID 17 and the execution budget ID 29.
-- The two bounded parameters that **do** admit a program (ID 3 `block_size_limit`, ID 20 `block_fill_threshold_percent`) can therefore be driven out of range by an override that is never checked. The consequence is confined: both bounds guard a *rule*, not a representation. A block-size limit above `MAX_BLOCK_SIZE` never binds — the block type's own ceiling still holds — and one below `HEADER_SIZE` admits no block; a fill threshold above 100 never triggers. Each is applied alike by every node on the chain, so it is founder self-harm on node-#0-signed content, not a consensus split and not a value this node cannot hold.
+- Parameters carrying a bound that must actually hold are **literal-only** (IDs 3, 4, 5, 6, 10, 21) — the declared value is checked directly, and no program can bypass the check because no program is admitted. Since acceptance evaluates nothing, the value form *is* the enforcement mechanism: refusing bytecode is what makes the value knowable, and therefore checkable. The literal-only set is those parameters plus the array-typed ID 17 (the VM has no array-valued result form) and the execution budget ID 29 (resolving the budget must not itself require running a program).
+- One bounded parameter still admits a program — ID 20 `block_fill_threshold_percent` — and its bound is therefore **advisory**: a program can drive it out of range and nothing checks the result. The consequence is confined, which is why the form is left open: the bound guards a *rule*, not a representation, so a threshold above 100 simply never triggers, alike on every node of the chain. That is founder self-harm on node-#0-signed content, not a consensus split and not a value this node cannot hold. The same holds for the relational fee-range check when either fee is program-valued.
 - Parameters that take arguments may not carry a structural bound, since no acceptance-time check could ever cover every argument value. The registry records the arity, and this rule constrains which parameters may ever be given one. It is a registry invariant rather than a convention: the bounded identifiers are named as a table and asserted at compile time to have arity zero, so giving a bounded parameter an argument fails the build.
 
 Because nothing is evaluated, acceptance spends no fuel; the `vm_fuel_limit` bound of check 12 exists for **resolution**, which does spend it on every accessor call that reaches a program.
