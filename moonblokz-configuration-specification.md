@@ -151,19 +151,19 @@ Value-form column: `L` = literal only; `L/B` = literal or bytecode. Args column:
 
 ### 4.2 Radio parameters
 
-Every radio parameter is argument-less by rule (§10.2).
+Every radio parameter is **literal-only and argument-less by rule** (§10.2, §4.5).
 
 | ID | Parameter | Type | Width | Default | Unit | Form |
 |---:|---|---|---:|---|---|:--:|
-| 11 | `echo_request_minimal_interval` | u16 | 2 | 1440 | minutes | L/B |
-| 12 | `echo_messages_target_interval` | u8 | 1 | 100 | seconds | L/B |
-| 13 | `echo_gathering_timeout` | u8 | 1 | 10 | minutes | L/B |
-| 14 | `delay_between_tx_packets` | u16 | 2 | 200 | milliseconds | L/B |
-| 15 | `delay_between_tx_messages` | u8 | 1 | 20 | seconds | L/B |
-| 16 | `relay_position_delay` | u8 | 1 | 10 | seconds | L/B |
+| 11 | `echo_request_minimal_interval` | u16 | 2 | 1440 | minutes | L |
+| 12 | `echo_messages_target_interval` | u8 | 1 | 100 | seconds | L |
+| 13 | `echo_gathering_timeout` | u8 | 1 | 10 | minutes | L |
+| 14 | `delay_between_tx_packets` | u16 | 2 | 200 | milliseconds | L |
+| 15 | `delay_between_tx_messages` | u8 | 1 | 20 | seconds | L |
+| 16 | `relay_position_delay` | u8 | 1 | 10 | seconds | L |
 | 17 | `scoring_matrix` | [u8; 5] | 5 | `[255, 243, 65, 82, 143]` | encoded | L |
-| 18 | `retry_interval_for_missing_packets` | u8 | 1 | 60 | seconds | L/B |
-| 19 | `tx_maximum_random_delay` | u16 | 2 | 200 | milliseconds | L/B |
+| 18 | `retry_interval_for_missing_packets` | u8 | 1 | 60 | seconds | L |
+| 19 | `tx_maximum_random_delay` | u16 | 2 | 200 | milliseconds | L |
 
 Values are stored and returned in their **native unit** — the unit the parameter is already expressed in throughout the radio code. No normalisation to milliseconds: it would move every default and the radio API for no gain, since the VM works in `u64` internally regardless.
 
@@ -221,7 +221,7 @@ The third row is how `required_support` stays computable: the chain declares its
 
 **7. Choose the accessor's type for the consumer, and let acceptance uphold it.** A narrower or niche-carrying return type — `u8`, `NonZeroU16` — is legitimate precisely when the bound that makes it safe is enforced upstream. Narrowing is by saturation, so a type must never be the *only* thing standing between a declared value and an invariant.
 
-**8. Radio parameters are argument-less by rule** (§10.2), because the only chain-derived quantities live on the blockchain core and the quantity the radio knows locally is node-specific.
+**8. Radio parameters are literal-only and argument-less by rule** (§10.2). Argument-less because the only chain-derived quantities live on the blockchain core and the quantity the radio knows locally is node-specific. Literal-only because the radio never calls an accessor: it consumes a snapshot built at a configuration change and published to the other core, so a program could only compute from other configuration parameters — no expressiveness gained — while making a pacing constant's value depend on an evaluation outcome. On a timing-critical path that is all cost and no benefit. *(Compile-time: every identifier in `RADIO_IDS` is asserted literal-only and arity zero.)*
 
 Two questions worth asking before allocating at all: does this value have to be identical on every node of the chain (if not, it is node-level configuration and belongs nowhere near this registry — §4.4), and can it be derived from a parameter that already exists (a derived value belongs in a program, not in a second key).
 
@@ -700,7 +700,7 @@ The transport stays on the firmware side, where its dependencies already are: th
 
 The radio subsystem consumes a `RadioConfiguration` snapshot rather than calling accessors. It runs on the other core, its real-time paths must stay non-blocking, and — decisively — it cannot supply arguments: the only chain-derived quantities live on the blockchain core, and the quantity the radio *does* know locally (its neighbour count) is node-specific and would produce a different value on every node, which is precisely what chain configuration exists to prevent.
 
-**Radio parameters are argument-less by rule.** The registry records arity 0 for IDs 11–19 and this is a structural constraint on future allocations in that category, not an accident of the current set.
+**Radio parameters are literal-only and argument-less by rule.** The registry records arity 0 and the literal form for IDs 11–19, and both are structural constraints on future allocations in that category rather than accidents of the current set. Argument-less for the reason above. Literal-only because the radio never calls an accessor: it reads a snapshot, so a program could only ever compute from other configuration parameters — no expressiveness gained — while making a pacing constant's value depend on an evaluation outcome, on a path where the variance is the whole cost. §4.5 rule 8 records it, and the crate asserts both at compile time.
 
 **Distribution.** The node runtime publishes the snapshot through an `embassy_sync::watch::Watch`, whose latest-value, multi-consumer semantics fit the case: several radio tasks hold their own copies of the values, a superseded configuration must never be delivered after a newer one, and no queue may grow. A `Channel` would allow config messages to accumulate behind traffic and deliver a stale snapshot after a fresh one. `embassy-sync` 0.7 — already the pinned version — provides `Watch`, so no version change is required.
 
