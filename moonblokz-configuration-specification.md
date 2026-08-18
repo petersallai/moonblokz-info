@@ -131,7 +131,7 @@ Value-form column: `L` = literal only; `L/B` = literal or bytecode. Args column:
 |---:|---|---|---:|---|:--:|:--:|---|
 | 1 | `inter_block_interval_ms` | u64 | 8 | 60_000 | L/B | 0 | FR45 (b) |
 | 2 | `grace_period_window_ms` | u64 | 8 | 30_000 | L/B | 0 | FR47 |
-| 3 | `block_size_limit` | u16 | 2 | 2016 | L/B | 0 | Bounded by `MAX_BLOCK_SIZE` |
+| 3 | `block_size_limit` | u16 | 2 | 2016 | L/B | 0 | Bound-checked, §6 (`HEADER_SIZE` < value ≤ `MAX_BLOCK_SIZE`) |
 | 4 | `max_block_utxo_output` | u8 | 1 | 255 | L | 0 | Bound-checked, §6 |
 | 5 | `max_aggregated_signatures` | u8 | 1 | 50 | L | 0 | Bound-checked, §6 |
 | 6 | `vote_scale` | u16 (non-zero) | 2 | 1000 | L | 0 | FR37; zero is invalid |
@@ -139,7 +139,7 @@ Value-form column: `L` = literal only; `L/B` = literal or bytecode. Args column:
 | 8 | `parent_recovery_per_head_retry_interval_ms` | u64 | 8 | 120_000 | L/B | 0 | FR19 / FR46 |
 | 9 | `parent_recovery_min_emit_interval_ms` | u64 | 8 | 10_000 | L/B | 0 | FR46 |
 | 10 | `required_support` | u8 | 1 | 3 | L | 0 | Bound-checked, §6 |
-| 20 | `block_fill_threshold_percent` | u8 | 1 | 80 | L/B | 0 | FR45 (a) |
+| 20 | `block_fill_threshold_percent` | u8 | 1 | 80 | L/B | 0 | FR45 (a); bound-checked, §6 |
 | 21 | `active_chain_length` | u16 | 2 | 500 | L | 0 | `W`; bound-checked against the compile-time capacity, §6 |
 | 22 | `mempool_replenishment_interval_ms` | u64 | 8 | 500_000 | L/B | 0 | FR56 |
 | 23 | `custodian_fee` | u64 | 8 | 1 | L/B | 0 | FR51 carry-forward |
@@ -177,7 +177,7 @@ Values are stored and returned in their **native unit** — the unit the paramet
 |---:|---|---|---:|---|:--:|:--:|
 | 29 | `vm_fuel_limit` | u32 | 4 | 20_000 | L | 0 |
 
-`vm_fuel_limit` is **literal-only** for a bootstrapping reason: it bounds every program evaluation, so resolving it must not itself require running a program.
+`vm_fuel_limit` is **literal-only** for a bootstrapping reason: it bounds every program evaluation, so resolving it must not itself require running a program. It is bound-checked at both ends (§6 check 12) and, because it is the budget acceptance itself spends, checked before any program runs.
 
 It is chain configuration rather than a code constant because it is consensus-relevant. The fuel limit directly determines returned values — a node that exhausts its budget receives the fallback, a node that does not receives the computed value — so a node-local limit would let two nodes validate the same chain with different `required_support` or `W`. Putting it in the chain configuration guarantees every node on a chain uses the same budget, and keeps it tunable per chain without coupling it to a firmware version.
 
@@ -203,7 +203,9 @@ Every parameter resolves through the same chain:
 
 Each tier is attempted in order and each evaluation starts with a **fresh fuel budget**. This matters: if the default inherited an exhausted budget, then whenever fuel exhaustion was the failure cause, the default tier could never run and every such failure would drop straight to the fallback, making the middle tier dead code.
 
-When a parameter's code-baked default is a literal, that literal is also its fallback; a distinct fallback value is only meaningful for a bytecode default. No default in §4 is bytecode today, so the fallback equals the default for every current parameter.
+When a parameter's code-baked default is a literal, that literal is also its fallback; a distinct fallback value is only meaningful for a bytecode default. No default in §4 is bytecode today, so the fallback equals the default for every current parameter — but the resolution model represents both tiers separately regardless, so that giving a parameter a program default is a registry edit rather than a change to the model.
+
+**The defaults are permanent, for a less obvious reason than the identifiers.** A chain that omits a parameter validates against the *local build's* default for it. Two firmware versions whose default tables differ by one value therefore validate the same chain differently, with no error on either side — the same silent split the unknown-key rule of §3.4 exists to prevent, reached through the defaults instead. Changing a value in the §4 table is a consensus-breaking change, not a tuning decision, and it is not detectable in-band: nothing in the content pins the table.
 
 The three-tier chain is what makes the accessor surface total: the last tier is a constant, so **every accessor always returns a value**.
 
@@ -245,7 +247,7 @@ The VM computes in `u64`. An accessor whose declared type is narrower returns th
 
 Acceptance runs inside the configuration module, on the **raw declared values**, before any configuration is loaded. It is the only place where an out-of-range declared value is still visible: once a value has passed through a narrowing accessor it can no longer be distinguished from a legal one. Rejection is exact evidence of invalidity per FR16 and leaves no configuration loaded.
 
-**Structural bound checks:**
+**Structural bound checks.** Two kinds are mixed here deliberately. Some state what *this build* can honour, so a different node may accept the same content (1, 3, 5, 6, 8, 13); the rest state what any node must reject as nonsense (2, 4, 7, 9, 10, 11, 12). Both are exact evidence of invalidity per FR16, and the rejected identifier travels with the error, which is what lets an operator tell the two apart.
 
 1. `max_block_utxo_output ≤ UTXO_UNSPENT_BITS` — the compile-time per-block UTXO spent-bit width (FR8). A larger value cannot be represented by the local node's cache. `UTXO_UNSPENT_BITS` is a `pub const` of the configuration crate, pinned to the blockchain's real spent-bit width by a monomorphization-time assertion in the blockchain so the two cannot drift silently.
 2. `required_support ≥ 1` (FR8) — otherwise ADR-015's `m = min(2·required_support − 1, |A|)` yields `m = -1`.
@@ -253,14 +255,23 @@ Acceptance runs inside the configuration module, on the **raw declared values**,
 4. `vote_scale ≠ 0` — it is the denominator of the FR37 anti-capture rule.
 5. `block_size_limit ≤ MAX_BLOCK_SIZE` — the compile-time block buffer width.
 6. `active_chain_length ≤ SNAKE_CHAIN_LENGTH_MAX` — the compile-time active-chain capacity.
+7. `active_chain_length ≥ 1` — a window has to hold at least one block.
+8. `max_aggregated_signatures ≤ MAX_AGGREGATED_SIGNATURES` for the active crypto backend, and `≥ 1`. The chain states how many signatures an approval-evidence block may carry; this build states how many it can aggregate and verify, so a chain above the local ceiling produces evidence this node could never check. Same capacity-vs-requirement shape as 1 and 6.
+9. `max_block_utxo_output ≥ 1` — at zero no transaction output could ever be included in a block.
+10. `block_size_limit > HEADER_SIZE` — a limit that cannot admit a fixed header admits no block at all, and every remaining-capacity computation against it underflows.
+11. `block_fill_threshold_percent ≤ 100` — it is a percentage.
+12. `1 ≤ vm_fuel_limit ≤ VM_FUEL_LIMIT_MAX`. At zero every program silently resolves to its default with no diagnostic anywhere. Unbounded above, one content could hold the core for as long as it asked: acceptance itself pays the limit once per argument-less program, up to the 126 entries the key space allows. `VM_FUEL_LIMIT_MAX` is a `pub const` of the configuration crate (§12).
+13. `tx_fee_per_byte_min ≤ tx_fee_per_byte_max` — the one invariant spanning two parameters, so it cannot be expressed as a per-parameter check. A parameter absent from the content contributes its code-baked default, because that is the value the chain will resolve for it.
+
+**The execution budget is checked before it is spent.** `vm_fuel_limit` bounds every evaluation below, and acceptance pays that bound once per argument-less program, so check 12 runs *before* any program is evaluated rather than in the order the entries happen to appear. Validating it in entry order would mean a content pairing a large declared limit with a runaway program had already held the core for as long as the unchecked value asked.
 
 The last of these is worth spelling out, because it settles what `W` is. The active-chain window length is **chain configuration**, not a build-time property of a node: every node on a chain must retain the same window, or they do not agree on what has dropped out of it. But a node cannot resize compile-time arrays from chain content, so the const generic becomes a **capacity** — `SNAKE_CHAIN_LENGTH_MAX` — and the chain-configured `W` must fit inside it. A node whose capacity is below the chain's `W` cannot participate and rejects the configuration; a node whose capacity exceeds it simply uses part of what it allocated. This is exactly the pattern `max_block_utxo_output ≤ UTXO_UNSPENT_BITS` already establishes: the chain states the requirement, the compile-time constant states what this build can honour, and the check at acceptance is where the two meet.
 
 **Bound checks and value forms.** A structural bound can only be enforced on a value that is knowable at acceptance time. That gives a rule with three cases:
 
-- Parameters whose bound must hold unconditionally and whose value could otherwise depend on runtime arguments are **literal-only** (IDs 4, 5, 6, 10, 21) — the declared value is checked directly.
+- Parameters whose bound must hold unconditionally and whose value could otherwise depend on runtime arguments are **literal-only** (IDs 4, 5, 6, 10, 21) — the declared value is checked directly. A bound *alone* does not force literal-only: ID 3 `block_size_limit` carries one and admits a program, because an argument-less program is evaluated once at acceptance and its result bound-checked exactly like a literal (next case). The literal-only set is those parameters plus the array-typed ID 17 and the execution budget ID 29.
 - For any **argument-less** parameter carrying a bound, an override in bytecode form is permitted and is **evaluated once at acceptance**, under the ordinary fuel limit, with the bound applied to the result. An argument-less program's result cannot vary, so checking it once is sound. Any non-`Completed` outcome during acceptance evaluation — fuel exhaustion or any trap of §7.3 — **rejects the content** rather than falling back: a configuration that cannot be evaluated at commit time is a defective configuration, not a runtime condition. This evaluation is also what stands in for a bytecode verifier (§7.3), because it exercises the real decoder on the real program.
-- Parameters that take arguments may not carry a structural bound, since no acceptance-time check can cover every argument value. The registry records the arity, and this rule constrains which parameters may ever be given one.
+- Parameters that take arguments may not carry a structural bound, since no acceptance-time check can cover every argument value. The registry records the arity, and this rule constrains which parameters may ever be given one. It is a registry invariant rather than a convention: the bounded identifiers are named as a table and asserted at compile time to have arity zero, so giving a bounded parameter an argument fails the build.
 
 The acceptance-time evaluation is a validation step only. Its result is not retained: every accessor call re-resolves, per FR56.
 
@@ -589,7 +600,7 @@ A second durable promotion is refused, not silently re-applied.
 
 The **blockchain** owns the storage handle and performs every storage call; the configuration module is a pure state machine over content bytes and has no storage dependency. This keeps the timing of the durable commit where the decision that triggers it lives — the FR8 ready transition — and avoids two owners of one `&mut` storage handle in a no-alloc, single-threaded design.
 
-Concretely: the blockchain calls `StorageTrait::set_chain_configuration` at the durable commit, and `StorageTrait::load_control_data` at startup, passing the content to the configuration module in both directions.
+Concretely: the blockchain calls `StorageTrait::set_chain_configuration` at the durable commit, and `StorageTrait::load_control_data` at startup, passing the chain-config block **payload** — the content region plus its FR7 content signature — to the configuration module in both directions. The payload rather than the content alone, so the module derives the content boundary from the same envelope walk the Tier-1 check already performed, instead of a second content-only walker; the module's content reads then return the content region, which is what FR8 compares and FR17 keys on.
 
 ### 8.3 Persistence of the tentative state
 
@@ -601,7 +612,7 @@ And it would not fit comfortably: a control-plane replica must fit one 4096-byte
 
 ### 8.4 Startup
 
-At startup the blockchain reads the control plane and, if a durable chain-configuration block is present, hands its content to the configuration module, which verifies and loads it as **durable**. During an FR59 rebuild that finds no durable configuration, a chain-config block encountered in stored blocks is offered as **tentative** through the ordinary path.
+At startup the blockchain reads the control plane and, if a durable chain-configuration block is present, hands its payload to the configuration module, which accepts and loads it as **durable**. During an FR59 rebuild that finds no durable configuration, a chain-config block encountered in stored blocks is offered as **tentative** through the ordinary path.
 
 ---
 
@@ -700,6 +711,7 @@ Named here, valued after measurement — this specification does not invent numb
 | VM local slot count | Fixed array size | 8 |
 | `GETPARAM` nesting depth | Fixed maximum | 3 |
 | `vm_fuel_limit` default | Code-baked default of ID 29 | 20_000 |
+| `VM_FUEL_LIMIT_MAX` | Ceiling on the chain-declared `vm_fuel_limit` (§6 check 12) | 100_000 — **provisional**, five times the default, inheriting the unconfirmed timing estimate below |
 
 The module's own RAM footprint is one `MAX_PAYLOAD_SIZE` buffer plus its state flag — unchanged from the retention the blockchain performs today — plus the VM's fixed stack and slot array, which are the only new allocations and are sized by the four values above.
 
