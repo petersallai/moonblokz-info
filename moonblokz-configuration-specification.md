@@ -177,7 +177,7 @@ Values are stored and returned in their **native unit** — the unit the paramet
 |---:|---|---|---:|---|:--:|:--:|
 | 29 | `vm_fuel_limit` | u32 | 4 | 20_000 | L | 0 |
 
-`vm_fuel_limit` is **literal-only** for a bootstrapping reason: it bounds every program evaluation, so resolving it must not itself require running a program. It is bound-checked at both ends (§6 check 12) and, because it is the budget acceptance itself spends, checked before any program runs.
+`vm_fuel_limit` is **literal-only** for a bootstrapping reason: it bounds every program evaluation, so resolving it must not itself require running a program. It is bound-checked at both ends (§6 check 12), with the upper bound equal to this default so a chain can only shorten evaluations, and — because it is the budget acceptance itself spends — checked before any program runs.
 
 It is chain configuration rather than a code constant because it is consensus-relevant. The fuel limit directly determines returned values — a node that exhausts its budget receives the fallback, a node that does not receives the computed value — so a node-local limit would let two nodes validate the same chain with different `required_support` or `W`. Putting it in the chain configuration guarantees every node on a chain uses the same budget, and keeps it tunable per chain without coupling it to a firmware version.
 
@@ -260,7 +260,7 @@ Acceptance runs inside the configuration module, on the **raw declared values**,
 9. `max_block_utxo_output ≥ 1` — at zero no transaction output could ever be included in a block.
 10. `block_size_limit > HEADER_SIZE` — a limit that cannot admit a fixed header admits no block at all, and every remaining-capacity computation against it underflows.
 11. `block_fill_threshold_percent ≤ 100` — it is a percentage.
-12. `1 ≤ vm_fuel_limit ≤ VM_FUEL_LIMIT_MAX`. At zero every program silently resolves to its default with no diagnostic anywhere. Unbounded above, one content could hold the core for as long as it asked: acceptance itself pays the limit once per argument-less program, up to the 126 entries the key space allows. `VM_FUEL_LIMIT_MAX` is a `pub const` of the configuration crate (§12).
+12. `1 ≤ vm_fuel_limit ≤ VM_FUEL_LIMIT_MAX`, where the ceiling **equals the code-baked default**. At zero every program silently resolves to its default with no diagnostic anywhere. Unbounded above, one content could hold the core for as long as it asked: acceptance itself pays the limit once per argument-less program, up to the 126 entries the key space allows. Setting the ceiling at the default makes the budget a **downward-only** knob — a chain may buy itself shorter evaluations, never longer ones — which is the only direction that needs no new number, since the default is the one value §12 grounds. A chain wanting more expensive computed parameters needs that default re-based on hardware measurement, which is a firmware change and a consensus-breaking one. `VM_FUEL_LIMIT_MAX` is a `pub const` of the configuration crate, pinned to the default by a compile-time assertion so the two cannot be edited apart (§12).
 13. `tx_fee_per_byte_min ≤ tx_fee_per_byte_max` — the one invariant spanning two parameters, so it cannot be expressed as a per-parameter check. A parameter absent from the content contributes its code-baked default, because that is the value the chain will resolve for it.
 
 **The execution budget is checked before it is spent.** `vm_fuel_limit` bounds every evaluation below, and acceptance pays that bound once per argument-less program, so check 12 runs *before* any program is evaluated rather than in the order the entries happen to appear. Validating it in entry order would mean a content pairing a large declared limit with a runaway program had already held the core for as long as the unchecked value asked.
@@ -711,7 +711,7 @@ Named here, valued after measurement — this specification does not invent numb
 | VM local slot count | Fixed array size | 8 |
 | `GETPARAM` nesting depth | Fixed maximum | 3 |
 | `vm_fuel_limit` default | Code-baked default of ID 29 | 20_000 |
-| `VM_FUEL_LIMIT_MAX` | Ceiling on the chain-declared `vm_fuel_limit` (§6 check 12) | 100_000 — **provisional**, five times the default, inheriting the unconfirmed timing estimate below |
+| `VM_FUEL_LIMIT_MAX` | Ceiling on the chain-declared `vm_fuel_limit` (§6 check 12) | 20_000 — equal to the default, making the budget downward-only |
 
 The module's own RAM footprint is one `MAX_PAYLOAD_SIZE` buffer plus its state flag — unchanged from the retention the blockchain performs today — plus the VM's fixed stack and slot array, which are the only new allocations and are sized by the four values above.
 
