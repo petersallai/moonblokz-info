@@ -919,7 +919,7 @@ impl ActiveConfig<'_> {
     pub fn inter_block_interval_ms(&self) -> u32;                  // FR45 (b), ms
     pub fn grace_period_window_ms(&self) -> u32;                   // FR47, ms
     pub fn block_size_limit(&self) -> u16;
-    pub fn max_utxo_outputs(&self) -> u8;
+    pub fn max_utxo_outputs(&self) -> u16;   // u16: the ceiling is the build's spent-bit width (256), which a byte cannot express
     pub fn max_aggregated_signatures(&self) -> u8;
     pub fn registration_price(&self, registered_nodes: u32) -> u64;
     // ... one accessor per registry entry; arity per the registry
