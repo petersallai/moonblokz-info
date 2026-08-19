@@ -123,7 +123,7 @@ The registry is a single flat key space shared by every consuming subsystem. It 
 
 **Next free ID: 30.**
 
-Value-form column: `L` = literal only; `L/B` = literal or bytecode. Args column: the arity of the accessor, hence of any bytecode program for that key, and the count a `GETPARAM` naming that key must declare (§7.2.3).
+Value-form column: `L` = literal only; `L/B` = literal or bytecode. Args column: the arity of the accessor, hence of any bytecode program for that key, and the count a `GETCONFIG` naming that key must declare (§7.2.3).
 
 ### 4.1 Blockchain parameters
 
@@ -225,31 +225,30 @@ The third row is how `required_support` stays computable: the chain declares its
 
 Two questions worth asking before allocating at all: does this value have to be identical on every node of the chain (if not, it is node-level configuration and belongs nowhere near this registry — §4.4), and can it be derived from a parameter that already exists (a derived value belongs in a program, not in a second key).
 
-### 4.6 The chain-fact space
+### 4.6 The chain-info space
 
-**Ratified by the Project Lead on 2026-08-19; implemented by Story 5.12. The rules below are authoritative now — they are the admission gate for the first fact — but no fact exists in the crate yet.**
+**Ratified by the Project Lead on 2026-08-19; implemented by Story 5.12. The rules below are authoritative now — they are the admission gate for the first chain-info value — but none exists in the crate yet.**
 
 A parameter today computes from other parameters and from the arguments its caller supplies, and from nothing else. The ratified extension gives a program a second, read-only source: quantities **derived from the chain itself** — the node-id watermark, per-node balance, later aggregates such as the average block fill of the active window. That is what makes a parameter genuinely dynamic rather than merely computed — a registration price that follows the size of the network, which §4.1 already offers as the motivating example — and it is the same seam the post-MVP contract runtime needs (§13).
 
-It is a **separate space** from the parameter registry, reached by a second host function behind its own instruction (§7.4). Four properties differ, and each on its own is a reason not to merge the two:
+It is a **separate space** from the parameter registry, reached by a second host function — `HOST_READ_CHAIN_INFO`, `func_id` 1 — behind its own instruction, `GETCHAININFO` (§7.4). Four properties differ, and each on its own is a reason not to merge the two:
 
-- **One id space is wire format; the other never is.** A parameter id is a payload key byte — permanent, dense, unreusable (rule 1). A fact id appears only inside bytecode, so it burns no wire-format identifier, and there is no such thing as *declaring* a fact in a content region.
-- **A `GETPARAM` may re-enter the VM; a fact read cannot.** Nesting depth, the shared fuel budget and the cycle-to-fallback outcome of §7.3 exist for the first and are meaningless for the second. Separate instructions make that a static property, visible to a reader and to the disassembler.
+- **One identifier space is wire format; the other never is.** A parameter identifier is a payload key byte — permanent, dense, unreusable (rule 1). A chain-info identifier appears only inside bytecode, so it burns no wire-format identifier, and there is no such thing as *declaring* a chain-info value in a content region.
+- **A `GETCONFIG` may re-enter the VM; a `GETCHAININFO` cannot.** Nesting depth, the shared fuel budget and the cycle-to-fallback outcome of §7.3 exist for the first and are meaningless for the second. Separate instructions make that a static property, visible to a reader and to the disassembler.
 - **The cost profiles differ** (rule 1 below).
 - **The determinism arguments differ**, which is the substantive part.
 
-**Why fact divergence is safe where fallback divergence is not.** These two look alike and are not. When two nodes on the *same* chain, at the *same* position, resolve one parameter to different values — one reaching the code-baked default, the other the fallback literal — nothing in the protocol resolves the disagreement: there is no error on either side and no fork to reconcile. That is why rule 4's middle row exists at all. A fact behaves differently: two nodes compute different values because they hold different active chains, and every decision taken from the value lands **on that chain**, so each node that accepts that chain reaches that same value. The disagreement is a fork, and FR21 branch selection with FR23 reconciliation already resolves forks. Cross-node equality at a given wall-clock moment was never the requirement; being a function of the chain is.
+**Why chain-info divergence is safe where fallback divergence is not.** These two look alike and are not. When two nodes on the *same* chain, at the *same* position, resolve one parameter to different values — one reaching the code-baked default, the other the fallback literal — nothing in the protocol resolves the disagreement: there is no error on either side and no fork to reconcile. That is why rule 4's middle row exists at all. A chain-info value behaves differently: two nodes compute different values because they hold different active chains, and every decision taken from the value lands **on that chain**, so each node that accepts that chain reaches that same value. The disagreement is a fork, and FR21 branch selection with FR23 reconciliation already resolves forks. Cross-node equality at a given wall-clock moment was never the requirement; being a function of the chain is.
 
-**1. A fact is a selector over the FR34 derived projections — and the mempool is excluded.** FR34 enumerates what the module maintains as a projection of the active chain (per-node balance, accumulated vote, public-key mapping, node-id watermark, per-node seed-source sequence, the block-navigation and UTXO cache), and FR35 updates all of it on exactly two triggers: forward extension and chain-switch reconciliation. Restricting facts to that set discharges three obligations without new machinery: the read is a field read rather than a scan, so a program cannot multiply its fuel cost by the window length on the validation path; FR23 guarantees each projection is per-block reversible, so a fact is reproducible during reconciliation; and the projections are by definition active-chain content. FR23 counts the **mempool** among the projections because it is mutated in the same walk — it is nonetheless node-local, never converges, and is not a fact source. §7.5's prohibition stands unchanged for everything outside this set.
+**1. A chain-info value is a selector over the FR34 derived projections — and the mempool is excluded.** FR34 enumerates what the module maintains as a projection of the active chain (per-node balance, accumulated vote, public-key mapping, node-id watermark, per-node seed-source sequence, the block-navigation and UTXO cache), and FR35 updates all of it on exactly two triggers: forward extension and chain-switch reconciliation. Restricting the space to that set discharges three obligations without new machinery: the read is a field read rather than a scan, so a program cannot multiply its fuel cost by the window length on the validation path; FR23 guarantees each projection is per-block reversible, so a chain-info value is reproducible during reconciliation; and the projections are by definition active-chain content. FR23 counts the **mempool** among the projections because it is mutated in the same walk — it is nonetheless node-local, never converges, and is no chain-info source. §7.5's prohibition stands unchanged for everything outside this set.
 
-**2. A specific block's content is readable only within the `W` window, never in the FR58 verification horizon.** `H` is chosen per node from local storage capacity and is explicitly *not* chain-config-derived; FR58 states that per-node `H` differences leave FR63 determinism unaffected. A fact that reached into the horizon would falsify that sentence — same chain, same position, different `H`, different answer — and this divergence is *not* fork-expressible, so it belongs to the unsafe class above, not the safe one. Projections may summarize the whole chain; raw block content stops at `W`.
+**2. A specific block's content is readable only within the `W` window, never in the FR58 verification horizon.** `H` is chosen per node from local storage capacity and is explicitly *not* chain-config-derived; FR58 states that per-node `H` differences leave FR63 determinism unaffected. A chain-info value that reached into the horizon would falsify that sentence — same chain, same position, different `H`, different answer — and this divergence is *not* fork-expressible, so it belongs to the unsafe class above, not the safe one. Projections may summarize the whole chain; raw block content stops at `W`.
 
-**3. A projection a fact needs must carry its FR23 inverse. How it carries it follows from the aggregate, not from a rule here.** The average block fill is the worked example: a running sum of active-window block sizes, adding the applied block and subtracting the block leaving the window. Its rollback needs the blocks re-entering the window, and those are available by construction — the cheap-zone condition `D ≥ S_tail + (W − H)` is the same statement as *rollback depth ≤ `H`*, so the re-entering blocks are exactly the horizon's `H` most recent entries; in the deep zone FR58 performs no in-place reconciliation at all but a full forward reconstruction, which recomputes the aggregate along with every other projection. Correctness therefore does not depend on `H`, which matters because FR57 storage pressure may temporarily reduce it: a shrinking horizon moves a divergence into the deep zone, where the reconstruction path takes over. Another aggregate may instead need a **post-state snapshot field** in the block — FR23 explicitly contemplates such fields and the evidence block's `supporter_vote_sum` is the precedent — but that is a property of the aggregate, not a general prescription.
+**3. A projection that chain-info needs must carry its FR23 inverse. How it carries it follows from the aggregate, not from a rule here.** The average block fill is the worked example: a running sum of active-window block sizes, adding the applied block and subtracting the block leaving the window. Its rollback needs the blocks re-entering the window, and those are available by construction — the cheap-zone condition `D ≥ S_tail + (W − H)` is the same statement as *rollback depth ≤ `H`*, so the re-entering blocks are exactly the horizon's `H` most recent entries; in the deep zone FR58 performs no in-place reconciliation at all but a full forward reconstruction, which recomputes the aggregate along with every other projection. Correctness therefore does not depend on `H`, which matters because FR57 storage pressure may temporarily reduce it: a shrinking horizon moves a divergence into the deep zone, where the reconstruction path takes over. Another aggregate may instead need a **post-state snapshot field** in the block — FR23 explicitly contemplates such fields and the evidence block's `supporter_vote_sum` is the precedent — but that is a property of the aggregate, not a general prescription.
 
-**4. The fact source is bound at the handle, inside the FR35 application step.** The active-configuration handle of §5.2 already borrows the module and is acquired per use; it takes the chain-fact source as well, so no accessor signature carries it and the caller states the evaluation context exactly once. It must be acquired **within** a per-block application step: there the projections stand at the applied block's pre-state, so the evaluation anchor needs no separate parameter and cannot be got wrong. A handle acquired before or after a reconciliation walk would read a state that belongs to no single block.
+**4. The chain-info source is bound at the handle, inside the FR35 application step.** The active-configuration handle of §5.2 already borrows the module and is acquired per use; it takes the chain-info source as well, so no accessor signature carries it and the caller states the evaluation context exactly once. It must be acquired **within** a per-block application step: there the projections stand at the applied block's pre-state, so the evaluation anchor needs no separate parameter and cannot be got wrong. A handle acquired before or after a reconciliation walk would read a state that belongs to no single block.
 
-A fact-reading accessor is **not** exempt from rule 4: the resolution-time guard still bounds the computed value, and that guard is what makes a fact-driven program tolerable in the first place — without it a projection at an unexpected magnitude would propagate into consensus unchallenged. Two questions before allocating a fact: is it derived from the active chain alone (if not, §7.5 forbids it and §4.4 is where it belongs), and is it already an FR34 projection (if not, rule 3's work lands in the blockchain module and belongs to the story that needs the fact, not to the fact space itself).
-
+An accessor that reads chain-info is **not** exempt from rule 4: the resolution-time guard still bounds the computed value, and that guard is what makes such a program tolerable in the first place — without it a projection at an unexpected magnitude would propagate into consensus unchallenged. Two questions before allocating a chain-info identifier: is it derived from the active chain alone (if not, §7.5 forbids it and §4.4 is where it belongs), and is it already an FR34 projection (if not, rule 3's work lands in the blockchain module and belongs to the story that needs the value, not to the chain-info space itself).
 
 ## 5. Resolution model
 
@@ -485,9 +484,9 @@ Stack effects are written left-to-right with the **top of stack on the right**: 
 
 | Op | Mnemonic | Immediate | Stack | Semantics |
 |---|---|---|---|---|
-| `0x70` | `GETPARAM` | `key_id: u8`, `argc: u8` | `[a₀ … a_{argc−1}] → [v]` | Resolves parameter `key_id` through the host (§7.4) and pushes its value. Consumes exactly `argc` operands from the stack, with argument `0` deepest and argument `argc−1` on top — the order in which they were pushed. |
+| `0x70` | `GETCONFIG` | `key_id: u8`, `argc: u8` | `[a₀ … a_{argc−1}] → [v]` | Resolves parameter `key_id` through the host (§7.4) and pushes its value. Consumes exactly `argc` operands from the stack, with argument `0` deepest and argument `argc−1` on top — the order in which they were pushed. |
 
-`GETPARAM` is how one parameter is defined in terms of another. It is the only host-backed instruction defined today, and it is dispatched through the general host entry point of §7.4 rather than as a special case, so later host functions need no new machinery. Its nested evaluation draws from the same fuel budget as its caller (§7.3).
+`GETCONFIG` is how one parameter is defined in terms of another. It is the only host-backed instruction defined today, and it is dispatched through the general host entry point of §7.4 rather than as a special case, so later host functions need no new machinery. Its nested evaluation draws from the same fuel budget as its caller (§7.3).
 
 **The instruction is self-describing**: it carries the argument count rather than the VM obtaining it from the registry. The alternative would require the machine to ask the host how many operands to take before it could assemble the call, since the arity of a key is registry knowledge and the registry belongs to the configuration module — which would make the VM's coupling to MoonBlokz a two-way conversation rather than the single callback of §7.4. Encoding the count keeps the machine ignorant of what a parameter is, and it is the form that generalizes: a future call instruction (opcode group `0xB0`–`0xBF`) addresses a callee with no registry behind it at all.
 
@@ -507,24 +506,24 @@ Bytecode has a readable form, and it is specified here rather than left to the a
 
 **`PUSH` is an alias.** Written without a width, `PUSH n` assembles to the **narrowest** encoding that holds `n` — `PUSH_U8`, then `PUSH_U16`, `PUSH_U32`, `PUSH_U64`. The rule is deterministic, and it matters: programs live in a 255-byte budget, and an author who reaches for `PUSH_U64` out of habit spends five bytes where one would do. The explicit forms remain available and are what the disassembler emits.
 
-**Canonical form.** `vm-dis` emits exactly one text for a given program: uppercase mnemonics, one instruction per line, a single space before an operand and a comma-and-space between the two operands of `GETPARAM`, decimal immediates, explicit `PUSH_*` widths, no comments, labels named `L0`, `L1`, … numbered by ascending target offset and placed on their own lines, LF line endings.
+**Canonical form.** `vm-dis` emits exactly one text for a given program: uppercase mnemonics, one instruction per line, a single space before an operand and a comma-and-space between the two operands of `GETCONFIG`, decimal immediates, explicit `PUSH_*` widths, no comments, labels named `L0`, `L1`, … numbered by ascending target offset and placed on their own lines, LF line endings.
 
 A jump whose destination does not begin a linearly decoded instruction is rendered as an explicit signed decimal displacement rather than a label: there is no line to attach a label to, and the displacement is what keeps the round trip exact.
 
 Therefore `assemble(disassemble(bytes)) == bytes` for every program `vm-asm` accepts, and `disassemble(assemble(text))` is the canonical rendering of whatever the author wrote. The qualification matters in one case: a program whose jump destination leaves the byte range decodes and disassembles, but `vm-asm` refuses to reassemble it, because diagnosing exactly that is what §11 asks of the assembler. Its bytes remain inspectable through `vm-dis`.
 
-**`GETPARAM` takes a number, not a name.** The assembler belongs to `moonblokz-vm`, which knows nothing about the parameter registry (§2), so the first operand is the numeric identifier and the second is the argument count. Both operands are written on one line, separated by a comma. Parameter names are a `config-encoder` convenience: in its input, `@inter_block_interval_ms` resolves through the registry to the identifier before the source reaches the assembler, and the encoder is also where an argument count that contradicts the registry is caught. The layering is visible in the syntax on purpose.
+**`GETCONFIG` takes a number, not a name.** The assembler belongs to `moonblokz-vm`, which knows nothing about the parameter registry (§2), so the first operand is the numeric identifier and the second is the argument count. Both operands are written on one line, separated by a comma. Parameter names are a `config-encoder` convenience: in its input, `@inter_block_interval_ms` resolves through the registry to the identifier before the source reaches the assembler, and the encoder is also where an argument count that contradicts the registry is caught. The layering is visible in the syntax on purpose.
 
 **Example — a derived parameter.** The grace-period window as half the inter-block interval, reading parameter 1 rather than restating its value:
 
 ```
-GETPARAM 1, 0     ; inter_block_interval_ms, no arguments
+GETCONFIG 1, 0     ; inter_block_interval_ms, no arguments
 PUSH 2
 DIV
 RET
 ```
 
-Seven bytes: `70 01 00 10 02 43 01`. Written in the encoder's input the first line would be `GETPARAM @inter_block_interval_ms, 0`.
+Seven bytes: `70 01 00 10 02 43 01`. Written in the encoder's input the first line would be `GETCONFIG @inter_block_interval_ms, 0`.
 
 **Example — an argument-taking parameter.** The registration price growing with network size, clamped:
 
@@ -587,12 +586,12 @@ A program terminates without a result when:
 
 - **fuel is exhausted** — the fuel counter reaches zero,
 - **the operand stack overflows or underflows** — it exceeds its maximum depth, or an instruction consumes an absent operand,
-- **the nesting depth is exceeded** — `GETPARAM` recursion passes the fixed maximum,
+- **the nesting depth is exceeded** — `GETCONFIG` recursion passes the fixed maximum,
 - **the opcode is undefined** — a reserved or unassigned byte is decoded (§7.2.2),
 - **an instruction is truncated** — an immediate, or the opcode itself, extends past the end of the program; this is what a program running past its last instruction reaches,
 - **control flow leaves the program** — a jump computes a destination outside the byte range,
 - **an operand index is out of range** — an `ARG` index at or above the invocation's arity, or a `LOAD` / `STORE` slot outside the local-slot array,
-- **a host call does not resolve** — `GETPARAM` names a parameter the host declines, either because it is unallocated or because the declared `argc` disagrees with the registry's arity for that key.
+- **a host call does not resolve** — `GETCONFIG` names a parameter the host declines, either because it is unallocated or because the declared `argc` disagrees with the registry's arity for that key.
 
 The program counter moves only by sequential advance or by a jump, so the two conditions above that concern leaving the program partition every way of doing so.
 
@@ -608,9 +607,9 @@ pub enum VmOutcome {
 
 The configuration module maps both non-`Completed` outcomes onto the next resolution tier (§5.1), so within this specification every condition above has the same effect: the tier fails, resolution moves on, and nothing is observable to the accessor's caller, whose surface remains total. The separation matters beyond this specification — a different caller may need a different policy for the same outcomes (§13.5) — and a VM that folded the policy into itself could not serve one.
 
-**Fuel is charged per instruction from a cost table**, not one unit per instruction. Every instruction defined in §7.2 costs one unit today, which makes the table trivially uniform at present; `GETPARAM` additionally consumes whatever the nested evaluation spends from the shared budget. The table exists in this form from the start because it is consensus-critical and effectively permanent: a cost change changes which programs exhaust their budget, and therefore changes returned values. Introducing a table later — when an instruction whose real cost is not one unit first appears — would be a retroactive change to every chain's results.
+**Fuel is charged per instruction from a cost table**, not one unit per instruction. Every instruction defined in §7.2 costs one unit today, which makes the table trivially uniform at present; `GETCONFIG` additionally consumes whatever the nested evaluation spends from the shared budget. The table exists in this form from the start because it is consensus-critical and effectively permanent: a cost change changes which programs exhaust their budget, and therefore changes returned values. Introducing a table later — when an instruction whose real cost is not one unit first appears — would be a retroactive change to every chain's results.
 
-**Fuel is one budget per accessor invocation, shared across nesting.** A `GETPARAM` sub-evaluation draws from the same budget as its caller, and exhaustion aborts the whole invocation rather than just the sub-evaluation. Per-sub-evaluation budgets would let a program compose arbitrarily many sub-evaluations, each individually under the limit, and evade the bound entirely. The budget is fresh per tier, not per nesting level (§5.1).
+**Fuel is one budget per accessor invocation, shared across nesting.** A `GETCONFIG` sub-evaluation draws from the same budget as its caller, and exhaustion aborts the whole invocation rather than just the sub-evaluation. Per-sub-evaluation budgets would let a program compose arbitrarily many sub-evaluations, each individually under the limit, and evade the bound entirely. The budget is fresh per tier, not per nesting level (§5.1).
 
 Cyclic references between parameters are not detected statically either. A cycle is caught at runtime by the nesting-depth limit and, failing that, by fuel — with the ordinary fallback outcome.
 
@@ -627,12 +626,12 @@ pub trait VmHost {
     fn call(&self, func_id: u16, selector: u8, args: &[u64], fuel: &mut Fuel) -> Option<u64>;
 }
 
-pub const HOST_RESOLVE_PARAMETER: u16 = 0;   // selector = parameter id, args = its arguments
+pub const HOST_RESOLVE_CONFIG: u16 = 0;   // selector = parameter id, args = its arguments
 ```
 
-One host function is defined today. The entry point is general rather than parameter-specific so that later host capabilities are new `func_id` values rather than new trait methods — an added method is a breaking change for every implementor, an added identifier is not. The ratified chain-fact space (§4.6) is the second such capability, and the reason the seam was shaped this way: `func_id` 1, selector = fact id.
+One host function is defined today. The entry point is general rather than parameter-specific so that later host capabilities are new `func_id` values rather than new trait methods — an added method is a breaking change for every implementor, an added identifier is not. The ratified chain-info space (§4.6) is the second such capability, and the reason the seam was shaped this way: `HOST_READ_CHAIN_INFO` = 1, selector = chain-info identifier, reached by `GETCHAININFO`.
 
-The selector travels beside the arguments rather than inside them so that the machine can hand over a slice of its operand stack exactly as it stands. Folding the parameter identifier into `args` would mean assembling `[key, a₀ …]` somewhere, and the only place to assemble it without a second array is the operand stack itself — which borrows a free slot and makes `GETPARAM` overflow a full stack even where its net stack effect is zero. Keeping them separate is what leaves the instruction's stack effect precisely what §7.2.3 states.
+The selector travels beside the arguments rather than inside them so that the machine can hand over a slice of its operand stack exactly as it stands. Folding the parameter identifier into `args` would mean assembling `[key, a₀ …]` somewhere, and the only place to assemble it without a second array is the operand stack itself — which borrows a free slot and makes `GETCONFIG` overflow a full stack even where its net stack effect is zero. Keeping them separate is what leaves the instruction's stack effect precisely what §7.2.3 states.
 
 The remaining fuel is threaded through the call so that nested evaluation draws from the caller's budget. `None` propagates as a failed evaluation of the calling program.
 
@@ -783,7 +782,7 @@ Named here, valued after measurement — this specification does not invent numb
 | Maximum program length | Bytecode value size, bounded by the framing | 255 B (`value_length: u8`) |
 | VM operand stack depth | Fixed maximum | 16 |
 | VM local slot count | Fixed array size | 8 |
-| `GETPARAM` nesting depth | Fixed maximum | 3 |
+| `GETCONFIG` nesting depth | Fixed maximum | 3 |
 | `vm_fuel_limit` default | Code-baked default of ID 29 | 20_000 |
 | `VM_FUEL_LIMIT_MAX` | Ceiling on the chain-declared `vm_fuel_limit` (§6 check 12) | 20_000 — equal to the default, making the budget downward-only |
 
