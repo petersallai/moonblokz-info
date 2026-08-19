@@ -4,7 +4,9 @@
 
 ## Purpose
 
-Produce a single self-contained, navigable HTML page that makes the deep review of one implemented story tractable. Raw diffs are hard to review deeply; this page reframes a story's changes as **per-file, per-method** units, each preceded by a plain-language explanation and shown as a whole-method git-diff, with hover tooltips on changed lines and a set of orientation aids (diagrams, tables, a reviewer checklist). Publish it as a private Artifact and hand the reviewer the link.
+Produce a single navigable HTML page that makes the deep review of one implemented story tractable. Raw diffs are hard to review deeply; this page reframes a story's changes as **per-file, per-method** units, each preceded by a plain-language explanation and shown as a whole-method git-diff, with hover tooltips on changed lines and a set of orientation aids (diagrams, tables, a reviewer checklist).
+
+**The deliverable is a file, not a link.** The page is written into the working directory and opened locally from there. Do **not** upload or publish it (no `Artifact`, no other cloud host) unless the user asks in that specific instance — a review companion is internal working material, and the reviewer already has the repository it describes.
 
 Use it after a story's code is committed (typically on its branch or merged), when the reviewer wants to understand *what changed and why* before reading the source line by line.
 
@@ -77,7 +79,7 @@ Utilitarian "IDE / code-review tool" treatment: information design first, polish
 
 Define every colour as a CSS custom property on `:root`; redefine the tokens under `@media (prefers-color-scheme: dark)` and again under `:root[data-theme="dark"]` / `:root[data-theme="light"]` so the viewer's theme toggle wins in both directions. Style components only through the tokens.
 
-**Type** — no webfonts (the Artifact CSP blocks font CDNs and a `@font-face` data URI is heavy). Use system stacks — this is the honest "IDE" vernacular and avoids silent fallback: UI `system-ui, -apple-system, "Segoe UI", Roboto, sans-serif`; code `ui-monospace, "SF Mono", Menlo, Consolas, monospace`. Uppercase eyebrows/kickers get letter-spacing; keep a clear type scale.
+**Type** — no webfonts (a `@font-face` data URI is heavy, and a second network dependency is one more thing that can fail; the mermaid import is the only one this page accepts). Use system stacks — this is the honest "IDE" vernacular and avoids silent fallback: UI `system-ui, -apple-system, "Segoe UI", Roboto, sans-serif`; code `ui-monospace, "SF Mono", Menlo, Consolas, monospace`. Uppercase eyebrows/kickers get letter-spacing; keep a clear type scale.
 
 **Reusable markup + CSS patterns** (the parts that must match to look right):
 
@@ -109,23 +111,56 @@ Keep JS tiny and inline (self-contained; the CSP blocks external scripts).
 - **Tooltip** — one fixed `#tip` div; on `mouseover` of any `[data-tip]`, set its text and position it near the cursor (flip when it would overflow the viewport); hide on `mouseout`. Respect `prefers-reduced-motion`.
 - **Checklist** — toggle a strike-through class on the label when its checkbox changes (session-local; do not claim persistence).
 
-**Diagrams** — Artifacts render mermaid natively from `<pre class="mermaid">…</pre>` (no library needed). Use them where the story has a real shape to show:
+**Diagrams — mermaid, loaded from the CDN.** Keep each diagram as a `<pre class="mermaid">` block and load mermaid with one module import (`https://cdn.jsdelivr.net/npm/mermaid@11/dist/mermaid.esm.min.mjs`). The CDN is fine precisely *because* the page is not published: the Artifact CSP that would block it does not apply to a local file, and a `<pre>` block left to be rendered by a host renderer is not an option we depend on. Mermaid stays the authoring form, editable in place with no toolchain.
+
+Bind the diagrams to the page's design instead of accepting mermaid's default look:
+
+- Read the palette out of the page's own custom properties (`getComputedStyle(root).getPropertyValue('--surface2')` …) and pass it as `themeVariables` (`mainBkg`/`primaryColor`, `primaryTextColor`, `lineColor`, `primaryBorderColor`/`nodeBorder`, `edgeLabelBackground`, `background`) with `theme:'base'`. Set `.arrowheadPath{fill:…}` through `themeCSS`, or the arrowheads keep mermaid's own colour.
+- Render manually (`startOnLoad:false`, then `mermaid.render()` into a container you inserted next to the block) and keep the source in the block. That is what lets you **re-render on a theme change** — hook `matchMedia('(prefers-color-scheme:dark)')` and a `MutationObserver` on the root's `data-theme`. `startOnLoad:true` replaces the source with an SVG and leaves nothing to re-render from.
+- On a render error, leave the source block visible rather than an empty container: a blank box reads as a design choice, visible source reads as a diagram that failed.
+
+If a page ever has to work with no network, the same sources can be pre-rendered to inline SVG (real mermaid inside headless Chrome — `--headless=new --dump-dom`; jsdom lacks `getBBox`, so every box comes out the same wrong size), with sentinel colours substituted for `var(--…)` tokens and `style="width:100%;max-width:<natural>px;height:auto"` on each root `<svg>` so a small diagram does not stretch to the container and render its text larger than its neighbours'.
+
+Either way, verify by looking: screenshot the finished page in both themes (`--headless=new --screenshot --window-size=…`, `data-theme` forced) and actually view the images. A diagram is the one part of this page whose failure mode is silent — blank space or raw source, neither of which any text-level check catches.
+
+Use a diagram where the story has a real shape to show:
 
 - a `stateDiagram-v2` for a lifecycle/state-machine story (states, legal edges, and any init-vs-transition distinction);
-- a `flowchart TD` for a decision/gating story (the shared decision and its branches).
+- a `flowchart TD` for a decision/gating story — the shared decision and its branches, including which branch *is* the story and where control leaves.
 
-Mermaid label hygiene: quote labels containing parentheses (`B{"is_ready()?"}`), and avoid a raw `#` in a label (write `node-0`, not `node #0`) — it can break the parser.
+Mermaid hygiene, in the order these bite:
 
-## Step 6 — Publish
+- **Label text.** Quote any label containing parentheses (`B{"is_ready()?"}`), and avoid a raw `#` in a label (write `node-0`, not `node #0`) — it can break the parser. Keep labels ASCII: an em-dash or `→` inside a label buys nothing and adds a way to fail.
+- **No long label in a rhombus.** `B{"Collecting AND evaluate_stopping_condition()"}` renders as a diamond wide enough to hold the text, which dominates the diagram — one such node nearly doubled a spine diagram's height. Use rectangles and put the branch condition on the outgoing edge labels.
+- **Escaped arrows.** Write arrows as `--&gt;` inside the block: the HTML parser resolves entities in a `pre` before mermaid reads `textContent`, so mermaid still receives `-->` — and the page stays pure ASCII (Step 6).
+- **Layout.** Give each diagram its own full-width row rather than a half-width grid cell.
+- **Caption.** Put a one-line caption under each diagram saying what it encodes — the diagram's content in words, for a screen reader and for the reader who skims.
 
-Write the HTML to a scratch file, set a `<title>`, then publish with the `Artifact` tool (self-contained: inline all CSS/JS, no external assets). Give it a stable favicon (e.g. `🔬`) and a one-sentence description. Re-publishing the **same file path** keeps the same URL, so iterate in place as the review turns up refinements. Artifacts are private by default; the reviewer shares from the page if they want.
+## Step 6 — Write, encode, verify
+
+**Always create the file in the current working directory** — `story-<epic>-<story>-review.html`, next to the pages the earlier stories produced. Never a temp, scratchpad, or job-scratch path: the page is a durable review aid that the reviewer reopens, compares against the previous story's page, and re-publishes from the same path when the review turns up refinements (re-publishing the same path keeps the same URL). A file written outside the working directory is effectively lost after the session.
+
+**Emit the file as pure ASCII.** This is the most-repeated defect in this page type, and being a local file makes it worse, not milder: a `file://` open has no HTTP charset header, so a browser may fall back to cp1252 and every raw UTF-8 `—` renders as `â€”`, in dozens of places at once. So write **every** non-ASCII glyph as an HTML entity (`&mdash;` `&rarr;` `&larr;` `&le;` `&#x27F7;`) *and* put `<meta charset="utf-8">` first. Entities are decode-independent, which is what makes the page correct no matter how the bytes are interpreted or what the publish-time wrapper declares; the charset tag alone is not enough to rely on. Rust source lines stay verbatim — an entity is another encoding of the same glyph, not a paraphrase. Verify before publishing, with two checks:
+
+```
+python3 -c "s=open('page.html',encoding='utf-8').read(); print(sorted({hex(ord(c)) for c in s if ord(c)>127}) or 'pure ASCII')"
+```
+
+and confirm no entity landed inside `<script>` or `<style>`, where the parser does not resolve them (a `&mdash;` in a JS tooltip string would render literally).
+
+While validating, also check what a browser will not tell you: tag balance, unique `id`s, that each embedded `<svg>` parses as XML, and that no external reference slipped in (`grep` for `src=` and `http`, ignoring the `www.w3.org` namespace URIs that every mermaid SVG carries — a stray CDN URL is silently blocked, so a diagram or font just stops working with no error). Mermaid emits an `id` twice per edge inside one SVG; nothing references those, so leave them rather than rewriting generated output.
+
+Finish by opening the file — screenshot it headless in both themes and look at the result (Step 5). Then hand over the **path**, not a link: the page stays a local working-directory file. Do not publish it to the Artifact host or anywhere else on your own initiative; if the user does ask for a hosted copy in some specific case, note that the CSP there blocks the mermaid CDN, so that copy needs its diagrams pre-rendered.
 
 ## Quality rules
 
 - **Accuracy over polish** — every shown line must come from the real diff/source **verbatim**; a paraphrased or `/* … */`-summarized body is a defect. Drop only doc-comments (or, in a large method, repetitive non-load-bearing branches), always behind the visible `⋯` marker; never elide a changed line and never disguise an elision as source.
 - **Match density to the story** — a mechanical change needs fewer aids than a subsystem-spanning one; do not manufacture diagrams or findings that encode nothing.
 - **One scrutiny callout per genuinely load-bearing change**, no more — over-flagging hides the real risks.
-- **Self-contained** — no CDN scripts, fonts, or images; embed everything; both themes legible.
+- **One external dependency, deliberately** — the mermaid CDN import, and nothing else: no webfonts, no images, no other scripts. Everything else is inlined, and both themes stay legible (Step 5).
+- **Look at the diagrams** — screenshot both themes and view the images before handing the page over. Every other defect here shows up in text; a diagram fails silently, as blank space or as raw source.
+- **Never upload the page** — it is internal working material and the deliverable is the file path (Purpose, Step 6).
+- **Pure-ASCII output** — every non-ASCII glyph as an entity, plus `<meta charset="utf-8">` (Step 6). Check it mechanically; a single raw em-dash decoded as cp1252 corrupts every prose line that uses one.
 
 ## Related Documents
 
