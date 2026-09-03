@@ -160,7 +160,7 @@ graph TB
 2. `moonblokz-vote` — extracted as its own concern (vote engine is separate from the radio-side scoring module per PRD FR55)
 3. `moonblokz-node-runtime` — bridge layer, hosts embassy async + radio↔blockchain glue
 4. `moonblokz-configuration` — holds chain-config state, the shared parameter registry, the code-baked defaults, and content acceptance per FR7 / FR8 / FR17 / FR49 / FR56
-5. `moonblokz-vm` — the bytecode execution engine the configuration crate drives for computed parameters (FR56 mini-VM); a self-contained crate with no MoonBlokz domain concepts, so the post-MVP smart-contract runtime can build on it
+5. `moonblokz-vm` — the bytecode execution engine the configuration crate drives for computed parameters (FR56 mini-VM); a self-contained crate that depends on no MoonBlokz crate and interprets none of the identifiers it passes, so the post-MVP smart-contract runtime can build on it
 
 Both are specified in [Configuration Module Specification](./moonblokz-configuration-specification.md) and are `no_std`, no-alloc, and free of `embassy` / `alloc` — the dependency-graph gate that keeps `moonblokz-blockchain` host-testable without an async runtime applies transitively to both.
 
