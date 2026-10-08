@@ -226,21 +226,26 @@ impl<...> Blockchain<...> {
     // === Lifecycle / init — see §3.6 ===
 
     /// Single in-place constructor for **every** node (genesis, join, and
-    /// restart alike). Writes a fresh `Blockchain` through `dst` and starts in
-    /// `Collecting`. The by-value-return form was removed for the embedded
-    /// stack budget; construction always goes through this in-place write.
-    /// `node_zero_public_key` is the out-of-band firmware trust anchor
-    /// (decision rows 1 / 20); for node #0 it is node #0's own key.
-    pub unsafe fn init_in_place(
-        dst: *mut Self,
+    /// restart alike). Writes a fresh `Blockchain` into the caller-provided
+    /// `slot`, hands back a `&mut` to it, and starts in `Collecting`. The
+    /// by-value-return form was removed for the embedded stack budget;
+    /// construction always goes through this in-place write. The function is
+    /// **safe**: `&mut MaybeUninit<Self>` guarantees a valid, exclusive
+    /// destination, and the `&mut Self` is only returned once every field has
+    /// been written — the raw-pointer field writes stay inside the
+    /// constructor, so callers (the node task, the simulator, tests) contain
+    /// no `unsafe`. `node_zero_public_key` is the out-of-band firmware trust
+    /// anchor (decision rows 1 / 20); for node #0 it is node #0's own key.
+    pub fn init(
+        slot: &mut MaybeUninit<Self>,
         crypto: C, storage: S, chain_config: X,
         local_node_id: u32,
         node_zero_public_key: [u8; PUBLIC_KEY_SIZE],
         prng_seed: u64,
-    );
+    ) -> &mut Self;
 
     /// FR54 — node-#0 genesis bootstrap, run as a plain `&mut self` method on an
-    /// already-`init_in_place`d instance (not a constructor). Builds BOTH genesis
+    /// already-`init`ed instance (not a constructor). Builds BOTH genesis
     /// blocks in a single call — Block #0 (own registration + initial
     /// self-transfer for `initial_total_network_currency`) and Block #1
     /// (chain-config carrying `initial_chain_config_bytes`, `previous_hash`
@@ -261,11 +266,11 @@ impl<...> Blockchain<...> {
     ) -> Result<GenesisBlocks, GenesisRejectReason>;
 
     // ⚠️ INCONSISTENCY TO RECONCILE (flagged per governance; resolution left to
-    // the maintainer): with genesis now `init_in_place` + `process_genesis`, the
+    // the maintainer): with genesis now `init` + `process_genesis`, the
     // single-constructor model supersedes the "three separate `initialize_*`
     // constructors" of decision row 18. The `initialize_join` / restart surfaces
     // below still describe the old constructor shape; they should be reframed as
-    // `init_in_place` + a role-specific follow-up (join: mesh intake; restart:
+    // `init` + a role-specific follow-up (join: mesh intake; restart:
     // an FR59 storage-load method) once that redesign is decided.
 
     /// Initialize as a new node joining an existing network.
@@ -422,13 +427,13 @@ The introspection getters (`current_capacity_bytes`, `max_capacity_bytes`, simil
 
 ### 3.6 Three init methods — genesis / join / restart
 
-Construction is a single infallible in-place constructor, `init_in_place`, used by **every** node regardless of boot mode. The role-specific bootstrap then runs as a follow-up on the constructed instance. For node #0 that follow-up is the genesis bootstrap `process_genesis` (below). Join and restart are still described here in their earlier three-constructor form pending the reconciliation flagged in §3.1 (they should likewise become `init_in_place` + a role-specific follow-up).
+Construction is a single infallible in-place constructor, `init`, used by **every** node regardless of boot mode. The role-specific bootstrap then runs as a follow-up on the constructed instance. For node #0 that follow-up is the genesis bootstrap `process_genesis` (below). Join and restart are still described here in their earlier three-constructor form pending the reconciliation flagged in §3.1 (they should likewise become `init` + a role-specific follow-up).
 
 | Boot mode | Construction + bootstrap | Precondition | Phase after |
 |---|---|---|---|
-| Genesis (node #0) | `init_in_place(...)` then `process_genesis(...)` — creates Blocks #0 **and** #1 in the one `process_genesis` call | Chain is empty; caller holds the node-zero key | `Ready` — node #0 authored a complete chain, so no FR2 acquisition / FR3 reconstruction is needed (join/restart still pass through `Collecting`) |
-| Join | `initialize_join(...)` *(to be reframed as `init_in_place` + mesh intake)* | Storage is empty; `node_zero_pk` known a priori (trust anchor) | `Collecting` |
-| Restart | `initialize_from_storage(...)` *(to be reframed as `init_in_place` + an FR59 storage-load)* | Storage non-empty; `node_zero_pk` supplied from code (trust anchor); no lifecycle phase persisted | `Collecting` (→ `Processing` → `Ready` once FR2 holds) |
+| Genesis (node #0) | `init(...)` then `process_genesis(...)` — creates Blocks #0 **and** #1 in the one `process_genesis` call | Chain is empty; caller holds the node-zero key | `Ready` — node #0 authored a complete chain, so no FR2 acquisition / FR3 reconstruction is needed (join/restart still pass through `Collecting`) |
+| Join | `initialize_join(...)` *(to be reframed as `init` + mesh intake)* | Storage is empty; `node_zero_pk` known a priori (trust anchor) | `Collecting` |
+| Restart | `initialize_from_storage(...)` *(to be reframed as `init` + an FR59 storage-load)* | Storage non-empty; `node_zero_pk` supplied from code (trust anchor); no lifecycle phase persisted | `Collecting` (→ `Processing` → `Ready` once FR2 holds) |
 
 **Genesis two-block bootstrap** (per `moonblokz-info` Part IV) — both blocks are built in the single `process_genesis` call and returned together so the bridge broadcasts both, lowest-sequence first:
 - **Block #0** — transaction block: node #0's own registration + an initial self-transfer of `initial_total_network_currency`.
@@ -471,7 +476,7 @@ pub enum TickOutcome<'a> {
 - Different outcome types reflect distinct effect spaces.
 - The bridge layer is structured around the boot-mode decision anyway (a CLI flag or stored-state probe); a single method would just push the dispatch one level deeper.
 
-Note (post-genesis-redesign): construction itself is now unified in the single `init_in_place`; the boot-mode distinctions above are realized as follow-ups on the constructed instance (genesis = `process_genesis`), not as separate constructors.
+Note (post-genesis-redesign): construction itself is now unified in the single `init`; the boot-mode distinctions above are realized as follow-ups on the constructed instance (genesis = `process_genesis`), not as separate constructors.
 
 **Init parameter rationale (fixed decisions):**
 
@@ -479,7 +484,7 @@ Note (post-genesis-redesign): construction itself is now unified in the single `
 |---|---|---|---|
 | 1 | Should `node_zero_pk` be a parameter to every init method? | **Yes** — in all 3 init methods | Code-level bootstrap-of-trust protection: during stored-chain validation, `node_zero_pk` must come from an out-of-band trusted source (for example, baked into firmware); otherwise corrupted storage could provide a false trust anchor. |
 | 2 | Entropy-source trait or simple `prng_seed: u64`? | **`prng_seed: u64`** | The bridge layer is responsible for producing a meaningful seed (RP2040 ROSC jitter, `own_node_id × restart_count` hash, etc.). The blockchain simply accepts the `u64`. |
-| 3 | Should `own_node_id` be a parameter to the genesis bootstrap? | **Implicit 0** — `process_genesis` requires the instance's `local_node_id == 0` (else `LocalNodeIdNotZero`), rather than taking a separate id | The genesis context is by definition “I am node #0”. The trust anchor (`node_zero_public_key`) is supplied once at `init_in_place`. |
+| 3 | Should `own_node_id` be a parameter to the genesis bootstrap? | **Implicit 0** — `process_genesis` requires the instance's `local_node_id == 0` (else `LocalNodeIdNotZero`), rather than taking a separate id | The genesis context is by definition “I am node #0”. The trust anchor (`node_zero_public_key`) is supplied once at `init`. |
 | 4 | What is the state of `chain_config: X` at genesis? | **Empty-state implementor**; `initial_chain_config_bytes` is retained during `process_genesis` and emitted as Block #1 in the same call | The `chain_config` becomes authoritative content when Block #1 is built. Durable-lock semantics land in Story 5.6. |
 | 5 | `storage: S` preconditions in the 3 cases | genesis: **empty**; join: **empty**; restart: **non-empty + well-formed** | The init method returns a `Rejected` outcome if the precondition is not met; it does not panic. |
 
@@ -860,7 +865,7 @@ The blockchain design is **fully compatible** with the existing `moonblokz-radio
 | `no_std` | All three new crates (`moonblokz-blockchain`, `moonblokz-mempool`, `moonblokz-vote`) are `#![no_std]` | ✓ |
 | Runs on std host | no_std crates compile on std targets if no `alloc` dependency | ✓ |
 | No `'static` requirement | Sync API + owned `Blockchain` instance — no `'static` queues, no globals | ✓ |
-| Multiple parallel instances | Const-generic + owned struct — independent `Blockchain::<...>::init_in_place(...)` (via a local `MaybeUninit`) per simulated node | ✓ |
+| Multiple parallel instances | Const-generic + owned struct — independent `Blockchain::<...>::init(&mut slot, ...)` (into a local `MaybeUninit` slot) per simulated node | ✓ |
 | No alloc dependency | heapless / array / const-generic everywhere | ✓ |
 | External crates (crypto, storage) trait-based | Simulator can supply mock implementations | ✓ |
 | Deterministic sync execution | Sync API + monotonic `now: u64` input → replay-friendly (FR63) | ✓ |
@@ -1012,7 +1017,7 @@ Selected high-impact decisions from the Step 5 + Step 6 + Step 7 iterations:
 | 15 | `moonblokz-configuration` (+ `moonblokz-vm`) as separate crates | FR56 mini-VM capability doesn't belong in core blockchain; designed in the [Configuration Module Specification](./moonblokz-configuration-specification.md) |
 | 16 | Chain-lib hosting embassy task gets 6 KB stack (not 4 KB) | §8 FR45 block creation peak ~4 KB |
 | 17 | Feature-gated introspection getters (`#[cfg(feature = "introspection")]`) | FR65 production binary minimal; simulator/CLI enable for observability |
-| 18 | ~~Three separate `initialize_*` constructors (genesis / join / restart)~~ **Superseded:** a single in-place constructor `init_in_place` for every node + role-specific follow-ups (genesis = `process_genesis`). Distinct precondition contracts remain, now as follow-ups rather than constructors. Join/restart reframing still pending (see §3.1 flag). |
+| 18 | ~~Three separate `initialize_*` constructors (genesis / join / restart)~~ **Superseded:** a single in-place constructor `init` for every node + role-specific follow-ups (genesis = `process_genesis`). Distinct precondition contracts remain, now as follow-ups rather than constructors. Join/restart reframing still pending (see §3.1 flag). |
 | 19 | ~~Genesis two-block bootstrap split across `initialize_genesis` + next `on_tick`~~ **Superseded:** `process_genesis` builds **both** Block #0 and Block #1 in one call and returns both for radio broadcast; there is no `GenesisChainConfigCreated` tick effect. New reject reason `GenesisRejectReason::StorageNotEmpty` guards re-genesis of a non-empty chain. The return is a plain `Result<GenesisBlocks, GenesisRejectReason>` — a bare `GenesisBlocks { block_zero, block_one }` struct (no `Rejected` variant; refusal is the `Err`) and **no `NextCall`/`now`**: genesis is one-per-chain with no immediately-scheduled follow-up, so it is kept out of the AR4 scheduling-pull contract. |
 | 20 | `node_zero_pk` is a parameter in all 3 init methods | Bootstrap of trust: it must come from an out-of-band trusted source (baked into firmware); corrupted storage cannot forge the trust anchor |
 | 21 | Entropy: simple `prng_seed: u64` parameter | The bridge layer is responsible for seed generation (RP2040 ROSC jitter, `restart_count` hash); the blockchain simply accepts it |
