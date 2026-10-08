@@ -116,7 +116,7 @@ The following four ADRs were deleted because their `Decision` content was fully 
 - **ADR-004 (Durable Blockchain Storage Persistence Threshold)** — covered by [PRD](../moonblokz-blockchain-prd.md) FR5 (atomic recovery), FR9 (three-status staged validation), and FR16 (intake-time exact-evidence rule with otherwise permissive intake).
 - **ADR-007 (Vote Module Consumes Scoring Module Input)** — covered by [PRD](../moonblokz-blockchain-prd.md) FR37 (accumulated-vote accumulation + anti-capture interest + creator reset), FR38 (creator-order projection), FR55 (`scoring_module` external; vote-target rule), and [architecture](../moonblokz-blockchain-architecture.md) §3.2 / §3.4 (`moonblokz-vote` sub-crate split + `VoteEngine` API surface).
 - **ADR-011 (Chain-Switch Reconciliation Is a Structured Workflow)** — covered by [PRD](../moonblokz-blockchain-prd.md) FR23 (atomic reconciliation workflow) and FR39 (rollback-sensitive consequences), with the architectural realization in [architecture](../moonblokz-blockchain-architecture.md) §4.2 (`reconciliation.rs`).
-- **ADR-012 (Verification Horizon Must Be Explicit Under Bounded Retention)** — covered by [PRD](../moonblokz-blockchain-prd.md) FR58 (verification horizon as cheap-zone vs. deep-zone discipline) and [architecture](../moonblokz-blockchain-architecture.md) §5 (`VERIFICATION_HORIZON = 20` const default).
+- **ADR-012 (Verification Horizon Must Be Explicit Under Bounded Retention)** — covered by [PRD](../moonblokz-blockchain-prd.md) FR58 (verification horizon as cheap-zone vs. deep-zone discipline) and [architecture](../moonblokz-blockchain-architecture.md) §5 (`H` is node-level, default `⌊W / 10⌋` over the chain-configured `W` — not a const generic).
 
 ---
 
@@ -126,7 +126,7 @@ These ADRs settle the main architectural direction. Their downstream design work
 
 1. **Chain Knowledge Core internal representation** — addressed in architecture §4 (15 + 1 internal modules) and §6 (sized data-structure catalog with `BlockEntry`, `ChainHeadsTable`, `NodeInfo` SoA, `SchedulerState`, etc.).
 2. **Detailed chain-switch reconciliation invariants** — addressed in architecture §4.2 (`reconciliation.rs` module) covering the backward-walk + forward-walk workflow; the FR-anchor is PRD FR23 / FR39.
-3. **Verification-horizon sizing and retained-information policy** — addressed in architecture §5 (`VERIFICATION_HORIZON = 20` const default) and the snake_chain bounded-retention model (W=500); the FR-anchor is PRD FR58.
+3. **Verification-horizon sizing and retained-information policy** — addressed in architecture §5 (`H` node-level, default `⌊W / 10⌋`, not a const generic) and the snake_chain bounded-retention model (chain-configured `W`, default 500, bounded by the `SNAKE_CHAIN_LENGTH_MAX` capacity); the FR-anchor is PRD FR58.
 4. **Bounded UTXO carry-forward policy and saturation handling** — addressed in architecture §6.2 (co-located spent-bit vector per `BlockEntry`) and §4.2 (`spent_bits.rs`); ADR-013 + ADR-016 remain the conceptual anchors. FR52 ("no UTXO saturation detection") remains an explicit MVP-skip.
 5. **Query payload definitions and depth semantics** — addressed in architecture §3.1 (12 read-only public methods on `Blockchain<...>`) and §4.2 (`queries.rs` module).
 6. **Vote-target input contract from the scoring module** — partly open. The scoring-module ↔ blockchain-vote-module boundary is settled in PRD FR55, but the exact `scoring_module` API surface remains a separate design artifact yet to be authored.

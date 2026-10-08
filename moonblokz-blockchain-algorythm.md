@@ -646,7 +646,9 @@ Before a node can operate normally, it must identify a sufficiently complete can
 4. If the parent is already known, request earlier chain history of that candidate branch only when request-throttling rules permit it.
 5. Continue until one of the practical stopping conditions is reached:
    - ancestry reaches block `#0`,
-   - or the chain becomes long enough to satisfy the configured active-chain-length target.
+   - or the chain becomes long enough to satisfy the configured active-chain-length target,
+
+   and the candidate chain contains at least one chain-config block. A chain that names no configuration yet is not a candidate: the node keeps collecting and deletes nothing until a chain-config block on it arrives.
 
 ### Interpretation
 
