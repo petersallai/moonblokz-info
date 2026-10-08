@@ -529,24 +529,27 @@ The exact inner configuration parameter catalog and any future formula language 
 
 The configuration-content bytes carry an **override set**, not a full parameter dump. A chain-config payload lists only the parameters that deviate from the defaults defined in code; any parameter absent from the payload resolves to its code-defined default value. This is consistent with the fall-back-to-default behavior the concept model already assumes when a payload omits an accessor (see [Chain-config blocks concept](./moonblokz-blockchain-concept.md#3-chain-config-blocks)).
 
-Within the configuration-content bytes, the data is a count followed by a contiguous run of entries:
+The chain-config payload is framed as a count, a contiguous run of entries, and the node-#0 content-signature trailer:
 
-1. **`config_value_count: u16`** — the number of configuration entries that follow.
-2. Then `config_value_count` entries, stored back-to-back with no padding. Each entry is:
-   - **`config_key: u8`** — identifies which configuration parameter this entry sets,
-   - **`config_value_length: u8`** — byte length of the value that follows,
-   - **`config_value: [u8; config_value_length]`** — the parameter value, variable length.
+```
+config_value_count : u16                        (2 B, little-endian)
+config_values      : config_value_count × {
+                         key_byte     : u8      (1 B)
+                         value_length : u8      (1 B)
+                         value        : value_length bytes
+                     }
+content_signature  : [u8; SIGNATURE_SIZE]       (node #0, over the content region)
+```
 
-The meaning of each `config_key` and the internal encoding of each `config_value` (which may itself be a small bytecode rather than a literal) are defined separately and remain open, exactly as the inner parameter catalog is left open above. Only the framing that carries them is fixed here.
+The **content region** is the count field plus every entry. Its end is **derived** by walking the entries, never read from a fixed offset, which is what makes truncation and trailing padding detectable. The content region is the canonical byte sequence the node-#0 content-signature covers, so every rule that could alter those bytes for a given logical configuration is permanent from the moment a chain exists.
 
-#### Reserved forward-extension paths (not implemented)
+The **key byte** carries both the parameter identity and the form of the value that follows: bit 7 clear means the value is a literal, bit 7 set means it is a bytecode program for the mini virtual machine, and bits 0–6 are the parameter identifier. `0x00` and `0x80` (identifier zero in either form) are invalid, and `0xFF` is reserved as the escape introducing a multi-byte key — a recorded forward-extension path that is not implemented, and that a current decoder treats as malformed content. Identifier `127` is permanently unallocated, because its bytecode form would be `0xFF` and collide with that escape; the usable identifier range is therefore **1–126**.
 
-Two extension paths are recorded so the format can grow later without giving up present-day compactness. Neither is implemented in the current design, which assumes up to 254 distinct keys and a maximum 255-byte value are sufficient even when a `config_value` is a small bytecode:
+For a literal, `value_length` must equal the parameter's declared width exactly, which keeps the decoder total: there is no variable-length integer parsing and no ambiguity about zero-padding, and a width mismatch is a clean rejection rather than a silent reinterpretation. For a bytecode value, `value_length` is the program length and is unconstrained by the parameter's width; the program's `u64` result is narrowed to the declared width by saturation. Because the length field is one byte, a program is at most 255 bytes; widening `value_length` to two bytes above a designated key range is a recorded forward-extension path that is not implemented, recorded alongside the multi-byte key escape for the same reason. Not every parameter admits a bytecode value. Array-typed parameters are literal-only because the virtual machine has no array-valued result form; the execution-budget parameter is, because resolving the budget must not itself require running a program; and a parameter carrying a bound that must actually hold is, because acceptance evaluates no program at all — so a declared literal is the only value that can be checked, and refusing the bytecode form is what enforces the bound. One bounded parameter is deliberately left open to a program, and its bound is advisory in consequence: the bound guards a rule rather than a representation, so an out-of-range value simply makes that rule never fire, alike on every node of the chain.
 
-- **Multi-byte keys.** `config_key == 255` is reserved to mean "the next byte continues the key," extending the key space beyond the single-byte range once more than 254 keys are needed.
-- **Two-byte value lengths.** Above a designated key range, `config_value_length` could be widened from 1 to 2 bytes to permit longer values.
+An identifier that the decoder does not know is **rejected, not skipped**: the content of a chain's configuration defines the minimum firmware capability required to participate in that chain. The alternative would let an older node substitute its own default for the unknown parameter and validate against different values than the rest of the network — a consensus split that surfaces no error anywhere.
 
-Recording these paths now keeps the current 1-byte `config_key` / 1-byte `config_value_length` layout maximally compact while preserving a defined, non-breaking growth direction if either limit is later reached.
+The parameter registry — the identifier of each parameter, its type, width, default, permitted value forms, and accessor arity — is a single flat key space shared by every consuming subsystem, and is **permanent wire format**: an identifier's meaning cannot change once any chain exists, identifiers are allocated densely and never reused or renumbered, and a new parameter takes the next free identifier. Its authoritative home is the configuration-module specification ([the Configuration Module Specification](./moonblokz-configuration-specification.md) §4 at the repository root), which also owns the resolution model, the acceptance checks, and the virtual-machine execution model. Currently allocated: 1–10 and 20–28 for blockchain parameters, 11–19 for radio parameters, 29 for the virtual machine's execution budget.
 
 ## 9. Approval Payload
 
@@ -1242,5 +1245,6 @@ Architecturally, Parts III, IV, and V imply that the full algorithm has at least
 
 ## Related Documents
 
+- [MoonBlokz Configuration Module Specification](./moonblokz-configuration-specification.md) — authoritative for the parameter registry whose identifiers and defaults §8 references, and for the resolution model and virtual machine behind the values the algorithms consume.
 - [`moonblokz-blockchain-concept.md`](./moonblokz-blockchain-concept.md) — the conceptual role and design philosophy of the blockchain subsystem.
 - [`moonblokz-blockchain-implementation.md`](./moonblokz-blockchain-implementation.md) — code-level crate structure, APIs, and engineering cautions.
