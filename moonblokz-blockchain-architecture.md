@@ -215,7 +215,6 @@ pub struct Blockchain<
     X: ChainConfigTrait,
     const MAX_NODES: usize,                  // 1000
     const SNAKE_CHAIN_LENGTH_MAX: usize,     // 500 — capacity; the active W is chain-config
-    const VERIFICATION_HORIZON: usize,       // 20
     const MAX_BLOCKS: usize,                 // 600
     const MAX_BRANCH_COUNT: usize,           // 40
     const MAX_BLOCK_UTXO_OUTPUT: usize,      // 256
@@ -584,7 +583,7 @@ The full per-module breakdown (processes / data structures / relationships / API
 |---|---|---|
 | `MAX_NODES` | 1000 | user-set; **network-wide registered-node cap** — sizes all node-id-indexed arrays (`NodeInfo.public_keys`/`balances`/`seed_source_idx`, `VoteEngine.accumulated_vote`). Every node in the network holds an entry for every other registered node. See §12.1 for tuning trade-offs. |
 | `SNAKE_CHAIN_LENGTH_MAX` | 500 | user-set; **capacity** of the active-chain window. The window length actually in force, `W`, is chain configuration (FR56) and must satisfy `W ≤ SNAKE_CHAIN_LENGTH_MAX`, checked at chain-config acceptance per FR8. A node whose capacity is below the chain's `W` cannot participate; above it, the node uses only the first `W` entries. Same capacity-versus-requirement pattern as `UTXO_UNSPENT_BITS` and `max_block_UTXO_output`. |
-| `VERIFICATION_HORIZON` (H) | 20 | user-set; FR58 cheap-zone boundary |
+| `H` (verification horizon) | — | **Not a const generic.** Node-level and implementation-defined per FR58, derived from the chain-configured `W` (default `⌊W / 10⌋`, `0 ≤ H ≤ W`); a build-time value could not honour `H ≤ W` for a `W` known only at runtime. Derived at its point of use by Story 9.7. |
 | `MAX_BLOCKS` | 600 | RP2040 flash storage capacity 1:1 |
 | `MAX_BRANCH_COUNT` (chain_heads_max_capacity) | 40 | collecting-state branch headroom |
 | `MEMPOOL_COMPACT_BYTES` | 20160 | ~10 × MAX_BLOCK_SIZE |
@@ -1023,6 +1022,7 @@ Selected high-impact decisions from the Step 5 + Step 6 + Step 7 iterations:
 | 21 | Entropy: simple `prng_seed: u64` parameter | The bridge layer is responsible for seed generation (RP2040 ROSC jitter, `restart_count` hash); the blockchain simply accepts it |
 | 22 | `ApprovalAccumulator` fixed `MAX_BLOCK_SIZE` buffer (~2 KB), crypto-agnostic | BLS in-place aggregation is more efficient (~4 B/supporter vs. Schnorr ~36 B/supporter), but the allocated memory size is the maximum block size for both variants |
 | 23 | `SNAKE_CHAIN_LENGTH_MAX` is a capacity, not the window length | `W` must be identical on every node of a chain, so it is chain configuration (FR56); a node cannot resize compile-time arrays from chain content, so the const generic bounds it and acceptance checks `W ≤ SNAKE_CHAIN_LENGTH_MAX` (2026-08-14) |
+| 24 | No `VERIFICATION_HORIZON` const generic | FR58 makes `H` node-level with a default derived from the chain-configured `W`, so a build-time `H` would contradict `H ≤ W`; the unused generic was removed with Story 5.11 (2026-10-08) |
 
 ---
 
