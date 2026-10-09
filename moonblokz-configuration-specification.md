@@ -231,13 +231,13 @@ Two questions worth asking before allocating at all: does this value have to be 
 
 ### 4.6 The chain-info space
 
-**Ratified by the Project Lead on 2026-08-19; the admission gate refined on 2026-08-31. The rules below are authoritative now — they are the gate the first chain-info value must pass — but no chain-info value exists, and none is allocated until some parameter needs an input its arity cannot carry. Story 5.12 ships the mechanism when that day comes.**
+**Ratified by the Project Lead on 2026-08-19; the admission gate refined on 2026-08-31 and replaced on 2026-10-09. Implemented by Story 5.12, which allocates identifier 1 (the registered-node count).**
 
 A parameter today computes from other parameters and from the arguments its caller supplies, and from nothing else. The ratified extension gives a program a second, read-only source: quantities **derived from the chain itself** — the node-id watermark, per-node balance, later aggregates such as the average block fill of the active window.
 
 **What the argument path structurally cannot do is the reason this exists.** An accessor's arity is a permanent property of its registry entry (§4.5), chosen by the build rather than by the chain, and two consequences follow. An **argument-less parameter can never become chain-dependent at all**: its caller passes nothing, a program reads only `ARG`s and other parameters, and the arity that would carry a chain-derived input cannot be added afterwards without stranding every override already signed into a chain. And where an argument *is* declared, the build has already chosen which chain-derived quantity every chain of that build may use — a chain that wants a different one cannot express it at any price. Pushing inputs also inverts FR56's own division of labour: the caller would have to compute and pass, at every call site, whatever an arbitrary chain's program might turn out to read. The chain-info seam reverses the direction — the program pulls what it needs and the caller supplies only the evaluation anchor (rule 4 of this section) — and it is the same seam the post-MVP contract runtime needs (§13).
 
-A size-dependent registration price is **not** an instance of this. Identifier 24 already declares arity 1 with the registered-node count as its argument (§4.1, §4.2), and FR56 routes that quantity to it as an accessor argument by name; the node-id watermark is that same quantity, since node ids are contiguous. A chain-info identifier is warranted where the argument path is structurally unable to carry the value — not where it merely has no caller yet. *(Ratified by the Project Lead on 2026-08-31.)*
+**The admission gate is a product decision, not a technical one** (Project Lead, 2026-10-09, superseding the 2026-08-31 gate). A program *pulls* chain-info, so once an identifier is allocated a chain's founder can read it from any `L/B` parameter, and the build never needs to know which. The earlier test — allocate only when some parameter "needs an input its arity cannot carry" — assumed the argument path was the consumer, and on that ground ruled the node-id watermark out because identifier 24 already receives it as an argument. Under the pull model every argument-less `L/B` parameter is a potential consumer that no argument can reach, which is why the registered-node count is identifier 1. An identifier is allocated when the quantity is worth exposing and it passes rule 1 below.
 
 It is a **separate space** from the parameter registry, reached by a second host function — `HOST_READ_CHAIN_INFO`, `func_id` 1 — behind its own instruction, `GETCHAININFO` (opcode `0x71` — §7.2.2, §7.4). Four properties differ, and each on its own is a reason not to merge the two:
 
@@ -255,6 +255,23 @@ It is a **separate space** from the parameter registry, reached by a second host
 **3. A projection that chain-info needs must carry its FR23 inverse. How it carries it follows from the aggregate, not from a rule here.** The average block fill is the worked example: a running sum of active-window block sizes, adding the applied block and subtracting the block leaving the window. Its rollback needs the blocks re-entering the window, and those are available by construction — the cheap-zone condition `D ≥ S_tail + (W − H)` is the same statement as *rollback depth ≤ `H`*, so the re-entering blocks are exactly the horizon's `H` most recent entries; in the deep zone FR58 performs no in-place reconciliation at all but a full forward reconstruction, which recomputes the aggregate along with every other projection. Correctness therefore does not depend on `H`, which matters because FR57 storage pressure may temporarily reduce it: a shrinking horizon moves a divergence into the deep zone, where the reconstruction path takes over. Another aggregate may instead need a **post-state snapshot field** in the block — FR23 explicitly contemplates such fields and the evidence block's `supporter_vote_sum` is the precedent — but that is a property of the aggregate, not a general prescription.
 
 **4. The chain-info source is bound at the handle, inside the FR35 application step.** The active-configuration handle of §5.2 already borrows the module and is acquired per use; it takes the chain-info source as well, so no accessor signature carries it and the caller states the evaluation context exactly once. It must be acquired **within** a per-block application step: there the projections stand at the applied block's pre-state, so the evaluation anchor needs no separate parameter and cannot be got wrong. A handle acquired before or after a reconciliation walk would read a state that belongs to no single block.
+
+**5. Where a value is served (Project Lead, 2026-10-09).** The chain-info source answers only where its projection is complete and is a function of the chain; elsewhere it declines, and the reading program's tier falls through deterministically on every node.
+
+- **Ready.** Served. The head state is a function of the last `W` blocks alone — every registered node's latest seed source and every live UTXO lie inside the window (FR48–FR51) — so every Ready node on a chain sees the same value. A consumer that runs outside a block application step (the scheduler) reads at the **active head's post-state**.
+- **Collecting / Processing.** Declined: there is no active chain.
+- **Inside the FR3 reconstruction pass.** A genesis-anchored pass is complete from block #0. A window-anchored pass is **not** complete at its intermediate positions — the state at a position `X` depended on blocks before `S_tail` whose replays land after `X` — so a consumer judging a historical block there must **skip** its chain-info-dependent check, trusting the block exactly as the pre-seed zone does, and must never evaluate it against a fallback value, which could reject a block the chain accepted.
+- **A call site with no anchor** — such as `vote_scale` / `vote_interest`, read once at the start of a pass — binds no source, so its programs decline identically on every node.
+
+The blockchain module's FR35 forward-extension maintenance (Story 7.2) is what keeps a Ready node's projections at the head; until it lands, a Ready node's projection is the state at its Ready transition, and no consensus-relevant consumer binds a source.
+
+**The chain-info registry.**
+
+| ID | Value | Arity | Source |
+|---:|---|:--:|---|
+| 1 | `registered_node_count` — nodes registered on the active chain; the node-id watermark plus one, since node ids are contiguous | 0 | FR34 node-id watermark |
+
+The circulating currency (balances plus unspent UTXOs) is the next candidate; it needs the UTXO values Story 7.1 introduces, and is owned by Story 7.6.
 
 An accessor that reads chain-info is **not** exempt from §4.5 rule 4: the resolution-time guard still bounds the computed value, and that guard is what makes such a program tolerable in the first place — without it a projection at an unexpected magnitude would propagate into consensus unchallenged. Two questions before allocating a chain-info identifier: is it derived from the active chain alone (if not, §7.5 forbids it and §4.4 is where it belongs), and is it already an FR34 projection (if not, rule 3 of this section names the work, which lands in the blockchain module and belongs to the story that needs the value, not to the chain-info space itself).
 
@@ -424,7 +441,7 @@ Bytecode is permanent: once a chain exists, a program's bytes cannot be reinterp
 
 Every reserved opcode is undefined and traps at runtime (§7.3). The reservations record intent only — nothing behind them is designed or implemented, and §13 explains why they are worth writing down at this stage.
 
-`0x71` `GETCHAININFO` is allocated rather than reserved because it is designed: §4.6 specifies it, and an opcode is permanent, so its number is fixed when the instruction is specified and not when it is built. It is the one allocated opcode that is not yet implemented — Story 5.12 ships it — and until then it traps exactly like a reserved opcode. *(Allocation ratified by the Project Lead on 2026-08-31.)*
+`0x71` `GETCHAININFO` was allocated before it was built because it was designed: §4.6 specifies it, and an opcode is permanent, so its number is fixed when the instruction is specified and not when it is built. *(Allocation ratified by the Project Lead on 2026-08-31; implemented by Story 5.12.)*
 
 #### 7.2.3 Instruction reference
 
@@ -503,7 +520,7 @@ Stack effects are written left-to-right with the **top of stack on the right**: 
 | Op | Mnemonic | Immediate | Stack | Semantics |
 |---|---|---|---|---|
 | `0x70` | `GETCONFIG` | `key_id: u8`, `argc: u8` | `[a₀ … a_{argc−1}] → [v]` | Resolves parameter `key_id` through the host (§7.4) and pushes its value. Consumes exactly `argc` operands from the stack, with argument `0` deepest and argument `argc−1` on top — the order in which they were pushed. |
-| `0x71` | `GETCHAININFO` | `key_id: u8`, `argc: u8` | `[a₀ … a_{argc−1}] → [v]` | Reads chain-info `key_id` through the host (§7.4) and pushes its value. Operand order and consumption are `GETCONFIG`'s exactly. **Specified (§4.6), not yet implemented** — it traps until Story 5.12. |
+| `0x71` | `GETCHAININFO` | `key_id: u8`, `argc: u8` | `[a₀ … a_{argc−1}] → [v]` | Reads chain-info `key_id` through the host (§7.4) and pushes its value. Operand order and consumption are `GETCONFIG`'s exactly; adds no nesting depth (§4.6). |
 
 `GETCONFIG` is how one parameter is defined in terms of another, and `GETCHAININFO` is how a parameter reads the chain. Both dispatch through the general host entry point of §7.4 rather than as special cases, which is why the second capability needed no new machinery. `GETCONFIG`'s nested evaluation draws from the same fuel budget as its caller (§7.3); `GETCHAININFO` cannot re-enter the VM at all, so it adds no nesting depth (§4.6).
 
@@ -649,7 +666,7 @@ pub const HOST_RESOLVE_CONFIG: u16 = 0;    // selector = parameter id, args = it
 pub const HOST_READ_CHAIN_INFO: u16 = 1;   // selector = chain-info id (§4.6, Story 5.12)
 ```
 
-Two host functions are allocated and one is implemented today. The entry point is general rather than parameter-specific so that later host capabilities are new `func_id` values rather than new trait methods — an added method is a breaking change for every implementor, an added identifier is not. The ratified chain-info space (§4.6) is the second such capability, and the reason the seam was shaped this way: `HOST_READ_CHAIN_INFO` = 1, selector = chain-info identifier, reached by `GETCHAININFO` (opcode `0x71`, §7.2.2), implemented by Story 5.12. A `func_id` is permanent for the same reason its opcode is.
+Two host functions are allocated, and both are implemented. The entry point is general rather than parameter-specific so that later host capabilities are new `func_id` values rather than new trait methods — an added method is a breaking change for every implementor, an added identifier is not. The ratified chain-info space (§4.6) is the second such capability, and the reason the seam was shaped this way: `HOST_READ_CHAIN_INFO` = 1, selector = chain-info identifier, reached by `GETCHAININFO` (opcode `0x71`, §7.2.2). A `func_id` is permanent for the same reason its opcode is.
 
 The selector travels beside the arguments rather than inside them so that the machine can hand over a slice of its operand stack exactly as it stands. Folding the parameter identifier into `args` would mean assembling `[key, a₀ …]` somewhere, and the only place to assemble it without a second array is the operand stack itself — which borrows a free slot and makes `GETCONFIG` overflow a full stack even where its net stack effect is zero. Keeping them separate is what leaves the instruction's stack effect precisely what §7.2.3 states.
 
