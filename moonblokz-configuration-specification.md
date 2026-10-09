@@ -14,7 +14,7 @@ Both crates now exist. The specification was written ahead of them, and the rema
 
 A MoonBlokz chain must run with parameters that are identical on every node. Some of those parameters are plain constants; others are more usefully expressed as a function of chain state — a registration price that grows with the size of the network, for example. Both kinds must resolve to the same value on every node that holds the same chain, and neither may be a local tuning knob, because a divergence in these values is a divergence in validation outcome.
 
-The configuration module owns that resolution. It parses the configuration content carried by chain-config blocks (`payload_type=3`), holds the tentative and durable commitment state, resolves every parameter through a fixed registry of code-baked defaults, and evaluates the small programs that compute the argument-dependent parameters. The blockchain consumes the result through per-parameter accessors and never interprets a configuration key itself ([BC-FR56](./moonblokz-blockchain-prd.md)).
+The configuration module owns that resolution. It parses the configuration content carried by chain-config blocks (`payload_type=3`), holds the tentative and durable commitment state, resolves every parameter through a fixed registry of code-baked defaults, and evaluates the small programs that compute the parameters a chain overrides with bytecode. The blockchain consumes the result through per-parameter accessors and never interprets a configuration key itself ([BC-FR56](./moonblokz-blockchain-prd.md)).
 
 In scope:
 
@@ -123,35 +123,35 @@ The registry is a single flat key space shared by every consuming subsystem. It 
 
 **Next free ID: 30.**
 
-Value-form column: `L` = literal only; `L/B` = literal or bytecode. Args column: the arity of the accessor, hence of any bytecode program for that key, and the count a `GETCONFIG` naming that key must declare (§7.2.3).
+Value-form column: `L` = literal only; `L/B` = literal or bytecode. **Parameters take no arguments**: a program computes from other parameters (`GETCONFIG` with an argument count of 0) and from chain-info (`GETCHAININFO`, §4.6). Which inputs a value depends on is the bytecode's decision, not the accessor's *(Project Lead, 2026-10-09)*.
 
 ### 4.1 Blockchain parameters
 
-| ID | Parameter | Type | Width | Default | Form | Args | Notes |
-|---:|---|---|---:|---|:--:|:--:|---|
-| 1 | `inter_block_interval_ms` | u32 | 4 | 60_000 | L/B | 0 | FR45 (b) |
-| 2 | `grace_period_window_ms` | u32 | 4 | 30_000 | L/B | 0 | FR47 |
-| 3 | `block_size_limit` | u16 | 2 | 2016 | L | 0 | Bound-checked, §6 (`HEADER_SIZE` < value ≤ `MAX_BLOCK_SIZE`) |
-| 4 | `max_block_utxo_output` | u16 | 2 | 255 | L | 0 | Bound-checked, §6 (`1 ≤ value ≤ UTXO_UNSPENT_BITS`) |
-| 5 | `max_aggregated_signatures` | u8 | 1 | 50 | L | 0 | Bound-checked, §6 kind 2; also the ceiling ID 10 clamps to |
-| 6 | `vote_scale` | u16 (non-zero) | 2 | 1000 | L/B | 0 | FR37; zero is invalid, enforced at resolution |
-| 7 | `vote_interest` | u8 | 1 | 5 | L/B | 0 | FR37 |
-| 8 | `parent_recovery_per_head_retry_interval_ms` | u32 | 4 | 120_000 | L/B | 0 | FR19 / FR46 |
-| 9 | `parent_recovery_min_emit_interval_ms` | u32 | 4 | 10_000 | L/B | 0 | FR46 |
-| 10 | `required_support` | u8 | 1 | 3 | L/B | 0 | Floor ≥ 1 (§6 kind 1); ceiling is a clamp to ID 5 (§6 kind 3) |
-| 20 | `block_fill_threshold_percent` | u8 | 1 | 80 | L/B | 0 | FR45 (a); bound-checked, §6 |
-| 21 | `active_chain_length` | u16 | 2 | 500 | L | 0 | `W`; bound-checked against the compile-time capacity, §6 |
-| 22 | `mempool_replenishment_interval_ms` | u32 | 4 | 500_000 | L/B | 0 | FR56 |
-| 23 | `custodian_fee` | u64 | 8 | 1 | L/B | 0 | FR51 carry-forward |
-| 24 | `registration_price` | u64 | 8 | 100 | L/B | 1 | Arg: registered-node count |
-| 25 | `tx_fee_per_byte_min` | u64 | 8 | 0 | L/B | 0 | FR56 fee policy |
-| 26 | `tx_fee_per_byte_max` | u64 | 8 | 1000 | L/B | 0 | FR56 fee policy |
-| 27 | `deviation_replay_insertion_delay_ms` | u32 | 4 | 300_000 | L/B | 0 | FR29 pacing |
-| 28 | `replay_block_reward` | u64 | 8 | 100 | L/B | 0 | FR36 (c) |
+| ID | Parameter | Type | Width | Default | Form | Notes |
+|---:|---|---|---:|---|:--:|---|
+| 1 | `inter_block_interval_ms` | u32 | 4 | 60_000 | L/B | FR45 (b) |
+| 2 | `grace_period_window_ms` | u32 | 4 | 30_000 | L/B | FR47 |
+| 3 | `block_size_limit` | u16 | 2 | 2016 | L | Bound-checked, §6 (`HEADER_SIZE` < value ≤ `MAX_BLOCK_SIZE`) |
+| 4 | `max_block_utxo_output` | u16 | 2 | 255 | L | Bound-checked, §6 (`1 ≤ value ≤ UTXO_UNSPENT_BITS`) |
+| 5 | `max_aggregated_signatures` | u8 | 1 | 50 | L | Bound-checked, §6 kind 2; also the ceiling ID 10 clamps to |
+| 6 | `vote_scale` | u16 (non-zero) | 2 | 1000 | L/B | FR37; zero is invalid, enforced at resolution |
+| 7 | `vote_interest` | u8 | 1 | 5 | L/B | FR37 |
+| 8 | `parent_recovery_per_head_retry_interval_ms` | u32 | 4 | 120_000 | L/B | FR19 / FR46 |
+| 9 | `parent_recovery_min_emit_interval_ms` | u32 | 4 | 10_000 | L/B | FR46 |
+| 10 | `required_support` | u8 | 1 | 3 | L/B | Floor ≥ 1 (§6 kind 1); ceiling is a clamp to ID 5 (§6 kind 3) |
+| 20 | `block_fill_threshold_percent` | u8 | 1 | 80 | L/B | FR45 (a); bound-checked, §6 |
+| 21 | `active_chain_length` | u16 | 2 | 500 | L | `W`; bound-checked against the compile-time capacity, §6 |
+| 22 | `mempool_replenishment_interval_ms` | u32 | 4 | 500_000 | L/B | FR56 |
+| 23 | `custodian_fee` | u64 | 8 | 1 | L/B | FR51 carry-forward |
+| 24 | `registration_price` | u64 | 8 | 100 | L/B | A size-dependent price reads chain-info 1, effective only where the consumer binds a source (§4.6 rule 5) |
+| 25 | `tx_fee_per_byte_min` | u64 | 8 | 0 | L/B | FR56 fee policy |
+| 26 | `tx_fee_per_byte_max` | u64 | 8 | 1000 | L/B | FR56 fee policy |
+| 27 | `deviation_replay_insertion_delay_ms` | u32 | 4 | 300_000 | L/B | FR29 pacing |
+| 28 | `replay_block_reward` | u64 | 8 | 100 | L/B | FR36 (c) |
 
 ### 4.2 Radio parameters
 
-Every radio parameter is **literal-only and argument-less by rule** (§10.2, §4.5).
+Every radio parameter is **literal-only by rule** (§10.2, §4.5).
 
 | ID | Parameter | Type | Width | Default | Unit | Form |
 |---:|---|---|---:|---|---|:--:|
@@ -169,7 +169,7 @@ Values are stored and returned in their **native unit** — the unit the paramet
 
 **Every duration is milliseconds in a `u32`** (IDs 1, 2, 8, 9, 22, 27). Four bytes carry 49 days against defaults measured in seconds and minutes, so the narrower width costs nothing and saves four bytes on the wire per override. A caller that mixes a duration into timestamp arithmetic widens it at the use site, where the widening is visible rather than assumed. Ratified 2026-08-18; possible only because no chain exists yet, since a declared width is permanent wire format.
 
-`registration_price` keeps arity 1 while its default is a plain literal: the accessor still takes the registered-node count, and the default simply does not vary with it. A chain that wants a size-dependent price overrides the key with a program of the same arity.
+`registration_price` took the registered-node count as an accessor argument until 2026-10-09. A chain that wants a size-dependent price now overrides the key with a program that reads the count through `GETCHAININFO 1, 0` (§4.6). Changing it was possible only because no chain exists yet.
 
 `scoring_matrix` is literal-only because it is not a scalar: the VM returns a `u64` and has no array-valued result form. Should a computed matrix ever be needed, it requires a distinct result form and a distinct opcode group, and is a deliberate future extension rather than an oversight.
 
@@ -177,11 +177,11 @@ Values are stored and returned in their **native unit** — the unit the paramet
 
 ### 4.3 VM parameters
 
-| ID | Parameter | Type | Width | Default | Form | Args |
-|---:|---|---|---:|---|:--:|:--:|
-| 29 | `vm_fuel_limit` | u32 | 4 | 20_000 | L | 0 |
+| ID | Parameter | Type | Width | Default | Form |
+|---:|---|---|---:|---|:--:|
+| 29 | `vm_fuel_limit` | u32 | 4 | 20_000 | L |
 
-`vm_fuel_limit` is **literal-only** for a bootstrapping reason: it bounds every program evaluation, so resolving it must not itself require running a program. It is bound-checked at both ends (§6 check 12), with the upper bound equal to this default so a chain can only shorten evaluations, and — because it is the budget acceptance itself spends — checked before any program runs.
+`vm_fuel_limit` is **literal-only** for a bootstrapping reason: it bounds every program evaluation, so resolving it must not itself require running a program. It is bound-checked at both ends (§6 check 12), with the upper bound equal to this default so a chain can only shorten evaluations.
 
 It is chain configuration rather than a code constant because it is consensus-relevant. The fuel limit directly determines returned values — a node that exhausts its budget receives the fallback, a node that does not receives the computed value — so a node-local limit would let two nodes validate the same chain with different `required_support` or `W`. Putting it in the chain configuration guarantees every node on a chain uses the same budget, and keeps it tunable per chain without coupling it to a firmware version.
 
@@ -205,7 +205,7 @@ Every rule below exists because breaking it produces a **silent** failure — a 
 
 **3. The default is permanent too, and may never be derived from a build constant.** A chain that omits a parameter validates against the local build's default for it, so two firmware versions whose default tables differ by one value validate the same chain differently — the split of §3.4 reached through the defaults instead of the keys. For the same reason a default must be a plain literal: writing `MAX_AGGREGATED_SIGNATURES` as a default would make the default itself backend-dependent.
 
-**The arity is permanent as well**, and unlike rules 1–3 nothing enforces it. The `Args` column is one number serving three roles: the accessor's arity, the arity of every bytecode program for that key, and the `argc` a `GETCONFIG` naming it must declare (§4.1, §7.2.3) — and the host declines a call whose declared `argc` disagrees with the registry (§7.4). Raising a live chain's arity therefore does not extend the programs written against it; it makes every override already signed for that key stop resolving and fall silently to the next tier. Decide the arity when the parameter is allocated, on the understanding that a chain-derived input cannot be added later this way — that is what the chain-info space (§4.6) is for.
+**Parameters take no arguments, and that is permanent too.** A `GETCONFIG` must declare an argument count of 0, and the host declines any other (§7.4). Giving a parameter an argument once a chain exists would strand every override already signed for that key, and a chain-derived input is what the chain-info space (§4.6) is for. *(Ratified by the Project Lead on 2026-10-09, replacing the per-parameter arity: which inputs a value depends on is the bytecode's decision, not the accessor's.)*
 
 **4. The value form follows from the parameter's bound, not from taste.** Classify the *limit*:
 
@@ -219,25 +219,25 @@ The middle row is the one that is easy to get wrong. Such a bound is safe at acc
 
 The third row is how `required_support` stays computable: the chain declares its ceiling in `max_aggregated_signatures`, and `min(support, ceiling)` uses two operands that both come from the content, so every node reaches the same value. Prefer reusing an existing chain-declared ceiling over adding one — two ceilings for the same quantity can contradict each other.
 
-**5. A bounded parameter takes no arguments.** No acceptance-time check can cover every argument value, so a bound and an arity are mutually exclusive. *(Compile-time: every identifier in `BOUNDED_IDS` is asserted to have arity zero.)*
+**5. (Withdrawn 2026-10-09.)** A bounded parameter had to take no arguments. Since no parameter takes any, the rule and its compile-time assertion have nothing left to constrain.
 
 **6. A relation between two parameters is not this module's to enforce.** No per-parameter predicate can see two values, so neither the acceptance check nor the resolution guard can be made total for a relation. Acceptance may check it on *declared literals* as a **founder-facing diagnostic** — `config-encoder` runs the same pass, so a typo is caught before a chain exists — but it must not be presented as a guarantee, and the module must not clamp one value to the other: choosing which of the two is authoritative is the consumer's decision, not configuration's. **The consumer resolves an inconsistent pair at the point of use, deterministically.** Record the obligation on both accessors, so whoever reads the value meets the warning. (Ratified 2026-08-18 for the fee range; it is the general rule.)
 
 **7. Choose the accessor's type for the consumer, and let acceptance uphold it.** A narrower or niche-carrying return type — `u8`, `NonZeroU16` — is legitimate precisely when the bound that makes it safe is enforced upstream. Narrowing is by saturation, so a type must never be the *only* thing standing between a declared value and an invariant.
 
-**8. Radio parameters are literal-only and argument-less by rule** (§10.2). Argument-less because the only chain-derived quantities live on the blockchain core and the quantity the radio knows locally is node-specific. Literal-only because the radio never calls an accessor: it consumes a snapshot built at a configuration change and published to the other core, so a program could only compute from other configuration parameters — no expressiveness gained — while making a pacing constant's value depend on an evaluation outcome. On a timing-critical path that is all cost and no benefit. *(Compile-time: every identifier in `RADIO_IDS` is asserted literal-only and arity zero.)*
+**8. Radio parameters are literal-only by rule** (§10.2). Literal-only because the radio never calls an accessor: it consumes a snapshot built at a configuration change and published to the other core, so a program could only compute from other configuration parameters — no expressiveness gained — while making a pacing constant's value depend on an evaluation outcome. On a timing-critical path that is all cost and no benefit. *(Compile-time: every identifier in `RADIO_IDS` is asserted literal-only.)*
 
 Two questions worth asking before allocating at all: does this value have to be identical on every node of the chain (if not, it is node-level configuration and belongs nowhere near this registry — §4.4), and can it be derived from a parameter that already exists (a derived value belongs in a program, not in a second key).
 
 ### 4.6 The chain-info space
 
-**Ratified by the Project Lead on 2026-08-19; the admission gate refined on 2026-08-31. The rules below are authoritative now — they are the gate the first chain-info value must pass — but no chain-info value exists, and none is allocated until some parameter needs an input its arity cannot carry. Story 5.12 ships the mechanism when that day comes.**
+**Ratified by the Project Lead on 2026-08-19; the admission gate refined on 2026-08-31 and replaced on 2026-10-09. Implemented by Story 5.12, which allocates identifier 1 (the registered-node count).**
 
-A parameter today computes from other parameters and from the arguments its caller supplies, and from nothing else. The ratified extension gives a program a second, read-only source: quantities **derived from the chain itself** — the node-id watermark, per-node balance, later aggregates such as the average block fill of the active window.
+Before this space a parameter computed from other parameters and from the arguments its caller supplied, and from nothing else. The extension gives a program a second, read-only source: quantities **derived from the chain itself** — the node-id watermark, per-node balance, later aggregates such as the average block fill of the active window.
 
-**What the argument path structurally cannot do is the reason this exists.** An accessor's arity is a permanent property of its registry entry (§4.5), chosen by the build rather than by the chain, and two consequences follow. An **argument-less parameter can never become chain-dependent at all**: its caller passes nothing, a program reads only `ARG`s and other parameters, and the arity that would carry a chain-derived input cannot be added afterwards without stranding every override already signed into a chain. And where an argument *is* declared, the build has already chosen which chain-derived quantity every chain of that build may use — a chain that wants a different one cannot express it at any price. Pushing inputs also inverts FR56's own division of labour: the caller would have to compute and pass, at every call site, whatever an arbitrary chain's program might turn out to read. The chain-info seam reverses the direction — the program pulls what it needs and the caller supplies only the evaluation anchor (rule 4 of this section) — and it is the same seam the post-MVP contract runtime needs (§13).
+**What the argument path structurally could not do is the reason this exists.** Before 2026-10-09 an accessor's arity was a permanent property of its registry entry, chosen by the build rather than by the chain, and two consequences followed. An **argument-less parameter could never become chain-dependent at all**: its caller passed nothing, a program read only `ARG`s and other parameters, and the arity that would carry a chain-derived input could not be added afterwards without stranding every override already signed into a chain. And where an argument *was* declared, the build had already chosen which chain-derived quantity every chain of that build might use — a chain that wanted a different one could not express it at any price. Pushing inputs also inverted FR56's own division of labour: the caller would have had to compute and pass, at every call site, whatever an arbitrary chain's program might turn out to read. The chain-info seam reverses the direction — the program pulls what it needs and the caller supplies only the evaluation anchor (rule 4 of this section) — and it is the same seam the post-MVP contract runtime needs (§13). Taken to its conclusion, the pull model left accessor arguments nothing to do, and on 2026-10-09 they were removed: parameters take no arguments at all (§4.5).
 
-A size-dependent registration price is **not** an instance of this. Identifier 24 already declares arity 1 with the registered-node count as its argument (§4.1, §4.2), and FR56 routes that quantity to it as an accessor argument by name; the node-id watermark is that same quantity, since node ids are contiguous. A chain-info identifier is warranted where the argument path is structurally unable to carry the value — not where it merely has no caller yet. *(Ratified by the Project Lead on 2026-08-31.)*
+**The admission gate is a product decision, not a technical one** (Project Lead, 2026-10-09, superseding the 2026-08-31 gate). A program *pulls* chain-info, so once an identifier is allocated a chain's founder can read it from any `L/B` parameter, and the build never needs to know which. The earlier test — allocate only when some parameter "needs an input its arity cannot carry" — assumed the argument path was the consumer, and on that ground ruled the node-id watermark out because identifier 24 already receives it as an argument. Under the pull model every `L/B` parameter is a potential consumer, which is why the registered-node count is identifier 1 — and why identifier 24, which used to receive it as an argument, now reads it this way too (§4.5). An identifier is allocated when the quantity is worth exposing and it passes rule 1 below.
 
 It is a **separate space** from the parameter registry, reached by a second host function — `HOST_READ_CHAIN_INFO`, `func_id` 1 — behind its own instruction, `GETCHAININFO` (opcode `0x71` — §7.2.2, §7.4). Four properties differ, and each on its own is a reason not to merge the two:
 
@@ -254,7 +254,26 @@ It is a **separate space** from the parameter registry, reached by a second host
 
 **3. A projection that chain-info needs must carry its FR23 inverse. How it carries it follows from the aggregate, not from a rule here.** The average block fill is the worked example: a running sum of active-window block sizes, adding the applied block and subtracting the block leaving the window. Its rollback needs the blocks re-entering the window, and those are available by construction — the cheap-zone condition `D ≥ S_tail + (W − H)` is the same statement as *rollback depth ≤ `H`*, so the re-entering blocks are exactly the horizon's `H` most recent entries; in the deep zone FR58 performs no in-place reconciliation at all but a full forward reconstruction, which recomputes the aggregate along with every other projection. Correctness therefore does not depend on `H`, which matters because FR57 storage pressure may temporarily reduce it: a shrinking horizon moves a divergence into the deep zone, where the reconstruction path takes over. Another aggregate may instead need a **post-state snapshot field** in the block — FR23 explicitly contemplates such fields and the evidence block's `supporter_vote_sum` is the precedent — but that is a property of the aggregate, not a general prescription.
 
-**4. The chain-info source is bound at the handle, inside the FR35 application step.** The active-configuration handle of §5.2 already borrows the module and is acquired per use; it takes the chain-info source as well, so no accessor signature carries it and the caller states the evaluation context exactly once. It must be acquired **within** a per-block application step: there the projections stand at the applied block's pre-state, so the evaluation anchor needs no separate parameter and cannot be got wrong. A handle acquired before or after a reconciliation walk would read a state that belongs to no single block.
+**4. The chain-info source is bound at the handle, inside the FR35 application step.** The active-configuration handle of §5.2 already borrows the module and is acquired per use; it takes the chain-info source as well, so no accessor signature carries it and the caller states the evaluation context exactly once. It must be acquired **within** a per-block application step: there the projections stand at the applied block's pre-state, so the evaluation anchor needs no separate parameter and cannot be got wrong. A handle acquired before or after a reconciliation walk would read a state that belongs to no single block. This governs every consumer that judges a block; a consumer that runs outside any block application step — the scheduler, which judges nothing — binds at the active head's post-state instead (rule 5).
+
+**5. Where a value is served (Project Lead, 2026-10-09).** The chain-info source answers only where its projection is complete and is a function of the chain; elsewhere it declines, and the reading program's tier falls through deterministically on every node.
+
+- **Ready.** Served. The head state is a function of the last `W` blocks alone — every registered node's latest seed source and every live UTXO lie inside the window (FR48–FR51) — so every Ready node **at the same head** sees the same value; nodes at different heads, or on competing branches, read different values, which is the fork-expressible case above. A consumer that runs outside a block application step (the scheduler) reads at the **active head's post-state**.
+- **Collecting / Processing.** Declined: there is no active chain.
+- **Inside the FR3 reconstruction pass.** A genesis-anchored pass is complete from block #0. A window-anchored pass is **not** complete at its intermediate positions — the state at a position `X` depended on blocks before `S_tail` whose replays land after `X` — so a consumer judging a historical block there must **skip** its chain-info-dependent check, trusting the block exactly as the pre-seed zone does, and must never evaluate it against a fallback value, which could reject a block the chain accepted.
+- **A call site with no anchor** — such as `vote_scale` / `vote_interest`, read once at the start of a pass — binds no source, so its programs decline identically on every node.
+
+The blockchain module's FR35 forward-extension maintenance (Story 7.2) is what keeps a Ready node's projections at the head. **Until it lands, a served value is a per-node snapshot** — the state at the node's Ready transition, and for node #0, made Ready by genesis without a pass, the genesis state — so the only consumer that binds a source is one that is not consensus-relevant (the parent-recovery cadence), and Story 7.2 owns keeping the projections current before a consensus-relevant consumer binds.
+
+**Binding is per call site, not per parameter.** A parameter read at an unbound call site declines its chain-info reads; the same parameter reached through a nested `GETCONFIG` from a bound caller reads them. A program that reads chain-info therefore takes effect only where its parameter is consumed under a bound handle — which, for a consensus-relevant parameter, is the consuming story's to arrange, with the rules above.
+
+**The chain-info registry.**
+
+| ID | Value | Arity | Source |
+|---:|---|:--:|---|
+| 1 | `registered_node_count` — nodes registered on the active chain; the node-id watermark plus one, since node ids are contiguous | 0 | FR34 node-id watermark |
+
+The circulating currency (balances plus unspent UTXOs) is the next candidate; it needs the UTXO values Story 7.1 introduces, and is owned by Story 7.6.
 
 An accessor that reads chain-info is **not** exempt from §4.5 rule 4: the resolution-time guard still bounds the computed value, and that guard is what makes such a program tolerable in the first place — without it a projection at an unexpected magnitude would propagate into consensus unchallenged. Two questions before allocating a chain-info identifier: is it derived from the active chain alone (if not, §7.5 forbids it and §4.4 is where it belongs), and is it already an FR34 projection (if not, rule 3 of this section names the work, which lands in the blockchain module and belongs to the story that needs the value, not to the chain-info space itself).
 
@@ -265,7 +284,7 @@ An accessor that reads chain-info is **not** exempt from §4.5 rule 4: the resol
 Every parameter resolves through the same chain:
 
 1. **Chain-config override** — the entry present in the configuration content, literal or bytecode.
-2. **Code-baked default** — used when the parameter is absent from the content. May itself be a literal or a bytecode program with the same argument semantics.
+2. **Code-baked default** — used when the parameter is absent from the content. May itself be a literal or a bytecode program.
 3. **Code-baked fallback literal** — a plain constant, used when the tier above fails at evaluation time.
 
 A tier **fails** — and resolution moves to the next one — when its program traps, exhausts its budget, or **returns a value outside the parameter's bound**. That last condition is what allows a parameter to carry a structural bound and still admit a program: acceptance evaluates nothing (§6), so a computed value is held to the bound here instead, by the same predicate a declared literal is checked with. A violation is not an error the caller sees; it is a tier that failed.
@@ -288,13 +307,20 @@ pub trait ChainConfigTrait {
     // FR8 state operations — see §8
 }
 
-pub struct ActiveConfig<'a> { /* borrows the module */ }
+pub struct ActiveConfig<'a> { /* borrows the module and a chain-info source */ }
 
-impl ActiveConfig<'_> {
+pub trait ChainInfoSource {
+    fn read(&self, id: u8, args: &[u64]) -> Option<u64>;   // §4.6
+}
+
+impl<'a> ActiveConfig<'a> {
+    // Bound by the caller that knows the evaluation anchor (§4.6 rules 4-5);
+    // an unbound handle declines every chain-info read.
+    pub fn with_chain_info(self, source: &'a dyn ChainInfoSource) -> Self;
     pub fn commitment(&self) -> Commitment;          // Tentative | Durable
     pub fn inter_block_interval_ms(&self) -> u32;
-    pub fn registration_price(&self, registered_nodes: u32) -> u64;
-    // ... one accessor per registry entry, arity per the registry
+    pub fn registration_price(&self) -> u64;
+    // ... one argument-less accessor per registry entry
 }
 ```
 
@@ -337,14 +363,14 @@ Three consequences worth stating, because each removes a failure mode rather tha
 9. `max_block_utxo_output ≥ 1` — at zero no transaction output could ever be included in a block.
 10. `block_size_limit > HEADER_SIZE` — a limit that cannot admit a fixed header admits no block at all, and every remaining-capacity computation against it underflows.
 11. `block_fill_threshold_percent ≤ 100` — it is a percentage.
-12. `1 ≤ vm_fuel_limit ≤ VM_FUEL_LIMIT_MAX`, where the ceiling **equals the code-baked default**. At zero every program silently resolves to its default with no diagnostic anywhere. Unbounded above, one content could hold the core for as long as it asked: acceptance itself pays the limit once per argument-less program, up to the 126 entries the key space allows. Setting the ceiling at the default makes the budget a **downward-only** knob — a chain may buy itself shorter evaluations, never longer ones — which is the only direction that needs no new number, since the default is the one value §12 grounds. A chain wanting more expensive computed parameters needs that default re-based on hardware measurement, which is a firmware change and a consensus-breaking one. `VM_FUEL_LIMIT_MAX` is a `pub const` of the configuration crate, pinned to the default by a compile-time assertion so the two cannot be edited apart (§12).
+12. `1 ≤ vm_fuel_limit ≤ VM_FUEL_LIMIT_MAX`, where the ceiling **equals the code-baked default**. At zero every program silently resolves to its default with no diagnostic anywhere. Unbounded above, one content could hold the core for as long as it asked: every evaluation may spend the whole limit, and a content may carry a program in each of the 126 entries the key space allows. Setting the ceiling at the default makes the budget a **downward-only** knob — a chain may buy itself shorter evaluations, never longer ones — which is the only direction that needs no new number, since the default is the one value §12 grounds. A chain wanting more expensive computed parameters needs that default re-based on hardware measurement, which is a firmware change and a consensus-breaking one. `VM_FUEL_LIMIT_MAX` is a `pub const` of the configuration crate, pinned to the default by a compile-time assertion so the two cannot be edited apart (§12).
 13. `tx_fee_per_byte_min ≤ tx_fee_per_byte_max` — the one invariant spanning two parameters, so it cannot be expressed as a per-parameter check. A parameter absent from the content contributes its code-baked default, because that is the value the chain will resolve for it.
 
-**The execution budget is checked before it is spent.** `vm_fuel_limit` bounds every evaluation below, and acceptance pays that bound once per argument-less program, so check 12 runs *before* any program is evaluated rather than in the order the entries happen to appear. Validating it in entry order would mean a content pairing a large declared limit with a runaway program had already held the core for as long as the unchecked value asked.
+**The order of the checks carries no meaning.** Acceptance runs no program, so no budget is spent before check 12 has run; the checks apply in entry order, and the first violation found is the one reported. `vm_fuel_limit` bounds every evaluation at resolution time, where each accessor invocation starts a fresh budget (§5.1).
 
 The last of these is worth spelling out, because it settles what `W` is. The active-chain window length is **chain configuration**, not a build-time property of a node: every node on a chain must retain the same window, or they do not agree on what has dropped out of it. But a node cannot resize compile-time arrays from chain content, so the const generic becomes a **capacity** — `SNAKE_CHAIN_LENGTH_MAX` — and the chain-configured `W` must fit inside it. A node whose capacity is below the chain's `W` cannot participate and rejects the configuration; a node whose capacity exceeds it simply uses part of what it allocated. This is exactly the pattern `max_block_utxo_output ≤ UTXO_UNSPENT_BITS` already establishes: the chain states the requirement, the compile-time constant states what this build can honour, and the check at acceptance is where the two meet.
 
-**Acceptance runs no program.** The bounds are checked on **declared literals only**. A program's result is knowable ahead of time only when it takes no arguments, so any acceptance-time evaluation is partial by construction — and grows more partial with every argument-taking parameter the registry gains. The resolution model already covers a misbehaving program completely: a trap or an exhausted budget fails that tier and the value falls through to the code-baked default and then to the code-baked fallback literal, deterministically and identically on every node (§5.1, §7.3). Placing a second, incomplete check in front of a total mechanism buys no coverage and costs device code size, a second failure taxonomy, and a rule that would have to be revisited each time a parameter gains an argument. Ratified 2026-08-18.
+**Acceptance runs no program.** The bounds are checked on **declared literals only**. A program may read chain-info, which no acceptance-time context can supply, so any acceptance-time evaluation is partial by construction. The resolution model already covers a misbehaving program completely: a trap or an exhausted budget fails that tier and the value falls through to the code-baked default and then to the code-baked fallback literal, deterministically and identically on every node (§5.1, §7.3). Placing a second, incomplete check in front of a total mechanism buys no coverage and costs device code size, a second failure taxonomy, and a rule that would have to be revisited each time a chain-info value is allocated. Ratified 2026-08-18.
 
 **Bound checks and value forms.** A bound is only enforceable where its limit is knowable, and the *limit* — not the parameter — decides how. That gives three kinds, and the registry's value-form column is what implements the distinction.
 
@@ -355,8 +381,6 @@ The last of these is worth spelling out, because it settles what `W` is. The act
 **3. A ceiling the chain declares itself — a clamp, which restores dynamism without a divergence point.** `required_support` (ID 10) needs a ceiling, and its natural one — the crypto backend's aggregation limit — is per-build, i.e. exactly kind 2. Splitting the two roles resolves it: the *chain* declares the ceiling as a literal in `max_aggregated_signatures` (ID 5, kind 2, refused at acceptance if this build cannot honour it), and the accessor clamps the resolved support to it. Both operands then come from the same content, so `min(required_support, max_aggregated_signatures)` is identical on every node, and the build-specific question is answered once, at acceptance, where refusal is the answer. Clamping rather than falling back is deliberate and matches ADR-015's own `m = min(2·required_support − 1, |A|)`: it preserves a computed value's intent — grow with the network, never exceed what the evidence can carry — where a fallback would discard the computation for the code-baked default.
 
 The two roles are one parameter rather than two on purpose: a separate governance ceiling beside ID 5 could contradict it, prescribing evidence that cannot be carried.
-
-**Parameters that take arguments may not carry a structural bound of kind 2**, since no acceptance-time check can cover every argument value. The registry records the arity, and this rule constrains which parameters may ever be given one. It is a registry invariant rather than a convention: the bounded identifiers are named as a table and asserted at compile time to have arity zero, so giving a bounded parameter an argument fails the build.
 
 **The remaining literal-only parameters are so for unrelated reasons:** the array-typed ID 17 (the VM has no array-valued result form), the execution budget ID 29 (resolving the budget must not itself require running a program), and ID 3 `block_size_limit` by ratified decision rather than by necessity — its limits are fixed by the block format, so kind 1 would have applied to it.
 
@@ -374,12 +398,12 @@ A stack machine over `u64`:
 
 - an **operand stack** of fixed maximum depth,
 - a fixed array of **local slots**,
-- a read-only **argument vector** supplied by the caller,
+- a read-only **argument vector** supplied by the caller (empty for a configuration parameter, §4.5),
 - a **program counter** over the bytecode,
 - a **fuel counter**, decremented per executed instruction by that instruction's cost (§7.3),
 - a **host handle** for host calls (§7.4).
 
-There is no heap, no linear memory, and no host state beyond the handle. Arithmetic is unsigned and **saturating** on overflow and underflow; there are no signed operations. Division and modulo by zero yield `0` rather than trapping — a deliberate choice, because the divisor may be computed from a runtime argument and the accessor surface must remain total.
+There is no heap, no linear memory, and no host state beyond the handle. Arithmetic is unsigned and **saturating** on overflow and underflow; there are no signed operations. Division and modulo by zero yield `0` rather than trapping — a deliberate choice, because the divisor may be computed at runtime — from another parameter or from chain-info — and the accessor surface must remain total.
 
 **Initial state is fully defined.** Local slots are zero-initialized before execution and no instruction may read machine state that was never written. An implementation-defined initial state would make results implementation-dependent, which on a consensus-bearing value is a correctness fault rather than a quality-of-implementation issue.
 
@@ -424,7 +448,7 @@ Bytecode is permanent: once a chain exists, a program's bytes cannot be reinterp
 
 Every reserved opcode is undefined and traps at runtime (§7.3). The reservations record intent only — nothing behind them is designed or implemented, and §13 explains why they are worth writing down at this stage.
 
-`0x71` `GETCHAININFO` is allocated rather than reserved because it is designed: §4.6 specifies it, and an opcode is permanent, so its number is fixed when the instruction is specified and not when it is built. It is the one allocated opcode that is not yet implemented — Story 5.12 ships it — and until then it traps exactly like a reserved opcode. *(Allocation ratified by the Project Lead on 2026-08-31.)*
+`0x71` `GETCHAININFO` was allocated before it was built because it was designed: §4.6 specifies it, and an opcode is permanent, so its number is fixed when the instruction is specified and not when it is built. *(Allocation ratified by the Project Lead on 2026-08-31; implemented by Story 5.12.)*
 
 #### 7.2.3 Instruction reference
 
@@ -502,14 +526,14 @@ Stack effects are written left-to-right with the **top of stack on the right**: 
 
 | Op | Mnemonic | Immediate | Stack | Semantics |
 |---|---|---|---|---|
-| `0x70` | `GETCONFIG` | `key_id: u8`, `argc: u8` | `[a₀ … a_{argc−1}] → [v]` | Resolves parameter `key_id` through the host (§7.4) and pushes its value. Consumes exactly `argc` operands from the stack, with argument `0` deepest and argument `argc−1` on top — the order in which they were pushed. |
-| `0x71` | `GETCHAININFO` | `key_id: u8`, `argc: u8` | `[a₀ … a_{argc−1}] → [v]` | Reads chain-info `key_id` through the host (§7.4) and pushes its value. Operand order and consumption are `GETCONFIG`'s exactly. **Specified (§4.6), not yet implemented** — it traps until Story 5.12. |
+| `0x70` | `GETCONFIG` | `key_id: u8`, `argc: u8` | `[a₀ … a_{argc−1}] → [v]` | Resolves parameter `key_id` through the host (§7.4) and pushes its value. A parameter takes no arguments, so the host accepts only `argc = 0` (§4.5); the VM itself consumes exactly `argc` operands from the stack, with argument `0` deepest and argument `argc−1` on top — the order in which they were pushed. |
+| `0x71` | `GETCHAININFO` | `key_id: u8`, `argc: u8` | `[a₀ … a_{argc−1}] → [v]` | Reads chain-info `key_id` through the host (§7.4) and pushes its value. Operand order and consumption are `GETCONFIG`'s exactly; adds no nesting depth (§4.6). |
 
 `GETCONFIG` is how one parameter is defined in terms of another, and `GETCHAININFO` is how a parameter reads the chain. Both dispatch through the general host entry point of §7.4 rather than as special cases, which is why the second capability needed no new machinery. `GETCONFIG`'s nested evaluation draws from the same fuel budget as its caller (§7.3); `GETCHAININFO` cannot re-enter the VM at all, so it adds no nesting depth (§4.6).
 
-**The instruction is self-describing**: it carries the argument count rather than the VM obtaining it from the registry. The alternative would require the machine to ask the host how many operands to take before it could assemble the call, since the arity of a key is registry knowledge and the registry belongs to the configuration module — which would make the VM's coupling to MoonBlokz a two-way conversation rather than the single callback of §7.4. Encoding the count keeps the machine ignorant of what a parameter is, and it is the form that generalizes: a future call instruction (opcode group `0xB0`–`0xBF`) addresses a callee with no registry behind it at all.
+**The instruction is self-describing**: it carries the argument count rather than the VM obtaining it from the registry. The alternative would require the machine to ask the host how many operands to take before it could assemble the call, since how many arguments a key accepts is registry knowledge and the registry belongs to the configuration module — which would make the VM's coupling to MoonBlokz a two-way conversation rather than the single callback of §7.4. Encoding the count keeps the machine ignorant of what a parameter is, and it is the form that generalizes: a future call instruction (opcode group `0xB0`–`0xBF`) addresses a callee with no registry behind it at all.
 
-The cost is that `argc` and the registry's `Args` column (§4) can disagree, so **the host validates the count**. It is the only party that can: it owns the registry. A mismatch is declined like any unresolved parameter, which is a runtime fallback rather than a live hazard — the `config-encoder` resolves each key through the registry when it assembles the content (§11), so the authoring path cannot emit a mismatch in the first place — which is the whole of the protection, since §6 evaluates no program.
+The cost is that `argc` can disagree with what the host accepts — 0 for every parameter (§4.5), the chain-info registry's arity for `GETCHAININFO` (§4.6) — so **the host validates the count**. It is the only party that can: it owns both registries. A mismatch is declined like any unresolved parameter, which is a runtime fallback rather than a live hazard — the `config-encoder` resolves each key through the registry when it assembles the content (§11), so the authoring path cannot emit a mismatch in the first place — which is the whole of the protection, since §6 evaluates no program.
 
 Three definitional choices above are worth naming, because each removes a failure mode rather than merely picking a behaviour: division and modulo by zero yield `0`, shifts of 64 or more yield `0`, and subtraction saturates at `0`. Together with saturating addition and multiplication, this makes **every arithmetic instruction total** — no operand combination can trap. What remains able to fail is structural (fuel, stack depth, nesting), never arithmetic.
 
@@ -544,11 +568,11 @@ RET
 
 Seven bytes: `70 01 00 10 02 43 01`. Written in the encoder's input the first line would be `GETCONFIG @inter_block_interval_ms, 0`.
 
-**Example — an argument-taking parameter.** The registration price growing with network size, clamped:
+**Example — a parameter reading chain-info.** The registration price growing with network size, clamped. It takes effect only where the consuming call site binds a chain-info source (§4.6 rule 5); elsewhere the read declines and the default applies:
 
 ```
-; registration_price(registered_nodes) = min(1000 + 5 * n, 50000)
-ARG 0
+; registration_price = min(1000 + 5 * registered_node_count, 50000)
+GETCHAININFO 1, 0
 PUSH 5
 MUL
 PUSH 1000
@@ -558,10 +582,10 @@ MIN
 RET
 ```
 
-Fourteen bytes, and worth reading against the encoding rules once:
+Fifteen bytes, and worth reading against the encoding rules once:
 
 ```
-32 00        ARG 0
+71 01 00     GETCHAININFO 1, 0
 10 05        PUSH_U8 5
 42           MUL
 11 E8 03     PUSH_U16 1000      ; little-endian
@@ -575,7 +599,7 @@ Fourteen bytes, and worth reading against the encoding rules once:
 
 ```
         PUSH 1000          ; price
-        ARG 0
+        GETCHAININFO 1, 0  ; registered_node_count
         PUSH 100
         DIV                ; [price tiers]
 loop:   DUP
@@ -593,7 +617,7 @@ done:   POP
         RET
 ```
 
-Twenty-seven bytes. At a thousand registered nodes the loop runs ten times and the whole evaluation costs 118 fuel units — four in the prologue, eleven per iteration, two to fall out, two to finish — a useful sense of scale for the budget in §12, and a reminder that the interesting limit here is the 255-byte program, not the arithmetic.
+Twenty-eight bytes. At a thousand registered nodes the loop runs ten times and the whole evaluation costs 118 fuel units — four in the prologue, eleven per iteration, two to fall out, two to finish — a useful sense of scale for the budget in §12, and a reminder that the interesting limit here is the 255-byte program, not the arithmetic.
 
 A closing observation on the literal-versus-bytecode choice: for a `u64` parameter holding a small number, a program is often *smaller* than the literal — `PUSH 60000 / RET` is four bytes against the literal's eight. Prefer the literal anyway. It is checkable by eye, needs no evaluation at acceptance, and cannot be misread; four bytes is not worth turning a constant into a program.
 
@@ -610,7 +634,7 @@ A program terminates without a result when:
 - **an instruction is truncated** — an immediate, or the opcode itself, extends past the end of the program; this is what a program running past its last instruction reaches,
 - **control flow leaves the program** — a jump computes a destination outside the byte range,
 - **an operand index is out of range** — an `ARG` index at or above the invocation's arity, or a `LOAD` / `STORE` slot outside the local-slot array,
-- **a host call does not resolve** — `GETCONFIG` names a parameter the host declines, either because it is unallocated or because the declared `argc` disagrees with the registry's arity for that key.
+- **a host call does not resolve** — `GETCONFIG` names a parameter the host declines, either because it is unallocated or because it declares an argument (parameters take none, §4.5); or `GETCHAININFO` names a chain-info value the host declines, for the same two reasons or because the value is not served at this call site (no source bound, or not available — §4.6 rule 5).
 
 The program counter moves only by sequential advance or by a jump, so the two conditions above that concern leaving the program partition every way of doing so.
 
@@ -634,7 +658,7 @@ Cyclic references between parameters are not detected statically either. A cycle
 
 **Why there is no verifier.** A load-time pass could catch some of the conditions above — undefined opcodes, truncated immediates, out-of-range jump destinations and operand indices — but it could not catch the rest. Fuel exhaustion, stack depth and nesting depth are not decidable ahead of a run once the instruction set has backward jumps, and a jump into the middle of an intended instruction is not an error at all (§7.2.1). The runtime therefore has to be total regardless, and every condition needs defined behaviour there anyway. A verifier would not remove a single runtime check: it would duplicate a subset of them in a second code path, on a device where code size is a budgeted resource, in order to turn a fallback into a rejection for some inputs and not others. The runtime handling is the whole mechanism, and it is one mechanism.
 
-The same argument rules out checking programs at **acceptance** time, and §6 does not: an evaluation pass could only cover argument-less programs, so it would be the same partial duplicate of the runtime's checks, merely moved earlier. What *is* still caught before a chain commits to a configuration is everything that does not require running anything: the framing-level checks at decode time — unallocated parameter identifier, duplicate key, literal width mismatch, bytecode under a literal-only key (§3.4) — because resolution cannot proceed without them, and the structural bounds on every declared literal (§6). Breakage inside a program reaches the runtime, where it falls back deterministically and identically on every node. The host-side assembler (§11) is where a structurally broken program is meant to be caught, before it is ever signed into a chain.
+The same argument rules out checking programs at **acceptance** time, and §6 does not: an evaluation pass could not supply chain-info, so it would be the same partial duplicate of the runtime's checks, merely moved earlier. What *is* still caught before a chain commits to a configuration is everything that does not require running anything: the framing-level checks at decode time — unallocated parameter identifier, duplicate key, literal width mismatch, bytecode under a literal-only key (§3.4) — because resolution cannot proceed without them, and the structural bounds on every declared literal (§6). Breakage inside a program reaches the runtime, where it falls back deterministically and identically on every node. The host-side assembler (§11) is where a structurally broken program is meant to be caught, before it is ever signed into a chain.
 
 ### 7.4 Host seam
 
@@ -645,17 +669,17 @@ pub trait VmHost {
     fn call(&self, func_id: u16, selector: u8, args: &[u64], fuel: &mut Fuel) -> Option<u64>;
 }
 
-pub const HOST_RESOLVE_CONFIG: u16 = 0;    // selector = parameter id, args = its arguments
+pub const HOST_RESOLVE_CONFIG: u16 = 0;    // selector = parameter id, args = empty (§4.5)
 pub const HOST_READ_CHAIN_INFO: u16 = 1;   // selector = chain-info id (§4.6, Story 5.12)
 ```
 
-Two host functions are allocated and one is implemented today. The entry point is general rather than parameter-specific so that later host capabilities are new `func_id` values rather than new trait methods — an added method is a breaking change for every implementor, an added identifier is not. The ratified chain-info space (§4.6) is the second such capability, and the reason the seam was shaped this way: `HOST_READ_CHAIN_INFO` = 1, selector = chain-info identifier, reached by `GETCHAININFO` (opcode `0x71`, §7.2.2), implemented by Story 5.12. A `func_id` is permanent for the same reason its opcode is.
+Two host functions are allocated, and both are implemented. The entry point is general rather than parameter-specific so that later host capabilities are new `func_id` values rather than new trait methods — an added method is a breaking change for every implementor, an added identifier is not. The ratified chain-info space (§4.6) is the second such capability, and the reason the seam was shaped this way: `HOST_READ_CHAIN_INFO` = 1, selector = chain-info identifier, reached by `GETCHAININFO` (opcode `0x71`, §7.2.2). A `func_id` is permanent for the same reason its opcode is.
 
 The selector travels beside the arguments rather than inside them so that the machine can hand over a slice of its operand stack exactly as it stands. Folding the parameter identifier into `args` would mean assembling `[key, a₀ …]` somewhere, and the only place to assemble it without a second array is the operand stack itself — which borrows a free slot and makes `GETCONFIG` overflow a full stack even where its net stack effect is zero. Keeping them separate is what leaves the instruction's stack effect precisely what §7.2.3 states.
 
 The remaining fuel is threaded through the call so that nested evaluation draws from the caller's budget. `None` propagates as a failed evaluation of the calling program.
 
-`args.len()` is the count the *program* declared, not the arity the registry records, so validating that the two agree is the host's responsibility and no one else's — it holds the registry, and the machine deliberately does not (§7.2.3). Declining is the whole of the remedy: it reaches the program as a failed host call and resolution falls to the next tier.
+`args.len()` is the count the *program* declared, which the machine does not check, so validating it — 0 for a parameter, the chain-info arity for a chain-info read — is the host's responsibility and no one else's: it holds both registries, and the machine deliberately does not (§7.2.3). Declining is the whole of the remedy: it reaches the program as a failed host call and resolution falls to the next tier.
 
 This is the whole of the VM's coupling to MoonBlokz: an identifier it does not interpret, and a callback it does not implement.
 
@@ -665,7 +689,7 @@ Two capabilities are absent by decision, not by omission. Both are cheap to add 
 
 **A program cannot observe its remaining fuel.** There is no instruction that reads the fuel counter. Exposing it would let a program branch on how much budget is left, which makes its result a function of the cost table — and the cost table is then frozen forever, because any repricing would silently change the behaviour of every program that inspects it. The EVM's `GAS` opcode is the cautionary case. Without introspection, the cost table remains something that could in principle be revised for a future chain; with it, it never can.
 
-**A program cannot observe anything node-local or non-deterministic.** No wall-clock time, no randomness, no node-specific quantity — the local node's neighbour count, link qualities, queue depths, or storage occupancy — and no mempool content, which is network-held runtime state that never converges. Every input is an argument supplied by the caller, another configuration parameter, or (per the ratified §4.6 extension) a quantity derived from the active chain itself. The third class is admissible for the same reason the first two are: it is agreed content, so a value computed from it is a value the network can agree on. This is the same rule that makes radio parameters argument-less (§10.2), and for the same reason: a value that differs between nodes cannot be a value the network agrees on, and configuration exists precisely to be agreed on.
+**A program cannot observe anything node-local or non-deterministic.** No wall-clock time, no randomness, no node-specific quantity — the local node's neighbour count, link qualities, queue depths, or storage occupancy — and no mempool content, which is network-held runtime state that never converges. Every input is another configuration parameter or (§4.6) a quantity derived from the active chain itself. The second class is admissible for the same reason the first is: it is agreed content, so a value computed from it is a value the network can agree on. This is the same rule that keeps radio parameters free of node-local inputs (§10.2), and for the same reason: a value that differs between nodes cannot be a value the network agrees on, and configuration exists precisely to be agreed on.
 
 ### 7.6 Instruction-set versioning
 
@@ -743,9 +767,9 @@ The transport stays on the firmware side, where its dependencies already are: th
 
 ### 10.2 Radio parameters
 
-The radio subsystem consumes a `RadioConfiguration` snapshot rather than calling accessors. It runs on the other core, its real-time paths must stay non-blocking, and — decisively — it cannot supply arguments: the only chain-derived quantities live on the blockchain core, and the quantity the radio *does* know locally (its neighbour count) is node-specific and would produce a different value on every node, which is precisely what chain configuration exists to prevent.
+The radio subsystem consumes a `RadioConfiguration` snapshot rather than calling accessors. It runs on the other core, its real-time paths must stay non-blocking, and — decisively — it has no chain-info to bind: the only chain-derived quantities live on the blockchain core, and the quantity the radio *does* know locally (its neighbour count) is node-specific and would produce a different value on every node, which is precisely what chain configuration exists to prevent.
 
-**Radio parameters are literal-only and argument-less by rule.** The registry records arity 0 and the literal form for IDs 11–19, and both are structural constraints on future allocations in that category rather than accidents of the current set. Argument-less for the reason above. Literal-only because the radio never calls an accessor: it reads a snapshot, so a program could only ever compute from other configuration parameters — no expressiveness gained — while making a pacing constant's value depend on an evaluation outcome, on a path where the variance is the whole cost. §4.5 rule 8 records it, and the crate asserts both at compile time.
+**Radio parameters are literal-only by rule.** The registry records the literal form for IDs 11–19, a structural constraint on future allocations in that category rather than an accident of the current set. Literal-only because the radio never calls an accessor: it reads a snapshot, so a program could only ever compute from other configuration parameters — no expressiveness gained — while making a pacing constant's value depend on an evaluation outcome, on a path where the variance is the whole cost. §4.5 rule 8 records it, and the crate asserts it at compile time.
 
 **Distribution.** The node runtime publishes the snapshot through an `embassy_sync::watch::Watch`, whose latest-value, multi-consumer semantics fit the case: several radio tasks hold their own copies of the values, a superseded configuration must never be delivered after a newer one, and no queue may grow. A `Channel` would allow config messages to accumulate behind traffic and deliver a stale snapshot after a fresh one. `embassy-sync` 0.7 — already the pinned version — provides `Watch`, so no version change is required.
 
@@ -773,15 +797,15 @@ Each is a `std` binary in a **separate tool package** within its repository, not
 
 **`vm-asm` — assembler.** Translates the textual form of §7.2.4 to bytecode and is the only place where structural mistakes in a program are diagnosed. Because the runtime carries no verifier (§7.3), an undefined opcode, a truncated immediate, or a jump out of range merely trap and fall back on-device — correct behaviour, but a poor diagnostic. Static checking belongs here, where it costs no device code size and can produce a message that names the offending instruction.
 
-An out-of-range operand index is the exception and stays a runtime condition. `ARG` is bounded by the invocation's arity and `LOAD` / `STORE` by the local-slot count, and neither bound is the assembler's to know: the first is registry knowledge and the second a deployment constant chosen by whoever hosts the VM (§12). The assembler validates immediate *width* only. The assembler also enforces the 255-byte program limit of §7.2.1, which is otherwise only discovered when the framing refuses the value.
+An out-of-range operand index is the exception and stays a runtime condition. `ARG` is bounded by the invocation's argument count (zero for a configuration parameter, so every `ARG` traps there) and `LOAD` / `STORE` by the local-slot count, and neither bound is the assembler's to know: the first is the host's knowledge and the second a deployment constant chosen by whoever hosts the VM (§12). The assembler validates immediate *width* only. The assembler also enforces the 255-byte program limit of §7.2.1, which is otherwise only discovered when the framing refuses the value.
 
 **`vm-dis` — disassembler.** Renders bytecode back to readable form: for tests, for reviewing a proposed genesis configuration before it is signed, and for diagnosing a chain whose configuration is known only as bytes. It is the counterpart the assembler is tested against — a round-trip through both is the conformance test for the ISA, and it is meaningful because §7.2.4 pins the canonical text both ends target.
 
 Both belong to `moonblokz-vm` because they encode the instruction set, and the instruction set is what that crate owns. A disassembler in the configuration repository would mean two places that must agree on opcode meanings.
 
-**`config-encoder`.** Produces the configuration content handed to `initiateGenesis(...)`: it takes a description of parameter overrides — literal values, and assembly source for computed parameters, where a parameter may be referenced by name as `@name` (§7.2.4) — resolves each name to its registry identifier, frames the override set per §3, and appends the node #0 content-signature. It applies the framing checks of §3.4 and the acceptance checks of §6 — no more and no less, so that a configuration the tool accepts is one the network accepts, and one it rejects the network would reject too. Structural mistakes *inside* a program are the assembler's to diagnose, above.
+**`config-encoder`.** Produces the configuration content handed to `initiateGenesis(...)`: it takes a description of parameter overrides — literal values, and assembly source for computed parameters, where a parameter may be referenced by name as `@name` (§7.2.4) — resolves each name to its registry identifier, frames the override set per §3, and appends the node #0 content-signature. Beyond the network's checks it refuses a host call the device would only ever decline — a `GETCONFIG` or `GETCHAININFO` naming an unallocated identifier or declaring the wrong argument count, an `@name` on a `GETCHAININFO` line, where a parameter name would silently become a chain-info identifier, and an `ARG`, which in a parameter program always traps. Otherwise it applies the framing checks of §3.4 and the acceptance checks of §6 — no more and no less, so that a configuration the tool accepts is one the network accepts, and one it rejects the network would reject too. Structural mistakes *inside* a program are the assembler's to diagnose, above.
 
-**Parameter names live in the encoder, not in the registry.** The runtime registry records identifiers, widths, arities, value forms and defaults, but no names: a name table would be flash the firmware pays for a facility only this tool uses. The encoder holds the table and a test there pins it against the registry — every allocated identifier named exactly once, every name allocated — so the two cannot drift.
+**Parameter names live in the encoder, not in the registry.** The runtime registry records identifiers, widths, value forms and defaults, but no names: a name table would be flash the firmware pays for a facility only this tool uses. The encoder holds the table and a test there pins it against the registry — every allocated identifier named exactly once, every name allocated — so the two cannot drift.
 
 Its input is one `name = value` assignment per line, with `#` beginning a comment. A value is an integer (decimal or `0x`-prefixed), a byte list such as `[255, 243, 65, 82, 143]` for an array-typed parameter, or an assembly program in braces where a parameter may be referenced as `@name`. An argument count that contradicts the registry is caught here rather than left to fall back silently on-device.
 
@@ -889,7 +913,7 @@ Deterministic on every node, and the termination point is known **in advance**, 
 
 Most of what a contract system needs is **additive** and can be built later without disturbing anything specified here: linear memory, persistent state behind host functions, byte-valued results, call frames, execution context, cryptographic host functions, and an effect-list model in which the VM returns proposed effects for the blockchain to validate and apply rather than mutating anything itself.
 
-A small number of decisions are **not** additive, because bytecode and its cost model are permanent once a chain exists: how fuel is priced per instruction, what the VM returns when execution does not complete, how the opcode space is partitioned, how the host interface is shaped, what the machine deliberately does not expose, and how the initial machine state is defined. Those are the only smart-contract-driven items worth settling while the VM is being specified at all, and they are settled — in §7.1 through §7.6, as part of the current scope. Each is a shape decision with no functional cost today: the cost table is uniform, one host function is defined, the reserved opcode ranges are empty, and the two non-features are prohibitions rather than mechanisms. Nothing else from this section is anticipated in the design.
+A small number of decisions are **not** additive, because bytecode and its cost model are permanent once a chain exists: how fuel is priced per instruction, what the VM returns when execution does not complete, how the opcode space is partitioned, how the host interface is shaped, what the machine deliberately does not expose, and how the initial machine state is defined. Those are the only smart-contract-driven items worth settling while the VM is being specified at all, and they are settled — in §7.1 through §7.6, as part of the current scope. Each is a shape decision with no functional cost today: the cost table is uniform, two host functions are defined, the reserved opcode ranges are empty, and the two non-features are prohibitions rather than mechanisms. Nothing else from this section is anticipated in the design.
 
 ---
 

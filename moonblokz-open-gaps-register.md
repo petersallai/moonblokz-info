@@ -62,7 +62,7 @@ The accepted MVP stance is fixed-fee carry-forward with no explicit saturation h
 2. whether fees are recomputed or captured canonically across chain switches,
 3. how the fee curve is encoded for compact deterministic RP2040-class evaluation,
 4. where fee bounds are enforced,
-5. how backward compatibility with the current input-less custodian-fee accessor works,
+5. where the carry-forward flow binds the chain-info source, and what a window-anchored reconstruction does with fees it cannot evaluate,
 6. and what structured observability should expose for fee resolution.
 
 The concept does not change MVP requirements or commit to fee curves, encodings, or thresholds.
