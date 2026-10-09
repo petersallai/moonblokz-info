@@ -254,16 +254,20 @@ It is a **separate space** from the parameter registry, reached by a second host
 
 **3. A projection that chain-info needs must carry its FR23 inverse. How it carries it follows from the aggregate, not from a rule here.** The average block fill is the worked example: a running sum of active-window block sizes, adding the applied block and subtracting the block leaving the window. Its rollback needs the blocks re-entering the window, and those are available by construction — the cheap-zone condition `D ≥ S_tail + (W − H)` is the same statement as *rollback depth ≤ `H`*, so the re-entering blocks are exactly the horizon's `H` most recent entries; in the deep zone FR58 performs no in-place reconciliation at all but a full forward reconstruction, which recomputes the aggregate along with every other projection. Correctness therefore does not depend on `H`, which matters because FR57 storage pressure may temporarily reduce it: a shrinking horizon moves a divergence into the deep zone, where the reconstruction path takes over. Another aggregate may instead need a **post-state snapshot field** in the block — FR23 explicitly contemplates such fields and the evidence block's `supporter_vote_sum` is the precedent — but that is a property of the aggregate, not a general prescription.
 
-**4. The chain-info source is bound at the handle, inside the FR35 application step.** The active-configuration handle of §5.2 already borrows the module and is acquired per use; it takes the chain-info source as well, so no accessor signature carries it and the caller states the evaluation context exactly once. It must be acquired **within** a per-block application step: there the projections stand at the applied block's pre-state, so the evaluation anchor needs no separate parameter and cannot be got wrong. A handle acquired before or after a reconciliation walk would read a state that belongs to no single block.
+**4. The chain-info source is bound at the handle, inside the FR35 application step.** The active-configuration handle of §5.2 already borrows the module and is acquired per use; it takes the chain-info source as well, so no accessor signature carries it and the caller states the evaluation context exactly once. It must be acquired **within** a per-block application step: there the projections stand at the applied block's pre-state, so the evaluation anchor needs no separate parameter and cannot be got wrong. A handle acquired before or after a reconciliation walk would read a state that belongs to no single block. This governs every consumer that judges a block; a consumer that runs outside any block application step — the scheduler, which judges nothing — binds at the active head's post-state instead (rule 5).
 
 **5. Where a value is served (Project Lead, 2026-10-09).** The chain-info source answers only where its projection is complete and is a function of the chain; elsewhere it declines, and the reading program's tier falls through deterministically on every node.
 
-- **Ready.** Served. The head state is a function of the last `W` blocks alone — every registered node's latest seed source and every live UTXO lie inside the window (FR48–FR51) — so every Ready node on a chain sees the same value. A consumer that runs outside a block application step (the scheduler) reads at the **active head's post-state**.
+- **Ready.** Served. The head state is a function of the last `W` blocks alone — every registered node's latest seed source and every live UTXO lie inside the window (FR48–FR51) — so every Ready node **at the same head** sees the same value; nodes at different heads, or on competing branches, read different values, which is the fork-expressible case above. A consumer that runs outside a block application step (the scheduler) reads at the **active head's post-state**.
 - **Collecting / Processing.** Declined: there is no active chain.
 - **Inside the FR3 reconstruction pass.** A genesis-anchored pass is complete from block #0. A window-anchored pass is **not** complete at its intermediate positions — the state at a position `X` depended on blocks before `S_tail` whose replays land after `X` — so a consumer judging a historical block there must **skip** its chain-info-dependent check, trusting the block exactly as the pre-seed zone does, and must never evaluate it against a fallback value, which could reject a block the chain accepted.
 - **A call site with no anchor** — such as `vote_scale` / `vote_interest`, read once at the start of a pass — binds no source, so its programs decline identically on every node.
 
-The blockchain module's FR35 forward-extension maintenance (Story 7.2) is what keeps a Ready node's projections at the head; until it lands, a Ready node's projection is the state at its Ready transition, and no consensus-relevant consumer binds a source.
+The blockchain module's FR35 forward-extension maintenance (Story 7.2) is what keeps a Ready node's projections at the head. **Until it lands, a served value is a per-node snapshot** — the state at the node's Ready transition, and for node #0, made Ready by genesis without a pass, the genesis state — so the only consumer that binds a source is one that is not consensus-relevant (the parent-recovery cadence), and Story 7.2 owns keeping the projections current before a consensus-relevant consumer binds.
+
+**Binding is per call site, not per parameter.** A parameter read at an unbound call site declines its chain-info reads; the same parameter reached through a nested `GETCONFIG` from a bound caller reads them. A program that reads chain-info therefore takes effect only where its parameter is consumed under a bound handle — which, for a consensus-relevant parameter, is the consuming story's to arrange, with the rules above.
+
+**One quantity, two paths.** Identifier 24 receives the registered-node count as an accessor argument, supplied by its caller at the caller's anchor; chain-info 1 serves the same count from the bound source. At the same anchor the two agree. A program that has the argument should prefer it — it carries the caller's anchor even where no source is bound.
 
 **The chain-info registry.**
 
@@ -305,9 +309,16 @@ pub trait ChainConfigTrait {
     // FR8 state operations — see §8
 }
 
-pub struct ActiveConfig<'a> { /* borrows the module */ }
+pub struct ActiveConfig<'a> { /* borrows the module and a chain-info source */ }
 
-impl ActiveConfig<'_> {
+pub trait ChainInfoSource {
+    fn read(&self, id: u8, args: &[u64]) -> Option<u64>;   // §4.6
+}
+
+impl<'a> ActiveConfig<'a> {
+    // Bound by the caller that knows the evaluation anchor (§4.6 rules 4-5);
+    // an unbound handle declines every chain-info read.
+    pub fn with_chain_info(self, source: &'a dyn ChainInfoSource) -> Self;
     pub fn commitment(&self) -> Commitment;          // Tentative | Durable
     pub fn inter_block_interval_ms(&self) -> u32;
     pub fn registration_price(&self, registered_nodes: u32) -> u64;
@@ -627,7 +638,7 @@ A program terminates without a result when:
 - **an instruction is truncated** — an immediate, or the opcode itself, extends past the end of the program; this is what a program running past its last instruction reaches,
 - **control flow leaves the program** — a jump computes a destination outside the byte range,
 - **an operand index is out of range** — an `ARG` index at or above the invocation's arity, or a `LOAD` / `STORE` slot outside the local-slot array,
-- **a host call does not resolve** — `GETCONFIG` names a parameter the host declines, either because it is unallocated or because the declared `argc` disagrees with the registry's arity for that key.
+- **a host call does not resolve** — `GETCONFIG` names a parameter the host declines, either because it is unallocated or because the declared `argc` disagrees with the registry's arity for that key; or `GETCHAININFO` names a chain-info value the host declines, for the same two reasons or because the value is not served at this call site (no source bound, or not available — §4.6 rule 5).
 
 The program counter moves only by sequential advance or by a jump, so the two conditions above that concern leaving the program partition every way of doing so.
 
@@ -796,7 +807,7 @@ An out-of-range operand index is the exception and stays a runtime condition. `A
 
 Both belong to `moonblokz-vm` because they encode the instruction set, and the instruction set is what that crate owns. A disassembler in the configuration repository would mean two places that must agree on opcode meanings.
 
-**`config-encoder`.** Produces the configuration content handed to `initiateGenesis(...)`: it takes a description of parameter overrides — literal values, and assembly source for computed parameters, where a parameter may be referenced by name as `@name` (§7.2.4) — resolves each name to its registry identifier, frames the override set per §3, and appends the node #0 content-signature. It applies the framing checks of §3.4 and the acceptance checks of §6 — no more and no less, so that a configuration the tool accepts is one the network accepts, and one it rejects the network would reject too. Structural mistakes *inside* a program are the assembler's to diagnose, above.
+**`config-encoder`.** Produces the configuration content handed to `initiateGenesis(...)`: it takes a description of parameter overrides — literal values, and assembly source for computed parameters, where a parameter may be referenced by name as `@name` (§7.2.4) — resolves each name to its registry identifier, frames the override set per §3, and appends the node #0 content-signature. Beyond the network's checks it refuses a host call the device would only ever decline — a `GETCONFIG` or `GETCHAININFO` naming an unallocated identifier or declaring the wrong argument count, and an `@name` on a `GETCHAININFO` line, where a parameter name would silently become a chain-info identifier. Otherwise it applies the framing checks of §3.4 and the acceptance checks of §6 — no more and no less, so that a configuration the tool accepts is one the network accepts, and one it rejects the network would reject too. Structural mistakes *inside* a program are the assembler's to diagnose, above.
 
 **Parameter names live in the encoder, not in the registry.** The runtime registry records identifiers, widths, arities, value forms and defaults, but no names: a name table would be flash the firmware pays for a facility only this tool uses. The encoder holds the table and a test there pins it against the registry — every allocated identifier named exactly once, every name allocated — so the two cannot drift.
 
@@ -906,7 +917,7 @@ Deterministic on every node, and the termination point is known **in advance**, 
 
 Most of what a contract system needs is **additive** and can be built later without disturbing anything specified here: linear memory, persistent state behind host functions, byte-valued results, call frames, execution context, cryptographic host functions, and an effect-list model in which the VM returns proposed effects for the blockchain to validate and apply rather than mutating anything itself.
 
-A small number of decisions are **not** additive, because bytecode and its cost model are permanent once a chain exists: how fuel is priced per instruction, what the VM returns when execution does not complete, how the opcode space is partitioned, how the host interface is shaped, what the machine deliberately does not expose, and how the initial machine state is defined. Those are the only smart-contract-driven items worth settling while the VM is being specified at all, and they are settled — in §7.1 through §7.6, as part of the current scope. Each is a shape decision with no functional cost today: the cost table is uniform, one host function is defined, the reserved opcode ranges are empty, and the two non-features are prohibitions rather than mechanisms. Nothing else from this section is anticipated in the design.
+A small number of decisions are **not** additive, because bytecode and its cost model are permanent once a chain exists: how fuel is priced per instruction, what the VM returns when execution does not complete, how the opcode space is partitioned, how the host interface is shaped, what the machine deliberately does not expose, and how the initial machine state is defined. Those are the only smart-contract-driven items worth settling while the VM is being specified at all, and they are settled — in §7.1 through §7.6, as part of the current scope. Each is a shape decision with no functional cost today: the cost table is uniform, two host functions are defined, the reserved opcode ranges are empty, and the two non-features are prohibitions rather than mechanisms. Nothing else from this section is anticipated in the design.
 
 ---
 
