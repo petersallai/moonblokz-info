@@ -73,9 +73,9 @@ The current repository is compact and intentionally narrow.
 
 ## Feature and Dependency Model
 
-## Exactly one backend is selected at build time
+## At most one backend is selected at build time — by the binary
 
-The current crate uses feature-based backend selection with compile-time exclusivity:
+The current crate uses feature-based backend selection with compile-time exclusivity. The backend is chosen by the final binary (the node firmware, a host test, the simulator); a library that only consumes `StorageTrait`, such as `moonblokz-blockchain`, selects none:
 
 - `backend-memory`
 - `backend-rp2040`

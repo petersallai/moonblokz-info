@@ -56,7 +56,7 @@ Project scale is small-to-medium in scope with high correctness sensitivity. The
 - Simplicity-first implementation policy is mandatory: choose the most direct design that meets the contract and avoid optional abstraction layers that increase flash/RAM/CPU cost.
 - Backend selection model should follow the moonblokz-crypto-lib pattern:
   - Cargo feature-based backend selection
-  - compile-time enforcement that exactly one backend implementation is active
+  - compile-time enforcement that at most one backend implementation is active, selected by the final binary
   - no common backend implementation code shared between backend modules
 - Integrity/hash verification and error behavior are implemented inside each backend module, while conforming to shared public API contracts.
 
@@ -130,7 +130,7 @@ cargo new --lib moonblokz-chain-types
   - `moonblokz-chain-types`
 - `moonblokz-storage` depends on `moonblokz-chain-types` (path dependency allowed during development/testing).
 - Backend selection in `moonblokz-storage` uses Cargo features with strict compile-time exclusivity:
-  - exactly one backend feature must be enabled
+  - at most one backend feature may be enabled; a `StorageTrait`-only consumer enables none
   - compile error if zero or multiple backend features are enabled
 - Public storage API remains Rust `no_std` and synchronous.
 - Backend implementations remain isolated:
@@ -239,7 +239,7 @@ cargo new --lib moonblokz-chain-types
 - Shared code (if any) is limited to contract-level helpers/types that do not implement backend behavior.
 
 **Feature Gating Rules:**
-- Exactly one backend feature enabled at compile time.
+- At most one backend feature enabled at compile time; the binary enables exactly one.
 - Compile-time guard must fail build when zero or multiple backend features are enabled.
 
 ### Format Patterns
