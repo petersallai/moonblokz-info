@@ -925,7 +925,8 @@ impl ActiveConfig<'_> {
     pub fn block_size_limit(&self) -> u16;
     pub fn max_utxo_outputs(&self) -> u16;   // u16: the ceiling is the build's spent-bit width (256), which a byte cannot express
     pub fn max_aggregated_signatures(&self) -> u8;
-    pub fn registration_price(&self) -> u64;               // reads chain-info, not an argument
+    pub fn with_chain_info(self, source: &'a dyn ChainInfoSource) -> Self;  // spec §4.6
+    pub fn registration_price(&self) -> u64;               // no argument; a program may read chain-info
     // ... one argument-less accessor per registry entry
 }
 ```
