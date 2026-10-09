@@ -141,19 +141,16 @@ Storage must treat this as the canonical hashing contract rather than defining a
 
 ## B1. Backend exclusivity rule
 
-Exactly one backend feature must be enabled at compile time:
+At most one backend feature may be enabled at compile time:
 
 - `backend-memory`
 - `backend-rp2040`
 
-Compilation fails if:
-
-- no backend feature is enabled,
-- or more than one backend feature is enabled.
+Compilation fails if more than one backend feature is enabled. Enabling none is legal: a crate that only consumes `StorageTrait` (the blockchain) selects no backend, and the final binary selects exactly one — the node firmware `backend-rp2040`, host tests and the simulator `backend-memory`. A library that selected one would unify with, and collide with, the binary's choice (2026-10-09).
 
 ## B2. Canonical backend alias rule
 
-`MoonblokzStorage<const STORAGE_SIZE: usize>` is a type alias to exactly one backend, chosen by the active backend feature:
+`MoonblokzStorage<const STORAGE_SIZE: usize>` is a type alias to the selected backend, defined only when one is selected:
 
 - memory backend when `backend-memory` is selected,
 - RP2040 backend when `backend-rp2040` is selected.
