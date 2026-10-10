@@ -40,7 +40,7 @@ This file captures the algorithmic structure explicitly described or directly im
 - binary serialization assumptions,
 - and the main failure conditions described in Parts III, IV, and V.
 
-It does **not** define implementation details that the articles defer, such as exact radio-layer packet formats, exact multi-signature construction, exact subgroup sampling mechanics, exact flash layout, or detailed mempool scheduling policy.
+It does **not** define radio-layer packet formats, multi-signature construction (see the crypto documents), or flash layout (see the storage architecture). Subgroup selection is fixed by [ADR-015](./blockchain-adrs/ADR-015-approval-subgroup-selection.md) and [Blockchain PRD](./moonblokz-blockchain-prd.md) FR26 / FR9, and mempool policy by FR30–FR33 / FR43.
 
 ## Algorithmic Problem Statement
 
@@ -97,8 +97,8 @@ Typical responsibilities include:
 - receiving parseable blocks and storing them,
 - tracking unresolved ancestry,
 - requesting missing parents,
-- maintaining branch-end or chain-part bookkeeping,
-- identifying when a candidate chain is long enough to justify transition into reconstruction.
+- maintaining the FR19 `chain_heads` table,
+- detecting the FR2 stopping condition: a continuous segment that is either genesis-anchored or at least `W` blocks long, and that contains a chain-config block (highest tip sequence wins, then lowest tip hash) ([Blockchain PRD](./moonblokz-blockchain-prd.md) FR2).
 
 ### Processing transition
 
@@ -125,20 +125,9 @@ Typical responsibilities include:
 
 ## Block Acceptance Pipeline
 
-Across all lifecycle states, the todo material implies a practical block-acceptance pipeline.
+Block intake is normative in [Blockchain PRD](./moonblokz-blockchain-prd.md) FR10. Every submitted block receives exactly one outcome: Accepted-new, Already-known (FR11), Invalid-evidence, Out-of-Snake-Chain-Window (FR60), or Deferred (the FR9 pacing soft-fail). A block is stored unless it fails an FR9 Tier 1 check (FR16). It then progresses Stored → Connected → Active as Tier 2 and Tier 3 become evaluable (FR9), and unresolved ancestry is handed to FR19 parent recovery. Processing is a synchronous, transient pass that does not ingest blocks in the MVP ([OG-007](./moonblokz-open-gaps-register.md)).
 
-1. A block arrives from the network.
-2. If the block cannot be parsed according to its structural rules, discard it.
-3. If the block is parseable, store it as known block data.
-4. Determine whether its parent is already known locally.
-5. If the parent is missing, schedule or trigger parent recovery.
-6. If the parent is known, connect the block into the known block-tree or chain-part structure.
-7. Apply state-specific follow-up logic:
-   - in collecting state, use it to extend candidate-chain knowledge,
-   - in processing state, preserve it but avoid claiming final validity too early,
-   - in ready state, treat it as an active-chain extension candidate or a side-branch candidate.
-
-This pipeline is the operational counterpart of the conceptual document’s staged-validation idea: parseability, storage worthiness, ancestry connectivity, and full semantic validity do not have to become known at the same moment.
+This is the operational counterpart of the conceptual document’s staged-validation idea: parseability, storage worthiness, ancestry connectivity, and full semantic validity do not have to become known at the same moment.
 
 ## Core Data-Structure Design Principles
 
@@ -182,13 +171,13 @@ The header has ten fields.
    Protocol version number. Part V states the current fixed value is `1`, but the field exists for forward compatibility.
 
 2. **`sequence: u32`**  
-   Sequence number of the block, starting from zero. The original genesis blocks `0` and `1` are identified by their fixed FR54 content, not by sequence value alone. In MVP, the active chain operates strictly within the unsigned 32-bit sequence space: the highest sequence value that may legitimately appear on the active chain is `u32::MAX − 1`, and every block whose declared `sequence == u32::MAX` is rejected at intake as exact evidence of invalidity. Sequence comparisons (`snake_chain`-window membership, `anchor_sequence` bounds, active-chain head/tail relationships, out-of-window detection) therefore use simple unsigned-integer `u32` ordering. Sequence wrap-around handling is a **post-MVP feature** — see "Sequence Wrap-Around" under Failure and Limit Cases below for the post-MVP framing. Source: the MVP no-wrap rule and the post-MVP deferral are normatively pinned by `_bmad-output/planning-artifacts/prd.md` FR53; the original Part III–V articles only note that "sequence numbering can restart if needed after very long time horizons" without specifying the mechanism.
+   Sequence number of the block, starting from zero. The original genesis blocks `0` and `1` are identified by their fixed FR54 content, not by sequence value alone. In MVP, the active chain operates strictly within the unsigned 32-bit sequence space: the highest sequence value that may legitimately appear on the active chain is `u32::MAX − 1`, and every block whose declared `sequence == u32::MAX` is rejected at intake as exact evidence of invalidity. Sequence comparisons (`snake_chain`-window membership, `anchor_sequence` bounds, active-chain head/tail relationships, out-of-window detection) therefore use simple unsigned-integer `u32` ordering. Sequence wrap-around handling is a **post-MVP feature** — see "Sequence Wrap-Around" under Failure and Limit Cases below for the post-MVP framing. Source: the MVP no-wrap rule and the post-MVP deferral are normatively pinned by [Blockchain PRD](./moonblokz-blockchain-prd.md) FR53; the original Part III–V articles only note that "sequence numbering can restart if needed after very long time horizons" without specifying the mechanism.
 
 3. **`creator: u32`**  
    Node identifier of the block creator.
 
 4. **`mined_amount: u32`**  
-   Reward given to miners, excluding transaction fees. Part V explicitly stores this even though it is derivable from full history, because `snake_chain` may remove the historical blocks that would otherwise be needed for recalculation. The MoonBlokz blockchain module additionally credits the block creator with a chain-config-derived `replay_block_reward` whenever the accepted block carries a `snake_chain` essential-state replay obligation (chain-config replay, balance replay, or zero-input UTXO carry-forward); this reward is paid in addition to `mined_amount` and is not stored in the block header — it is computed from chain-config inputs at acceptance time. The `replay_block_reward` compensates the creator for fee-neutral maintenance content. Source: this addition is normatively defined by `_bmad-output/planning-artifacts/prd.md` FR36 (c) / FR59 and is not in the original Part III–V articles.
+   Reward given to miners, excluding transaction fees. Part V explicitly stores this even though it is derivable from full history, because `snake_chain` may remove the historical blocks that would otherwise be needed for recalculation. The MoonBlokz blockchain module additionally credits the block creator with a chain-config-derived `replay_block_reward` whenever the accepted block carries a `snake_chain` essential-state replay obligation (chain-config replay, balance replay, or zero-input UTXO carry-forward); this reward is paid in addition to `mined_amount` and is not stored in the block header — it is computed from chain-config inputs at acceptance time. The `replay_block_reward` compensates the creator for fee-neutral maintenance content. Source: this addition is normatively defined by [Blockchain PRD](./moonblokz-blockchain-prd.md) FR36 (c) (chain-config parameter ID 28, [Configuration Module Specification](./moonblokz-configuration-specification.md) §4.1) and is not in the original Part III–V articles.
 
 5. **`payload_type: u8`**  
    Current values are:
@@ -295,7 +284,7 @@ Restriction explicitly stated by the article — a single rule (the no-self-vote
 
 Genesis exception: the no-self-vote rule and the related vote-target validity rule (every `vote` value must reference an existing node on the active chain) do not apply to transactions in genesis block #0. At genesis time, node #0 is the only node that exists, so any vote target other than node #0 would itself violate vote-target validity, and a vote for node #0 is the only consistent choice. Accordingly, the transactions inside block #0 carry `vote == 0` (node #0 voting for itself), and this is treated as a valid genesis vote rather than as a self-vote violation.
 
-Permanent node-#0 chain-wide exceptions: from block #2 onward both rules resume, but two narrow exceptions remain in force for the lifetime of the chain — `vote == 0` is always a valid vote target, and `initializer == 0` with `vote == 0` (a node-#0 self-vote) never violates the no-self-vote rule. These chain-wide exceptions exist because between block #2 and the registration of the first non-genesis node, node #0 may still be the only existing node; without these exceptions, a node-#0-issued registration transaction would have no valid `vote` target and would deadlock further chain progress. From the point at which any non-genesis node has been registered, every other initializer continues to be subject to the unchanged no-self-vote and vote-target validity rules. Source: this clarification is normatively pinned by `_bmad-output/planning-artifacts/prd.md` FR37 / FR54 (i) / FR6; the original Part V genesis exception was confined to block #0, but algorithmic completeness requires the two narrow chain-wide exceptions above so the early-chain bootstrap deadlock is structurally avoided.
+Permanent node-#0 chain-wide exceptions: from block #2 onward both rules resume, but two narrow exceptions remain in force for the lifetime of the chain — `vote == 0` is always a valid vote target, and `initializer == 0` with `vote == 0` (a node-#0 self-vote) never violates the no-self-vote rule. These chain-wide exceptions exist because between block #2 and the registration of the first non-genesis node, node #0 may still be the only existing node; without these exceptions, a node-#0-issued registration transaction would have no valid `vote` target and would deadlock further chain progress. From the point at which any non-genesis node has been registered, every other initializer continues to be subject to the unchanged no-self-vote and vote-target validity rules. Source: this clarification is normatively pinned by [Blockchain PRD](./moonblokz-blockchain-prd.md) FR37 / FR54 (i) / FR6; the original Part V genesis exception was confined to block #0, but algorithmic completeness requires the two narrow chain-wide exceptions above so the early-chain bootstrap deadlock is structurally avoided.
 
 This means the transaction format itself participates in consensus state updates.
 
@@ -331,7 +320,7 @@ A node transfer is the minimal balance-to-balance transaction between nodes. Par
 `anchor_sequence` does several jobs at once:
 
 - it provides a sequence-based time surrogate without requiring clocks,
-- it prevents inclusion in blocks that are too old,
+- it bars inclusion in any block with `sequence ≤ anchor_sequence` and limits acceptance to `anchor_sequence ≥ S_tail`, with no upper bound ([Blockchain PRD](./moonblokz-blockchain-prd.md) FR9 / FR14),
 - it narrows the duplicate-check search window,
 - and together with `comment` it supports uniqueness for repeated balance-style transfers.
 
@@ -395,7 +384,7 @@ The article states:
 - there may be zero or more inputs,
 - there must be one or more outputs,
 - maximum counts are nominally `255` each,
-- but `MAX_BLOCK_SIZE` is the practical limit.
+- in practice the block size limit applies, and UTXO outputs per block are additionally capped by the chain-config `max_block_utxo_output` (ID 4, ≤ the build's spent-bit width; [Configuration Module Specification](./moonblokz-configuration-specification.md) §4.1).
 
 A transaction with **zero inputs** is a special `snake_chain` maintenance case used to re-add surviving UTXO outputs.
 
@@ -475,7 +464,7 @@ Balance blocks are much simpler than transaction blocks.
    Number of balance entries in the block.
 
 2. **`max_node_id: u32`**  
-   The chain-global node-id watermark at this balance block's sequence — i.e., the highest node identifier registered anywhere on the active chain up to and including this block, not a per-block coverage subset count. The blockchain module's `max_known_node_id` derived projection is initialized from the earliest balance block in a candidate segment and is incremented by exactly one on every subsequent registration; any later balance block whose `max_node_id` field disagrees with the forward-traversal-tracked watermark at that block's sequence is exact evidence of invalidity. Source: the chain-global watermark interpretation is normatively pinned by `_bmad-output/planning-artifacts/prd.md` FR52 / FR57 (h); the original Part V wording ("highest node identifier known in the block's balance coverage") was ambiguous about whether the field was coverage-scoped or chain-global, and the PRD resolves it as chain-global.
+   The chain-global node-id watermark at this balance block's sequence — i.e., the highest node identifier registered anywhere on the active chain up to and including this block, not a per-block coverage subset count. The blockchain module's `max_known_node_id` derived projection is initialized from the earliest balance block in a candidate segment and is incremented by exactly one on every subsequent registration; any later balance block whose `max_node_id` field disagrees with the forward-traversal-tracked watermark at that block's sequence is exact evidence of invalidity. Source: the chain-global watermark interpretation is normatively pinned by [Blockchain PRD](./moonblokz-blockchain-prd.md) FR50 / FR3 / FR9 (Tier 3) / FR54 (h); the original Part V wording ("highest node identifier known in the block's balance coverage") was ambiguous about whether the field was coverage-scoped or chain-global, and the PRD resolves it as chain-global.
 
 ### NodeInfo entry structure
 
@@ -503,7 +492,7 @@ Balance payloads are the compact state checkpoints that let node-balance history
 
 ## 8. Chain Configuration Payload
 
-Part V keeps the inner parameter catalog abstract, but the current MoonBlokz design now fixes the outer payload contract more precisely.
+Part V keeps the inner parameter catalog abstract; the current design fixes both the envelope and the catalog.
 
 Algorithmically, a chain-configuration payload is treated as:
 
@@ -523,7 +512,7 @@ This content-signature is distinct from the ordinary block-creator signature in 
 - the content-signature proves that the configuration content itself is the chain's durable configuration content,
 - and every replayed chain-config block reproduces the same configuration-content bytes and the same node-`#0` content-signature byte-for-byte.
 
-The exact inner configuration parameter catalog and any future formula language remain separate design concerns, but the envelope rule above is now part of the algorithmic model.
+The parameter catalog, the bytecode value form, and the virtual machine are specified in the [Configuration Module Specification](./moonblokz-configuration-specification.md).
 
 ### Configuration-content override-set structure
 
@@ -553,7 +542,7 @@ The parameter registry — the identifier of each parameter, its type, width, de
 
 ## 9. Approval Payload
 
-Part V also keeps approval payload details intentionally deferred. It states that approval is represented by a multi-signature plus a list of supporting nodes.
+Part V deferred the approval payload; it states that approval is represented by a multi-signature plus a list of supporting nodes. Its content is now fixed by [Blockchain PRD](./moonblokz-blockchain-prd.md) FR12 / FR21 / FR27 and [ADR-015](./blockchain-adrs/ADR-015-approval-subgroup-selection.md): `supporter_vote_sum: u64`, then the aggregated support signature, then the supporter-identity list; only its exact binary encoding remains open ([OG-008](./moonblokz-open-gaps-register.md)).
 
 Algorithmically, this means the payload must be capable of proving:
 
@@ -610,10 +599,10 @@ When a node receives a block:
 1. validate its binary structure,
 2. inspect `payload_type` and parse the correct payload schema,
 3. if the block is a ready-state direct extension of the current active head and the creator key is already derivable from that same active chain, treat creator-signature invalidity as immediate exact evidence; otherwise defer authoritative signature invalidity decisions to the later candidate-side validation paths,
-4. insert it into local storage if not already known,
+4. store it unless it is already known (FR11), outside the `snake_chain` window (FR60), or fails a Tier 1 check (FR16),
 5. link it to its parent if the parent is present,
-6. otherwise keep it as a disconnected or partially connected block,
-7. preserve all branches because the future winning branch is not yet known.
+6. otherwise index it as a Stored `chain_heads` entry for FR19 parent recovery,
+7. retain competing branches (FR20), subject to bounded `chain_heads` eviction (FR19) and capacity-pressure eviction (FR57) ([Blockchain PRD](./moonblokz-blockchain-prd.md)).
 
 ## Algorithm 2: Missing-Parent Detection and Recovery
 
@@ -623,10 +612,7 @@ A node receives a block whose parent block is not present locally.
 
 ### Recovery rule
 
-1. infer that earlier history is missing,
-2. use the child block’s `previous_hash` and `sequence`,
-3. ask the network for the missing ancestor using the known sequence and hash,
-4. repeat this recovery process as additional missing ancestors are discovered.
+Missing ancestry is tracked per Stored `chain_heads` entry by its tail-point. A throttled scheduler emits at most one request per tick: for the eligible head with the oldest `last_request_timestamp`, it asks for the tail-point's missing parent by hash and `tail_point.sequence − 1`, gated by the chain-config per-head retry interval. Each arriving parent moves the tail-point deeper until the branch connects or is evicted ([Blockchain PRD](./moonblokz-blockchain-prd.md) FR19).
 
 ### Best-effort limit
 
@@ -640,11 +626,9 @@ Before a node can operate normally, it must identify a sufficiently complete can
 
 ### Acquisition process
 
-1. Track all known branch ends or equivalent chain-part endings.
-2. Prefer extending the longest or otherwise most promising candidate chain.
-3. If a newly arrived block has an unknown parent, request that specific parent block.
-4. If the parent is already known, request earlier chain history of that candidate branch only when request-throttling rules permit it.
-5. Continue until one of the practical stopping conditions is reached:
+1. Track every block-tree tip as a `chain_heads` entry.
+2. A throttled scheduler emits at most one parent-recovery request per tick, toward the tail-point's missing parent of the Stored head whose retry interval elapsed longest ago (ties: lowest `head_sequence`, then lowest `head_block_id`). No branch is preferred by length or value during acquisition ([Blockchain PRD](./moonblokz-blockchain-prd.md) FR19 / FR46 / FR2).
+3. Continue until one of the practical stopping conditions is reached:
    - ancestry reaches block `#0`,
    - or the chain becomes long enough to satisfy the configured active-chain-length target,
 
@@ -672,7 +656,7 @@ Once a sufficiently long candidate chain has been found, the node must reconstru
 6. When a transaction involves a node before that node's earliest in-segment seed source, apply the pre-seed rule: node-state-dependent checks for that node are temporarily auto-accepted inside the reconstruction pass, while structural, payload-level, chain-config-derived, and UTXO-reference checks that do not depend on that node's pre-state still execute normally.
 7. UTXO input existence and per-block spent-bit tracking continue across the whole pass, including pre-seed zones, because they are resolved from the referenced outputs and the retained segment itself.
 8. Validate every other invariant as soon as its prerequisite state is available.
-9. If a contradiction, invalid signature, or irrecoverable missing prerequisite appears, apply the FR5 atomic recovery defined in the implementation notes: discard the forward-traversal working set in full and atomically, and either (a) when the offending block can be precisely identified, delete the offending block from durable storage together with every block whose only retained ancestry path runs through it — this explicitly includes the candidate-chain blocks between the offender and the pre-failure tip — or (b) when the offending block cannot be precisely identified, delete exactly one block from durable storage, the candidate chain's head. Then return the chain to collecting state. There is no configurable fallback depth; the single-block drop is the fixed fallback.
+9. If a contradiction, invalid signature, or irrecoverable missing prerequisite appears, apply the [Blockchain PRD](./moonblokz-blockchain-prd.md) FR5 atomic recovery: discard the forward-traversal working set in full and atomically, and either (a) when the offending block can be precisely identified, delete the offending block from durable storage together with every block whose only retained ancestry path runs through it — this explicitly includes the candidate-chain blocks between the offender and the pre-failure tip — or (b) when the offending block cannot be precisely identified, delete exactly one block from durable storage, the candidate chain's head. Then return the chain to collecting state. There is no configurable fallback depth; the single-block drop is the fixed fallback.
 
 ### Important consequence
 
@@ -686,16 +670,15 @@ Select the next block creator using lightweight locally available information wh
 
 ### Selection process
 
-1. Receive vote-target selection input from the scoring module, derived from radio-layer observation of valid messages.
-2. When a node accepts a new transaction, the scoring module — a radio-side component outside the blockchain module — determines which other node currently has the strongest radio-derived message-based score, and that node is recorded as the **vote target** (the `vote` field) of the transaction. This radio-derived score is distinct from the per-node **accumulated vote** maintained by the blockchain vote module (see Algorithm 9).
-3. Aggregate per-node **accumulated vote** inside blockchain state from the votes already present in accepted transactions and blocks, with each accepted transaction contributing one configured `vote_scale` credit to its target node.
-4. When a block should be created, select the node with the highest **accumulated vote**.
-5. Break ties deterministically using node identifiers.
-6. After successful block creation by the selected node, reset that node's **accumulated vote** to zero.
+1. The vote target is resolved outside the blockchain module: the transaction's creator (typically consulting the radio-side scoring module) writes it into the signed `vote` field before submission. The blockchain module never consults the scoring module; it only validates the field ([Blockchain PRD](./moonblokz-blockchain-prd.md) FR55). This radio-derived score is distinct from the per-node **accumulated vote** maintained by the blockchain vote module (see Algorithm 9).
+2. Aggregate per-node **accumulated vote** inside blockchain state from the votes already present in accepted transactions and blocks, with each accepted transaction contributing one configured `vote_scale` credit to its target node; zero-input carry-forward transactions credit no vote (FR37).
+3. When a block should be created, select the node with the highest **accumulated vote**.
+4. Break ties by ascending node identifier (FR38).
+5. After successful block creation by the selected node, reset that node's **accumulated vote** to zero.
 
 ### Boundary note
 
-The original article-era framing described vote preference in terms of directly observed valid messages. The current MoonBlokz module boundary refines that design so the blockchain vote module consumes scoring module input at transaction-creation time rather than owning the **vote-target-selection** computation itself. The scoring module produces the vote target; the vote module tracks each node's **accumulated vote** and determines the next block creator.
+The original article-era framing described vote preference in terms of directly observed valid messages. The current MoonBlokz module boundary moves **vote-target selection** entirely outside the blockchain module: the transaction creator commits the vote target, and the blockchain module neither modifies it nor consults the scoring module ([Blockchain PRD](./moonblokz-blockchain-prd.md) FR55). The vote module tracks each node's **accumulated vote** and determines the next block creator.
 
 ## Algorithm 4: Block Creation Readiness
 
@@ -704,7 +687,7 @@ A new transactional block is created when either:
 - the currently eligible ordinary mempool transactions can fill at least a configured target percentage of `MAX_BLOCK_SIZE`,
 - or the configured inter-block time has elapsed since the previous block and at least one ordinary transaction can be included.
 
-Tail-drop preservation work is stricter: if a chain-config replay, balance replay, or UTXO carry-forward block is required to prevent loss of state, that replay block shall be emitted immediately after the previous block, without waiting for the transactional fill threshold or the ordinary inter-block timer; UTXO carry-forward in particular always proceeds without waiting whenever a transaction block is about to drop.
+Tail-drop preservation work is stricter: if a chain-config replay, balance replay, or UTXO carry-forward block is required to prevent loss of state, that replay block is emitted as soon as the local node is eligible to create the next block (expected creator, admitted fallback creator, or deviation proposer), without waiting for the transactional fill threshold or the ordinary inter-block timer, but never by a non-eligible node ([Blockchain PRD](./moonblokz-blockchain-prd.md) FR45); UTXO carry-forward in particular always proceeds without waiting whenever a transaction block is about to drop.
 
 Replay-block content rule: each replay block emitted at the head reproduces every essential-state structure contained in the corresponding dropping tail block, subject to `MAX_BLOCK_SIZE`. The replay block's payload type matches the dropping block's content category — a dropping balance block is reproduced by a balance replay block carrying NodeInfo entries, a dropping chain-config block by a chain-config replay block carrying the durable-locked configuration, and a dropping transaction block by a transaction block carrying zero-input complex transactions for unspent UTXO carry-forward (which may also carry ordinary mempool transactions up to `MAX_BLOCK_SIZE`).
 
@@ -723,9 +706,9 @@ Source: the per-replay-type content rules originate in Parts III–V; the always
 
 To stay prepared for becoming the block creator at any later moment, the blockchain module shall periodically emit an outbound mempool-replenishment request to the network whenever its mempool does not hold enough transactions to reach the transactional fill threshold. This behavior is not gated on the local node being the currently expected creator: any node whose mempool is below that threshold solicits additional content continuously, so that if the creator role shifts to it (through normal vote progression or through grace-period expansion), it already has the transactions needed to produce a sufficiently filled block.
 
-The request carries the hash CRC32 values of the transactions the module already holds in the mempool — IEEE CRC32 over each canonical transaction hash, matching the `hash_crc32` values in the compacted mempool index. Responding nodes treat any of their own mempool transactions whose `hash_crc32` matches an entry in the request as already-known to the requester and skip them; the responder selects at most one transaction the requester is still missing, prioritizing higher fee-per-byte and own-transaction precedence. CRC32 collisions across different canonical transaction hashes are accepted as benign over-exclusion at this surface (the over-excluded transaction is simply skipped on this round and may be supplied on a later replenishment exchange); no full byte comparison happens during replenishment evaluation, because `hash_crc32` is the compact mempool replenishment identifier in MoonBlokz.
+The request carries the hash CRC32 values of the transactions the module already holds in the mempool — IEEE CRC32 over each canonical transaction hash, matching the `hash_crc32` values in the compacted mempool index. Responding nodes treat any of their own mempool transactions whose `hash_crc32` matches an entry in the request as already-known to the requester and skip them; the responder returns at most one transaction the requester lacks, chosen uniformly at random, preferring candidates whose fee-per-byte beats the lowest one in the snapshot intersection; the choice is deliberately non-deterministic across nodes ([Blockchain PRD](./moonblokz-blockchain-prd.md) FR43). CRC32 collisions across different canonical transaction hashes are accepted as benign over-exclusion at this surface (the over-excluded transaction is simply skipped on this round and may be supplied on a later replenishment exchange); no full byte comparison happens during replenishment evaluation, because `hash_crc32` is the compact mempool replenishment identifier in MoonBlokz.
 
-- The request period is a configurable timing parameter owned by the blockchain module.
+- The request period is the chain-config parameter `mempool_replenishment_interval_ms` ([Configuration Module Specification](./moonblokz-configuration-specification.md) §4.1); requests run only in ready state (FR46).
 - Requests are emitted only while the mempool content is below the transactional fill threshold; once the threshold is reached, no replenishment traffic is generated until the mempool drops below the threshold again (for example, after a block is accepted and its transactions are removed).
 - Replenishment is an ordinary first-class behavior of the blockchain module, not a radio-layer or operator-driven concern: the decision of when to ask, how often, and when to stop belongs to the blockchain module.
 - The radio layer is responsible only for the transport of the request and for the delivery of responding transactions back into the module through the normal transaction-intake surface.
@@ -747,7 +730,7 @@ Allow the network to recover when the selected creator does not produce a block.
 
 ### Accumulated-vote reset is applied only to the first node
 
-As a data-size optimization, **only the originally-top node's (the first node's) accumulated vote is reset to zero** at the start of the fallback cycle. All other nodes that are admitted in later expansion steps but still miss the chance to produce the block — the second-ranked, third-ranked, and so on — **retain their accumulated vote unchanged**. There is exactly one reset per fallback cycle, regardless of how many grace-period expansions occur before some admitted node finally produces a block.
+Grace-period expiries only widen the admitted creator prefix; they reset no accumulated vote (FR47). As a data-size optimization, **only the originally-top node's (the first node's) accumulated vote is reset to zero**, and the reset is applied when the deviation block is accepted onto the active chain, not at window expiry ([Blockchain PRD](./moonblokz-blockchain-prd.md) FR37 / FR44 / FR47). All other nodes that are admitted in later expansion steps but still miss the chance to produce the block — the second-ranked, third-ranked, and so on — **retain their accumulated vote unchanged**. There is exactly one reset per fallback cycle, regardless of how many grace-period expansions occur before some admitted node finally produces a block.
 
 This is sufficient for anti-capture dynamics because the originally-top node carries the full penalty; it is also sufficient for audit purposes because the subsequently admitted nodes are the ones that are given the chance to create, not penalized for inactivity in that cycle.
 
@@ -786,7 +769,7 @@ The highest-voted node fails to create the expected block within its grace perio
 
 ### Penalty rule
 
-Reset the accumulated vote of that first missed node to zero.
+Reset the accumulated vote of that first missed node to zero. The reset takes effect in the forward-extension step that accepts the deviation block, is recorded through `first_voted_node` / `consumed_votes_from_first_voted_node`, and is rolled back if a chain switch demotes that branch ([Blockchain PRD](./moonblokz-blockchain-prd.md) FR37).
 
 ## Algorithm 8: Branch Value Calculation
 
@@ -798,7 +781,7 @@ Choose the effective blockchain branch from the block-tree using local informati
 
 - a normal block’s value equals the spent accumulated vote associated with that block (recorded as `consumed_votes` in the block header);
 - an approval block’s value equals the value carried in its `supporter_vote_sum: u64` payload field at the start of the evidence block’s payload (per Section 9 of this document); the proposer computes the field by the closed-form formula `supporter_vote_sum = (m / 2 + 1) · deviance_creator_vote + original_creator_vote` (integer division, with `m` the subgroup size, `deviance_creator_vote` the deviation block creator’s accumulated vote, and `original_creator_vote` the would-have-been original creator’s accumulated vote, all projected against the candidate chain at sequence `proposed_sequence − 1`), and the value is validated authoritatively at chain-switch / processing-pass time by recomputing the formula and comparing — a discrepancy invalidates the evidence block; the `consumed_votes_from_first_voted_node` field of the deviation block records the originally-top node’s pre-penalty accumulated vote for audit purposes only and does **not** contribute to the evidence block’s value;
-- a `snake_chain` essential-state replay block (chain-config replay per Algorithm 11, balance replay per Algorithm 11, or zero-input UTXO carry-forward per Algorithm 12) intervening between a deviation block and its associated evidence block contributes value zero, because such blocks carry `consumed_votes = 0` by deliberate header construction (per blockchain module PRD FR28);
+- a `snake_chain` essential-state replay block (chain-config replay per Algorithm 11, balance replay per Algorithm 11, or zero-input UTXO carry-forward per Algorithm 12) intervening between a deviation block and its associated evidence block contributes value zero, because such blocks carry `consumed_votes = 0` by deliberate header construction (per [Blockchain PRD](./moonblokz-blockchain-prd.md) FR27);
 - and the necessary vote-consumption information for normal blocks (`consumed_votes`) and the auditable deviation-record information for deviation blocks (`first_voted_node`, `consumed_votes_from_first_voted_node`) are preserved explicitly in the block header because full history may later disappear.
 
 ### Branch selection and tie-break
@@ -823,9 +806,9 @@ Maintain a bounded active chain length while preserving all information required
 
 ### Core rule
 
-1. Maintain an active chain window of configured length.
-2. When a new block arrives near the head, the oldest block at the tail eventually becomes droppable.
-3. Before allowing essential state to disappear, schedule replay work so the required information remains present in the active chain.
+1. Maintain an active chain window of configured length `W`; until the chain reaches length `W` the tail does not advance.
+2. After that, every head extension that would drop a tail block carrying essential state must itself be (or carry) the preserving replay block.
+3. An inbound head extension that fails to preserve the at-risk state is invalid ([Blockchain PRD](./moonblokz-blockchain-prd.md) FR48).
 
 ## Algorithm 11: Essential Block-Type Preservation
 
@@ -842,8 +825,8 @@ If a chain-config block would drop out of the active chain:
 If balances would be lost from the active chain:
 
 1. identify the affected nodes,
-2. compute their **current** balances and accumulated vote,
-3. create a balance block at the head containing those current values,
+2. take each entry's (balance, accumulated vote, public key) as of sequence `block.sequence − 1`,
+3. create a balance block at the head with those mandatory entries, then fill it with further entries in ascending `seed_source_sequence`, then `node_id`, up to `MAX_BLOCK_SIZE` (the mandatory bonus-pack rule; any other entry set is invalid, [Blockchain PRD](./moonblokz-blockchain-prd.md) FR50),
 4. ensure the living chain still contains balances for all affected nodes and therefore preserves full rolling-window coverage across the chain,
 5. rely on the fact that this replay step fits into one balance block because a single tail advance makes only one block's worth of seed sources newly droppable and the replacement block only has to restate the nodes affected by that frontier.
 
@@ -866,9 +849,7 @@ Repeated carry-forward is intentionally self-clearing: each preservation step re
 
 ### Compression rule
 
-To compress data, re-added UTXOs may be collected from the following `n` blocks, where `n` is configurable, until block-size limit is reached.
-
-If not enough such UTXOs exist, new mempool transactions may also be included in the same block.
+There is no cross-block compression: each carry-forward transaction maps 1:1 to the single dropping tail block, with no coalescing across tail blocks. The carrying head block may additionally hold ordinary mempool transactions (no registrations) up to `MAX_BLOCK_SIZE` ([Blockchain PRD](./moonblokz-blockchain-prd.md) FR51 / FR45).
 
 ## Algorithm 13: Transaction Validity Rules by Structure
 
@@ -891,6 +872,7 @@ A registration transaction is valid only if:
 
 - the initializer is an existing node,
 - the initializer can pay registration price plus fee,
+- `new_node_id` equals `max_known_node_id + 1` at its intra-block position ([Blockchain PRD](./moonblokz-blockchain-prd.md) FR6),
 - the public key is unique,
 - the `new_key_signature` proves possession of the corresponding private key,
 - and the initializer signature is valid.
@@ -911,7 +893,7 @@ A complex transaction with at least one input is valid only if:
 
 #### Zero-input complex transaction
 
-A zero-input complex transaction is permitted only as a `snake_chain` UTXO carry-forward, and its validity is governed exclusively by the carry-forward rules of [Algorithm 12](#algorithm-12-transaction-and-utxo-preservation-on-tail-drop). The rules of the with-input case above — in particular the `total inputs ≥ total outputs` rule — do not apply to it: by construction a carry-forward has zero inputs and one or more positive outputs. A zero-input complex transaction that does not satisfy Algorithm 12's carry-forward correctness rules — including a zero-input transaction that does not correspond to any soon-to-drop transaction block within the configured carry-forward lookahead `n` — is invalid.
+A zero-input complex transaction is permitted only as a `snake_chain` UTXO carry-forward, and its validity is governed exclusively by the carry-forward rules of [Algorithm 12](#algorithm-12-transaction-and-utxo-preservation-on-tail-drop). The rules of the with-input case above — in particular the `total inputs ≥ total outputs` rule — do not apply to it: by construction a carry-forward has zero inputs and one or more positive outputs. A zero-input complex transaction that does not satisfy Algorithm 12's carry-forward correctness rules — including one whose outputs do not exactly match, after custodian-fee reduction and below-fee discard, the unspent UTXOs of the single tail block that its carrying head block drops — is invalid ([Blockchain PRD](./moonblokz-blockchain-prd.md) FR51).
 
 ## Algorithm 14: Node Registration
 
@@ -933,26 +915,17 @@ Permit network growth without making Sybil-style expansion free.
 
 ## Algorithm 15: Balance-Block Scheduling for New Nodes
 
-A new balance block does **not** have to be created immediately after each registration.
+A registration is itself a valid seed source, so no balance block is needed at registration time. A balance block is emitted only when (1) some node's latest seed source is the dropping tail block (Trigger 1), or (2) the spacing trigger of Algorithm 16 fires (Trigger 2) ([Blockchain PRD](./moonblokz-blockchain-prd.md) FR50).
 
-Instead, create a balance block when either:
-
-- enough new registrations exist to fill the block efficiently,
-- or the tail is about to consume the block containing the registration transaction.
-
-## Algorithm 16: Balance-Block Distribution Optimization (Post-MVP)
+## Algorithm 16: Balance-Block Distribution Optimization
 
 ### Objective
 
-Keep the active chain efficient by spreading balance blocks across it rather than clustering them. This is a post-MVP optimization rather than a correctness-critical MVP rule.
+Keep the active chain efficient by spreading balance blocks across it rather than clustering them. This is an MVP rule ([Blockchain PRD](./moonblokz-blockchain-prd.md) FR50 Trigger 2).
 
-### Conceptual rule
+### Rule
 
-1. estimate the optimal spacing between balance blocks from active-chain length and balance-block count,
-2. when replaying a dropped balance block, compare current spacing with desired spacing,
-3. if spacing is too large, move the replayed balance block forward by several sequences,
-4. if spacing is too small, replay immediately because delaying would risk losing required state,
-5. repeat over many cycles to smooth the distribution.
+When the chain is at length `W`, no mandatory replay is pending, and the distance since the latest balance block exceeds `expected_balance_block_spacing = ⌈W / ⌈N_active / K_max⌉⌉`, the creator emits a balance block filled purely by the bonus-pack order. This pushes balance blocks toward even spacing. Tail-imminent replay is never delayed.
 
 ## Algorithm 17: Genesis Initialization
 
@@ -970,7 +943,7 @@ Part IV defines a two-block initialization sequence.
 
 The first block is processed differently from later blocks:
 
-- it may be signed with the same key used for registration,
+- blocks `#0` and `#1` must both be signed with node `#0`'s registering key, and the bootstrap exceptions apply only to a block at sequence 0 or 1 whose content matches the fixed genesis description ([Blockchain PRD](./moonblokz-blockchain-prd.md) FR54),
 - it bypasses normal balance checks,
 - it bypasses normal fee calculations,
 - the no-self-vote rule and the vote-target validity rule (Section 3 above and Algorithm 13) do not apply to its transactions: at genesis time node `#0` is the only existing node, so its registration transaction and self-transfer carry `vote == 0` (node `#0` votes for itself), and this is the only consistent choice; from block `#2` onward both rules resume in the ordinary way for every other initializer, but two narrow chain-wide exceptions remain in force for the lifetime of the chain — `vote == 0` is always accepted as a valid vote target, and `initializer == 0` with `vote == 0` (a node-`#0` self-vote) never violates the no-self-vote rule, so node `#0` retains a valid vote choice even while it is the only registered node and can therefore issue further registration transactions before any non-genesis node exists,
@@ -983,7 +956,7 @@ The first block is processed differently from later blocks:
 
 Two rules may compete:
 
-- dropped chain-config or balance data must be replayed at the end of the chain,
+- dropped chain-config, balance, or unspent-UTXO state must be replayed at the head of the chain,
 - and approval deviations require an evidence block to be added.
 
 ### Precedence rule
@@ -995,46 +968,30 @@ The stronger rule is the `snake_chain` repeat-block rule.
 1. essential state-preservation blocks may be inserted before the approval evidence block,
 2. multiple blocks may appear between the deviation block and its evidence block,
 3. those intervening replay blocks remain part of the same proposer-controlled deviation-bearing branch and do not by themselves start a fresh approval cycle for the already-pending deviation,
-4. once the required support package is complete, the proposer may emit the approval evidence block immediately; this step is not gated by ordinary transactional block-fill thresholds, ordinary inter-block timer conditions, or the presence of ordinary mempool transactions.
+4. intervening replay blocks are spaced by the chain-config `deviation_replay_insertion_delay_ms`, which also applies after the deviation block ([Blockchain PRD](./moonblokz-blockchain-prd.md) FR29),
+5. once the required support package is complete, the proposer may emit the approval evidence block immediately; this step is not gated by ordinary transactional block-fill thresholds, ordinary inter-block timer conditions, or the presence of ordinary mempool transactions.
 
 ## Algorithm 19: Chain-Part Maintenance
 
-### Objective
-
-The todo material suggests a practical intermediate structure for collecting- and pruning-time bookkeeping: a chain-part model that tracks partial chains by their current start and end references together with a stable identifier.
-
-### Intended responsibilities
-
-A chain-part structure may be used to:
-
-- record the beginning and end of a known partial chain,
-- estimate candidate-chain length during startup,
-- merge two partial chains when new connectivity is discovered,
-- support branch-end maintenance under bounded memory,
-- and help choose which branch segment to evict under storage pressure.
-
-### Status of this algorithm
-
-The blockchain module PRD now resolves this as follows: branch tracking is **tip-oriented** through the FR19 `chain_heads` table (every block-tree tip indexed with per-head metadata: head_block_id, head_sequence, connected flag, tail-point cache for Stored heads, connection-point cache for Connected/Active heads, and `last_request_timestamp` for Stored heads). Branch points are not separately enumerated; they are implicit in the block-tree graph. Block-level shared-ancestry membership is captured by the per-block `head_ref_count` field (FR18 / FR19), maintained as a **branch-count / out-degree** — the number of distinct child-edges of the block that lead toward a head (ratified 2026-07-12, Story 4.4; *not* a path-count of "how many chain_heads entries' ancestry passes through the block", which would make the eviction back-walk leak shared trunk blocks — see FR19's fork-mutation and eviction rules) — this is sufficient for bounded eviction without explicit branch-point tracking. The chain_heads table is bounded by `chain_heads_max_capacity` and supports a deterministic eviction discipline (smallest non-active `head_sequence` wins; head_ref_count protects shared blocks). See FR19 and FR20 for the full normative rules.
+Branch bookkeeping is the FR19 `chain_heads` table; no separate chain-part structure exists. The article-era chain-part idea (partial chains tracked by start and end references) is superseded as follows: branch tracking is **tip-oriented** through the FR19 `chain_heads` table (every block-tree tip indexed with per-head metadata: head_block_id, head_sequence, connected flag, tail-point cache for Stored heads, connection-point cache for Connected/Active heads, and `last_request_timestamp` for Stored heads, and `branch_value` for Connected/Active heads). Branch points are not separately enumerated; they are implicit in the block-tree graph. Block-level shared-ancestry membership is captured by the per-block `head_ref_count` field (FR18 / FR19), maintained as a **branch-count / out-degree** — the number of distinct child-edges of the block that lead toward a head (ratified 2026-07-12, Story 4.4; *not* a path-count of "how many chain_heads entries' ancestry passes through the block", which would make the eviction back-walk leak shared trunk blocks — see FR19's fork-mutation and eviction rules) — this is sufficient for bounded eviction without explicit branch-point tracking. The chain_heads table is bounded by `chain_heads_max_capacity` and supports a deterministic eviction discipline (smallest non-active `head_sequence` wins; head_ref_count protects shared blocks). See FR19 and FR20 for the full normative rules.
 
 ## Algorithm 20: Storage-Pressure Branch Eviction
 
 ### Objective
 
-When bounded block storage or bounded chain-part storage is exhausted, the node must free space without losing the most operationally valuable branch information.
+When bounded block storage or the bounded `chain_heads` table is exhausted, the node must free space without losing the most operationally valuable branch information.
 
 ### Eviction rule
 
-1. Examine the known retained branch ends or equivalent chain-part endings.
+1. Examine the retained side-branch heads.
 2. Select the retained side branch whose tip has the lowest cumulative branch value.
 3. Break ties by lowest tip sequence, then by lowest tip creator node identifier, then by the lowest tip block hash interpreted as a big-endian unsigned integer.
 4. Delete blocks backward from that branch tip until reaching a shared ancestor or divergence point that must remain.
-5. Update branch-end and chain-part bookkeeping after each deletion or deletion batch.
-6. If chain-part metadata itself reaches its bound, trigger the same eviction logic even if raw block storage is not yet full.
+5. Refresh the branch bookkeeping after the eviction.
 
 ### Interpretation
 
-This algorithm makes bounded-storage behavior explicit at the branch level. Eviction is not only tail advancement of the active chain. It may also remove side branches that are no longer worth retaining under current limits.
+Each block-storage pressure event evicts exactly one side branch, never active-chain blocks (FR57). Overflow of the `chain_heads` table follows its own rule: evict the non-active head with the smallest `head_sequence` and walk back by `head_ref_count` (FR19). Independently, side branches whose divergence point fell below `S_tail` are reclaimed on every tail advance (FR58) ([Blockchain PRD](./moonblokz-blockchain-prd.md)).
 
 ## Algorithm 21: Block Status Progression
 
@@ -1042,35 +999,21 @@ This algorithm makes bounded-storage behavior explicit at the branch level. Evic
 
 Represent the fact that a known block can move through several operational states before it is trusted or used by the active chain.
 
-### Practical status model
+### Status model
 
-The todo material suggests at least the following conceptual statuses:
-
-- **stored** — the block is parseable and retained locally,
-- **connected** — the block has a known ancestry path into locally retained history,
-- **verified** — the block has passed the currently possible semantic checks,
-- **invalid** — the block failed required checks,
-- **active** — the block is currently part of the selected active chain.
-
-### Important note
-
-The precise transition graph is still open, especially when earlier retained history is missing and full verification must be deferred.
+Blocks carry one of three statuses: **Stored** (parsed, passed Tier 1), **Connected** (ancestry reaches the active chain, passed Tier 2), and **Active** (on the active chain, verified at Tier 3). Transitions are Stored → Connected → Active; Stored → Active in one step via the processing pass; and Active → Connected on chain-switch demotion. Invalid is a terminal classification that triggers deletion, not a status. Missing ancestry keeps a block Stored ([Blockchain PRD](./moonblokz-blockchain-prd.md) FR9).
 
 ## Algorithm 22: Active-Chain Switch and Recomputation
 
 ### Objective
 
-When a side branch overtakes the current active branch according to the local chain-selection rules, the node must recompute all dependent active state.
+When a side branch overtakes the current active branch, the node must move every dependent active-state projection to the new branch.
 
-### Recomputation rule
+### Switch rule
 
-1. Determine that the competing branch outranks the current active chain according to the configured sequence, creator, accumulated-vote, or equivalent branch-selection rules.
-2. Identify the common ancestor or equivalent branch-merge point.
-3. Recalculate the active accumulated-vote table.
-4. Recalculate node state derived from the active chain.
-5. Recalculate branch bookkeeping derived from the active chain.
-6. Recalculate mempool acceptance assumptions that depended on the previous chain.
-7. Mark the new branch as active and demote the previous one.
+1. A switch is triggered only when a non-active head's `branch_value` exceeds the active head's (FR21 tie-break), re-evaluated after a head extension or a Stored → Connected transition (FR22).
+2. In the cheap zone, the switch is one atomic step-wise walk: undo blocks back to the common ancestor, then apply the new branch forward. Every projection — including the mempool — is updated per block, with no separate mempool phase, and the demoted blocks become Connected (FR23; [architecture](./moonblokz-blockchain-architecture.md) §4.2 `reconciliation.rs`).
+3. A divergence below the cheap zone runs a full FR3 reconstruction instead, under FR58's two-part trigger ([Blockchain PRD](./moonblokz-blockchain-prd.md) FR21–FR23, FR58).
 
 ### Interpretation
 
@@ -1084,7 +1027,7 @@ A node determines the effective blockchain by:
 2. recovering missing ancestors when possible,
 3. tracking creator-selection and approval outcomes through vote-derived value,
 4. preserving chain configuration, balances, and live UTXOs within the active-chain window,
-5. comparing candidate branches by accumulated block value plus valid preservation state,
+5. selecting, among operationally admissible Connected/Active heads, the one with the highest branch value, using the FR21 tie-break (preservation is a validity condition, not a value term; [Blockchain PRD](./moonblokz-blockchain-prd.md) FR21 / FR48),
 6. following the branch whose structure, value, and retained active state make it the winning effective chain.
 
 ## Algorithm 24: Efficiency Estimation
@@ -1142,10 +1085,9 @@ Expose a practical local-facing blockchain truth surface without requiring full 
 
 ### Query model
 
-1. Transaction queries should distinguish at least between unknown, present in mempool, and present in the active chain.
-2. If a transaction is present in the active chain, the response should also expose its active-chain depth in sequence terms.
-3. Block queries should resolve only against the current active chain rather than the full retained block-tree.
-4. Balance queries may expose a simple current answer by default, with an optional richer answer that also reports how deeply the visible balance is supported inside the active chain.
+1. A transaction query returns exactly one of Unknown, In-mempool, or Confirmed; Confirmed also carries the active-chain depth (FR40).
+2. A node-balance query returns the current balance and accumulated vote, optionally with depth; an address query returns the address's UTXOs (FR41).
+3. Block queries resolve only against the current active chain, and only in ready state (FR42); in collecting state these queries report not-ready (FR1) ([Blockchain PRD](./moonblokz-blockchain-prd.md)).
 
 ### Interpretation
 
@@ -1159,7 +1101,7 @@ As already described in Part III, approval may fail if too many active nodes dis
 
 ### UTXO saturation stall
 
-If re-added live UTXOs occupy all available block capacity, the chain may temporarily stall because no additional transactions can fit. The blockchain module performs no special saturation detection, status reporting, log emission, mempool admission backpressure, or replay deferral: ordinary block creation continues against whatever pending replay obligations exist, producing a sequence of replay-bearing blocks that admit no ordinary mempool transactions. The condition self-clears across many tail-advance cycles because the fixed custodian fee reduces every surviving carried-forward UTXO at each carry-forward step until UTXOs whose pre-fee amount falls below the custodian fee are discarded under FR53's below-fee rule, eventually freeing block capacity for ordinary mempool transactions again. The mempool continues to accept new transactions normally throughout. Source: this no-special-handling rule is normatively pinned by `_bmad-output/planning-artifacts/prd.md` FR55 / FR59 / FR53.
+If re-added live UTXOs occupy all available block capacity, the chain may temporarily stall because no additional transactions can fit. The blockchain module performs no special saturation detection, status reporting, log emission, mempool admission backpressure, or replay deferral: ordinary block creation continues against whatever pending replay obligations exist, producing a sequence of replay-bearing blocks that admit no ordinary mempool transactions. The condition self-clears across many tail-advance cycles because the fixed custodian fee reduces every surviving carried-forward UTXO at each carry-forward step until UTXOs whose pre-fee amount falls below the custodian fee are discarded under FR51's below-fee rule, eventually freeing block capacity for ordinary mempool transactions again. The mempool continues to accept new transactions normally throughout. Source: this no-special-handling rule is normatively pinned by [Blockchain PRD](./moonblokz-blockchain-prd.md) FR52 / FR51 (MVP stance tracked as [OG-005](./moonblokz-open-gaps-register.md)).
 
 ### Sequence Wrap-Around
 
@@ -1174,7 +1116,7 @@ If re-added live UTXOs occupy all available block capacity, the chain may tempor
 
 None of this post-MVP behavior is implemented in MVP. FR53's MVP rejection of `u32::MAX` keeps the wrap surface closed until that work is taken up.
 
-Source: the MVP no-wrap rule and the post-MVP deferral are normatively pinned by `_bmad-output/planning-artifacts/prd.md` FR53 (and the Project Scoping § Post-MVP Extensions section that lists sequence wrap-around as a deferred feature). The original Part III–V articles only note that "sequence numbering can restart if needed after very long time horizons" without specifying the mechanism.
+Source: the MVP no-wrap rule and the post-MVP deferral are normatively pinned by [Blockchain PRD](./moonblokz-blockchain-prd.md) FR53 (and the Project Scoping § Post-MVP Extensions section that lists sequence wrap-around as a deferred feature). The original Part III–V articles only note that "sequence numbering can restart if needed after very long time horizons" without specifying the mechanism.
 
 ### Long-disconnection permanent fork
 
@@ -1182,17 +1124,15 @@ Resynchronization works only while disconnected nodes still share a common block
 
 If the active chain window moves entirely beyond the last shared block, the disconnected node cannot rejoin and a permanent fork results.
 
-Long-disconnect detection and permanent-fork entry are **not two separate states**; they are the same event viewed from two angles. Once a node observes that every active-chain block it knows has fallen outside the broader network's active-chain window (for example, incoming blocks consistently reference a `previous_hash` that cannot be resolved locally and carry sequences far beyond the local head plus the `snake_chain` window), the node:
+Long-disconnect detection and permanent-fork entry are **not two separate states**; they are the same event viewed from two angles. In ready state, any inbound block with `S_new ≥ S_head + W` triggers it ([Blockchain PRD](./moonblokz-blockchain-prd.md) FR60). The node:
 
-- does not accept those out-of-window blocks into its authoritative chain,
+- discards that block as Out-of-Snake-Chain-Window (it is not stored),
 - continues its ordinary operation against its local active chain — including own block creation, mempool handling, and creator-role behavior,
-- and emits a structured log record marking the observation.
+- and emits a diagnostic `long-disconnect-detected` log record (suppressed in collecting state).
 
-Because the local node keeps operating and producing blocks against its own active chain while the rest of the network does the same against theirs, the two chains evolve independently from that moment onward. The detection rule describes the observable trigger; the permanent fork describes the structural outcome. No further automatic reconciliation is possible from chain state alone, and the current model does not define a recovery path beyond external operator action.
+Because the local node keeps operating and producing blocks against its own active chain while the rest of the network does the same against theirs, the two chains evolve independently from that moment onward. The detection rule describes the observable trigger; the permanent fork describes the structural outcome. No further automatic reconciliation is possible from chain state alone, and the current model does not define a recovery path beyond external operator action; the post-MVP concept is tracked as [OG-006](./moonblokz-open-gaps-register.md).
 
 ### Verification-horizon tradeoff under pruning
-
-The todo material highlights an important bounded-storage tradeoff.
 
 If a branch remains only partially covered by still-retained history, the node may be able to classify it as stored or connected without being able to fully verify every rule immediately.
 
@@ -1203,21 +1143,18 @@ That means MoonBlokz may face a tradeoff between:
 
 This tradeoff is algorithmically important because it affects how aggressively the implementation can prune while still keeping future branch changes manageable.
 
-The MoonBlokz blockchain module pins this tradeoff with an explicit verification-horizon parameter `H` of additional retained prior active-chain blocks beyond the active `snake_chain` window of length `W`, with the constraint `0 ≤ H ≤ W` and a default value of `H = ⌊W / 10⌋` when no implementation-specific tuning is applied. `H = W` is a generous choice consistent with the implementation-document recommendation of "roughly an extra chain-length worth of history" for nodes whose storage budget allows it. `H` is implementation-defined per node (not chain-config-derived); replay determinism is unaffected by per-node `H` differences because `H` only changes the local efficiency class of chain-switch reconciliation, not the eventual active-chain selection. Source: the explicit parameter and default are normatively defined by `_bmad-output/planning-artifacts/prd.md` FR61 / FR59 / FR58 (verification horizon); the original Part III–V articles describe the tradeoff but do not pin a default.
+The MoonBlokz blockchain module pins this tradeoff with an explicit verification-horizon parameter `H` of additional retained prior active-chain blocks beyond the active `snake_chain` window of length `W`, with the constraint `0 ≤ H ≤ W` and a default value of `H = ⌊W / 10⌋` when no implementation-specific tuning is applied. `H = W` is a generous choice consistent with the implementation-document recommendation of "roughly an extra chain-length worth of history" for nodes whose storage budget allows it. `H` is implementation-defined per node (not chain-config-derived); replay determinism is unaffected by per-node `H` differences because `H` only changes the local efficiency class of chain-switch reconciliation, not the eventual active-chain selection. Source: the explicit parameter and default are normatively defined by [Blockchain PRD](./moonblokz-blockchain-prd.md) FR58 (verification horizon); the original Part III–V articles describe the tradeoff but do not pin a default.
 
 ### Deferred formal details
 
-Parts III, IV, and V still leave several algorithmically relevant details for later work:
+Parts III, IV, and V left several details for later work. They are now specified elsewhere:
 
-- exact communication protocol,
-- exact approval messaging and evidence encoding,
-- multi-signature efficiency,
-- exact chain-configuration schema,
-- and exact handling of mutable future configuration.
-
-These should be treated as unresolved dependencies, not silently filled in.
-
-The originally listed items "subgroup selection" and "active-node window formalization" are now resolved by [ADR-015](./blockchain-adrs/ADR-015-approval-subgroup-selection.md).
+- communication protocol — the radio message model ([Radio Algorithm](./moonblokz-radio-algorythm.md) Section C) and the whole-block boundary (FR61),
+- approval messaging and evidence content — FR26 / FR27 and Section 9 above; only the exact evidence-payload byte encoding remains open ([OG-008](./moonblokz-open-gaps-register.md)),
+- multi-signature efficiency — Schnorr vs. BLS per-supporter cost ([architecture](./moonblokz-blockchain-architecture.md) §6.5) and the chain-config `max_aggregated_signatures` ([Configuration Module Specification](./moonblokz-configuration-specification.md) §4.1),
+- chain-configuration schema — the parameter registry (Configuration Module Specification §4),
+- mutable future configuration — none: configuration is locked for the lifetime of the chain (FR8; Configuration Module Specification §1),
+- subgroup selection and active-node window — [ADR-015](./blockchain-adrs/ADR-015-approval-subgroup-selection.md) ([Blockchain PRD](./moonblokz-blockchain-prd.md)).
 
 ## Business Analyst View: Why This Algorithm Exists
 

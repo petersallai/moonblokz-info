@@ -2,7 +2,7 @@
 
 ## Purpose of This Document
 
-This document captures implementation-facing implications of the MoonBlokz blockchain model introduced in Part III and extended in Part IV and Part V of the MoonBlokz series. It is not a full implementation specification. Instead, it complements the conceptual and algorithm documents by identifying what an implementation will need to track, where configuration boundaries exist, how compact binary structures affect engineering choices, and which details must remain open until later articles or repository decisions define them.
+This document captures implementation-facing implications of the MoonBlokz blockchain model introduced in Part III and extended in Part IV and Part V of the MoonBlokz series. It is not a full implementation specification. Instead, it complements the conceptual and algorithm documents by identifying what an implementation will need to track, where configuration boundaries exist, and how compact binary structures affect engineering choices; it bridges the article-era reasoning to the requirements and architecture that now settle it.
 
 - Use [`moonblokz-blockchain-prd.md`](./moonblokz-blockchain-prd.md) as the **authoritative source** for every FR-numbered functional requirement and Non-Functional Requirement cited in this document; FR references in the implementation guidance resolve to the canonical wording in the PRD.
 - Use [`moonblokz-blockchain-architecture.md`](./moonblokz-blockchain-architecture.md) as the **authoritative source** for the blockchain crate-split, public API, internal modules, sized data-structure layouts, RAM budget, stack-frame analysis, FR-coverage matrix, and decisions log. This document defers to the Architecture Decision Document for all concrete implementation-shape specifics.
@@ -27,7 +27,7 @@ Parts III, IV, and V together provide a strong implementation direction, but the
 - point out what should remain configurable,
 - show where bounded storage changes the design,
 - show where binary layout and packetization change the design,
-- and warn against hard-coding assumptions that the articles have not finalized.
+- and point to the authoritative source wherever a detail has since been settled.
 
 ## Relationship to Part II Architecture
 
@@ -72,17 +72,11 @@ This guidance is stricter than desktop/server Rust style because MoonBlokz is de
 
 Flash storage has finite write cycles. This means the implementation should minimize write frequency and avoid treating persistent state updates as cheap.
 
-The article explicitly suggests that specialized storage structures such as B-trees and in-memory caches will be discussed separately. Even before those later details, the constraint itself is already binding.
+The storage design is settled as fixed-size slots addressed by `storage_index` with deterministic page/slot mapping ([`moonblokz-storage-prd.md`](./moonblokz-storage-prd.md) ST-FR21–ST-FR23; [`moonblokz-storage-architecture.md`](./moonblokz-storage-architecture.md)), mirrored 1:1 by the in-memory block table ([architecture](./moonblokz-blockchain-architecture.md) §6.2). Flash wear-lifetime remains unquantified ([OG-002](./moonblokz-open-gaps-register.md)).
 
 ## Processing-State Crash Semantics
 
-The **processing** phase is not merely incremental block intake. It may be a reconstruction pass over a candidate chain. If that pass is interrupted, for example by restart, the implementation must decide whether partially rebuilt state is resumable or disposable.
-
-For now, the conservative interpretation is:
-
-- processing-state restart behavior should be treated as an explicit policy,
-- a full restart of reconstruction is an acceptable current simplification,
-- resumable processing should be treated as future enhancement rather than assumed capability.
+The **processing** phase is a reconstruction pass over a candidate chain, and it is not resumable: on restart all partially reconstructed state is discarded, the module re-enters collecting, rebuilds the block-tree from retained durable blocks, and re-runs FR2/FR3 ([Blockchain PRD](./moonblokz-blockchain-prd.md) FR3, FR59). Resumable partial processing will not become a requirement (FR59). The post-MVP concurrent-ingestion processing concept is tracked as [OG-007](./moonblokz-open-gaps-register.md).
 
 ## Failed Full-Chain Validation Recovery
 
@@ -115,7 +109,7 @@ The concrete in-memory layouts, field-by-field sizes, alignment, sentinels, and 
 
 - **Block-tree metadata** → architecture §4.2 (`blocks.rs`) and §6.2 (`BlockEntry` 76 B padded × `MAX_BLOCKS`, co-located ADR-016 spent-bit vector).
 - **Active-chain window state** → architecture §4.2 (`snake_chain.rs`) and §6.4 (two `u32` fields directly on `Blockchain<...>`).
-- **Branch / chain-heads tracking** → architecture §4.2 (`chain_heads.rs`) and §6.3 (`ChainHeadEntry` 32 B padded × `MAX_BRANCH_COUNT`).
+- **Branch / chain-heads tracking** → architecture §4.2 (`chain_heads.rs`) and §6.3 (`ChainHeadEntry` 72 B padded × `MAX_BRANCH_COUNT`).
 - **Per-node SoA state (public keys, balances, FR50 seed-source projection, max_known_node_id)** → architecture §4.2 (`node_info.rs`) and §6.1.
 - **UTXO spent-bit projection** → architecture §4.2 (`spent_bits.rs`) and §6.2 (co-located in `BlockEntry`).
 - **Approval evidence accumulation** → architecture §4.2 (`approval.rs`) and §6.5 (`ApprovalAccumulator` ~2 KB crypto-agnostic MAX_BLOCK_SIZE buffer).
@@ -212,61 +206,37 @@ If parsing or partial validation leaks too early into fragment handling, the imp
 - malformed partial-state handling,
 - and wasted CPU or RAM on invalid incomplete data.
 
-The article does not define the exact fragmentation format yet, so this boundary should stay explicit and modular.
+The fragmentation format is defined by the radio layer ([`moonblokz-radio-algorythm.md`](./moonblokz-radio-algorythm.md) §C3–C4, §F11); the blockchain consumes only fully reassembled messages.
 
 ## Pruning Cost Is Not Negligible
 
-The todo material suggests that branch deletion under storage pressure is not a trivial bookkeeping step.
-
-Implementation-wise, pruning may require:
-
-- repeated persistent-storage reads and deletes,
-- branch-end or equivalent index maintenance,
-- parent/child relationship updates,
-- follow-up consistency checks after each removed block or removed segment.
-
-Pruning policy therefore cannot be evaluated only by counting removed blocks. The implementation also needs to consider I/O cost and metadata churn.
+Pruning is bounded by rule: one lowest-value side branch per capacity-pressure event, walked back to the nearest shared ancestor, with branch bookkeeping refreshed afterwards ([Blockchain PRD](./moonblokz-blockchain-prd.md) FR57). Tail-out-of-range side branches are also reclaimed on tail advance (FR58). The cost is metadata churn (`chain_heads`, `head_ref_count`), not flash I/O: the storage interface has no delete, so deletion releases the in-memory slot and the durable bytes are overwritten on the next `save_block` to that index.
 
 ## Caching and Flash Considerations
 
 Part V directly motivates implementation techniques such as in-memory caching and flash-aware data structures.
 
-## Mempool-Specific Engineering Notes
-
-The current design direction treats the mempool as authoritative runtime state but not as durable blockchain truth. That means mempool contents may be lost across restart, active-chain changes must be allowed to remove now-confirmed transactions from the mempool, and transactions that fall out of the active chain during a chain switch may need to be reintroduced into the mempool. When mempool capacity is exhausted, randomized eviction (per [ADR-010](./blockchain-adrs/ADR-010-randomized-mempool-eviction-under-capacity-pressure.md)) is preferable to deterministic eviction because it increases the chance that the network as a whole retains a more diverse transaction set.
-
-The compact-storage layout, the index entry shape, the eligibility iterator, the deferred-flag handling, the byte-buffer compaction strategy, the hash-CRC32 lookup / replenishment fingerprinting, the FR45-ordered `top_n_for_exchange(n)` iterator over stored transaction fees, the FR33 sub-seeded PRNG for random eviction with own-transaction prioritization, and the full sub-crate API surface are defined in [`moonblokz-blockchain-architecture.md`](./moonblokz-blockchain-architecture.md) §3.3 (`Mempool<COMPACT_BYTES, MAX_ENTRIES>` API, 10 method-groups) and §6.8 (internals: compact buffer ~20 KB + 128 compact index entries + sub-seed PRNG + small fields ≈ 23–25 KB total before later bit-packing). `try_add` takes the already-resolved `transaction_fee` from blockchain validation and stores it in the mempool index; `top_n_for_exchange` returns that fee with each borrowed transaction so later block assembly / exchange logic does not repeat active-chain UTXO lookups. `MAX_NODES` remains a blockchain/vote node-roster capacity parameter and is not part of the mempool storage contract.
-
 ### RAM-side expectations
 
-The implementation should expect to cache only a subset of:
-
-- recent blocks,
-- branch tips,
-- balance snapshots,
-- UTXO lookup hot sets,
-- and partial fragment reassembly state.
+RAM holds full-coverage, fixed-size metadata rather than hot subsets: one `BlockEntry` per storage slot (hash, parent, sequence, co-located UTXO spent bits) and per-node SoA balances, keys and seed sources for `MAX_NODES` ([Blockchain PRD](./moonblokz-blockchain-prd.md) FR34; [architecture](./moonblokz-blockchain-architecture.md) §6.1–§6.2). Block bytes stay in flash and are read on demand. Fragment reassembly state belongs to the radio layer.
 
 ### Flash-side expectations
 
-Persistent storage likely needs:
+Flash holds only replicated control-plane data and fixed-size block slots addressed by `storage_index` ([`moonblokz-storage-prd.md`](./moonblokz-storage-prd.md) ST-FR21–ST-FR23). There is no flash-side hash or transaction index: hash lookup is the in-memory block-tree ([Blockchain PRD](./moonblokz-blockchain-prd.md) FR11, FR34). The B-trees the article mentions are not part of the design.
 
-- append-friendly or locality-aware write patterns,
-- indexing support for block hash and transaction-hash lookup,
-- bounded rewrite behavior,
-- and careful separation between hot mutable indexes and colder immutable block data.
+## Mempool-Specific Engineering Notes
 
-The article mentions B-trees as a likely implementation direction for flash storage, but it does not yet define the final storage design. That should remain an open architectural decision until the relevant module article or repository implementation makes it concrete.
+The current design direction treats the mempool as authoritative runtime state but not as durable blockchain truth. The mempool is a separate non-durable module, empty on restart ([Blockchain PRD](./moonblokz-blockchain-prd.md) FR30, FR59). On forward extension it removes newly confirmed and window-expired transactions; on chain switch it also re-adds transactions from blocks leaving the active chain, subject to capacity (FR32). Capacity eviction is mandated uniform-random with own transactions preserved first (FR33, [ADR-010](./blockchain-adrs/ADR-010-randomized-mempool-eviction-under-capacity-pressure.md)), which keeps the network's retained transaction set diverse.
+
+The compact-storage layout, the index entry shape, the eligibility iterator, the deferred-flag handling, the byte-buffer compaction strategy, the hash-CRC32 lookup / replenishment fingerprinting, the FR45-ordered `top_n_for_exchange(n)` iterator over stored transaction fees, the FR33 sub-seeded PRNG for random eviction with own-transaction prioritization, and the full sub-crate API surface are defined in [`moonblokz-blockchain-architecture.md`](./moonblokz-blockchain-architecture.md) §3.3 (`Mempool<COMPACT_BYTES, MAX_ENTRIES>` API, 10 method-groups) and §6.8 (internals: compact buffer ~20 KB + 128 compact index entries + sub-seed PRNG + small fields ≈ 23–25 KB total before later bit-packing). `try_add` takes the already-resolved `transaction_fee` from blockchain validation and stores it in the mempool index; `top_n_for_exchange` returns that fee with each borrowed transaction so later block assembly / exchange logic does not repeat active-chain UTXO lookups. `MAX_NODES` remains a blockchain/vote node-roster capacity parameter and is not part of the mempool storage contract.
 
 ## Retention Size vs. Revalidation Cost
-
-The todo material sharpens an implementation tradeoff that is only implicit in the article series.
 
 If the node retains only a narrow history window beyond the currently active chain, it saves storage but increases the chance that a later active-chain switch will require broader revalidation or near-full recomputation.
 
 If the node retains a larger verification horizon, such as roughly an extra chain-length worth of history, future active-chain switches may become cheaper to validate but the storage footprint increases.
 
-This tradeoff should be documented explicitly because it affects:
+[Blockchain PRD](./moonblokz-blockchain-prd.md) FR58 settles it: each node retains a verification horizon `H` (`0 ≤ H ≤ W`, default `⌊W/10⌋`, node-level and not chain configuration) beyond the window. Divergences within the cheap zone reconcile in place via FR23; deeper ones are reached only through a full FR3 reconstruction, gated by tip maturity and higher branch value. The choice of `H` affects:
 
 - storage sizing,
 - pruning policy,
@@ -288,8 +258,6 @@ Chain configuration can carry formulas, and the mechanism is settled: a general 
 - no hidden dependence on wall-clock time or external services,
 - clear failure behavior for invalid expressions or unsupported operations.
 
-A restricted expression evaluator is easier to reason about and validate. A virtual machine offers more flexibility but introduces a much larger correctness and resource-control surface.
-
 ### Economic configuration
 
 The articles say monetary behavior may depend on chain-level configuration, including:
@@ -299,6 +267,8 @@ The articles say monetary behavior may depend on chain-level configuration, incl
 - custodian fee,
 - additional currency creation or consumption,
 - and economic functions based on network-wide parameters such as actual node count, total currency, and average transaction size.
+
+The economic parameters are registry entries IDs 23–26 and 28 ([Configuration Module Specification](./moonblokz-configuration-specification.md) §4.1). Network-wide inputs reach a program through chain-info (§4.6), where only the registered-node count is allocated so far. The chain-config reward rule for `mined_amount` that FR6 / FR36 reference has no registry parameter ([OG-009](./moonblokz-open-gaps-register.md)).
 
 ### Timing configuration
 
@@ -311,23 +281,18 @@ The following are implied configuration candidates:
 - mempool-replenishment request interval (used continuously whenever the local mempool is below the transactional fill threshold, independently of whether the local node is the currently expected creator; see Algorithm 4 mempool replenishment in `moonblokz-blockchain-algorythm.md`),
 - and retention-related scheduling margins.
 
-The todo material also suggests that some timing behavior may later depend on runtime-derived metrics such as average block time or capped grace-time formulas.
+These are registry entries IDs 1, 2, 20, 22 and 27 ([Configuration Module Specification](./moonblokz-configuration-specification.md) §4.1), all durations in `u32` ms. Replay emission has no margin parameter: it fires as soon as the node is creator-eligible ([Blockchain PRD](./moonblokz-blockchain-prd.md) FR45).
 
-If that direction is adopted, the implementation will need to define:
-
-- which history window contributes to the average,
-- whether the metric is computed from active-chain data only,
-- how aggressively outliers are filtered,
-- and how formula inputs remain deterministic across nodes with imperfect history overlap.
+Runtime-derived timing is a mechanism, not an open direction: any literal-or-bytecode parameter (for example the grace period, ID 2) may be a program that reads chain-info, which must be a function of the active chain alone, read raw content only within `W`, and have an FR23 inverse ([Configuration Module Specification](./moonblokz-configuration-specification.md) §4.6). No average-block-time identifier is allocated yet; outlier handling is the program's own logic.
 
 ### Retention and sizing configuration
 
 Parts IV and V introduce or imply:
 
-- active chain length,
-- maximum block size,
-- radio packet size as a compile-time or module parameter,
-- and the `n`-block lookahead used when compacting re-added UTXOs.
+- active chain length — chain configuration (ID 21) bounded by the compile-time `SNAKE_CHAIN_LENGTH_MAX`,
+- maximum block size — chain configuration `block_size_limit` (ID 3) bounded by the compile-time `MAX_BLOCK_SIZE`,
+- radio packet size — a radio compile-time constant,
+- and no UTXO carry-forward lookahead: one carry-forward transaction per dropping block ([Blockchain PRD](./moonblokz-blockchain-prd.md) FR51; [Configuration Module Specification](./moonblokz-configuration-specification.md) §4.1, §6).
 
 ### Registration policy configuration
 
@@ -383,22 +348,19 @@ Because blocks are capped and complex transactions may be large, the scheduler m
 
 ### Registration-aware balance scheduling matters
 
-The implementation should not blindly emit a balance block after every registration. The article’s strategy is to delay until either:
+No balance block is needed after a registration, because the registration is itself the node's seed source. Balance blocks are emitted when a seed source reaches the tail (Trigger 1) or when spacing exceeds `⌈W / ⌈N_active / K_max⌉⌉` (Trigger 2), filled oldest-seed-first ([Blockchain PRD](./moonblokz-blockchain-prd.md) FR50).
 
-- enough registrations exist for efficient packing,
-- or the registration transaction is close enough to tail loss that the new node’s balance state must be preserved.
+## Article-Era Gaps and Their Current Status
 
-## Important Non-Implementation Gaps
-
-The articles intentionally leave several things unspecified. These should be treated as open items, not filled with local assumptions.
+The articles left several things unspecified. Most are now settled; genuinely open items live in the [Open Gaps Register](./moonblokz-open-gaps-register.md).
 
 ### 1. Exact communication model
 
-The articles defer exact request/response formats, retry behavior, support-message transport, anti-duplication rules, and fragment protocol details.
+Resolved by the radio message model ([`moonblokz-radio-algorythm.md`](./moonblokz-radio-algorythm.md) Section C, §F11) together with [Blockchain PRD](./moonblokz-blockchain-prd.md) FR11, FR19 / FR46, and FR26. What remains is transaction-fragment recovery: the radio layer does not yet define a `RequestTransactionPart` message.
 
 ### 2. Multi-signature or evidence efficiency
 
-Partly resolved. Per [ADR-015](./blockchain-adrs/ADR-015-approval-subgroup-selection.md), `MAX_AGGREGATED_SIGNATURES = 50` is the default. Per [`moonblokz-blockchain-architecture.md`](./moonblokz-blockchain-architecture.md) §6.5, the `ApprovalAccumulator` allocates a fixed `MAX_BLOCK_SIZE` buffer (~2 KB) that is crypto-agnostic; BLS aggregation packs roughly 5-10× more supporters into the same buffer than Schnorr (per-supporter cost ~4 B with BLS vs ~36 B with Schnorr). What remains open is whether future crypto backends introduce new aggregation primitives that change this tradeoff.
+Partly resolved. Per [ADR-015](./blockchain-adrs/ADR-015-approval-subgroup-selection.md), `MAX_AGGREGATED_SIGNATURES = 50` is the default; the chain also declares it as `max_aggregated_signatures` (ID 5, default 50, bounded by the backend constant; [Configuration Module Specification](./moonblokz-configuration-specification.md) §4.1). Per [`moonblokz-blockchain-architecture.md`](./moonblokz-blockchain-architecture.md) §6.5, the `ApprovalAccumulator` allocates a fixed `MAX_BLOCK_SIZE` buffer (~2 KB) that is crypto-agnostic; BLS aggregation packs roughly 5-10× more supporters into the same buffer than Schnorr (per-supporter cost ~4 B with BLS vs ~36 B with Schnorr). What remains open is whether future crypto backends introduce new aggregation primitives that change this tradeoff.
 
 ### 3. Random subgroup selection
 
@@ -410,15 +372,15 @@ Resolved by [ADR-015](./blockchain-adrs/ADR-015-approval-subgroup-selection.md).
 
 ### 5. Mutable configuration support
 
-Addressed. [`moonblokz-blockchain-architecture.md`](./moonblokz-blockchain-architecture.md) §11 records the `ChainConfigTrait` surface (optional active-configuration handle, tentative/durable state per FR8, lock/discard per FR17) that the blockchain consumes via a trait handle, with the state, the parameter registry, and the FR56 mini-VM living in the `moonblokz-configuration` and `moonblokz-vm` crates per [Configuration Module Specification](./moonblokz-configuration-specification.md). What remains open is not the mechanism but two value-level decisions: the defaults of the parameters that no current source establishes, and whether the active-chain length `W` is chain configuration bounded by a compile-time capacity or a compile-time parameter only. Mid-chain configuration change remains out of scope: the configuration is locked for the lifetime of the chain and no runtime change path exists.
+Addressed. [`moonblokz-blockchain-architecture.md`](./moonblokz-blockchain-architecture.md) §11 records the `ChainConfigTrait` surface (optional active-configuration handle, tentative/durable state per FR8, lock/discard per FR17) that the blockchain consumes via a trait handle, with the state, the parameter registry, and the FR56 mini-VM living in the `moonblokz-configuration` and `moonblokz-vm` crates per [Configuration Module Specification](./moonblokz-configuration-specification.md). The value-level questions are settled too: every registry parameter has a code-baked default ([Configuration Module Specification](./moonblokz-configuration-specification.md) §4.1), and `W` is chain configuration (ID 21) bounded at acceptance by the compile-time capacity `SNAKE_CHAIN_LENGTH_MAX` ([Configuration Module Specification](./moonblokz-configuration-specification.md) §6; [architecture](./moonblokz-blockchain-architecture.md) §5). Mid-chain configuration change remains out of scope: the configuration is locked for the lifetime of the chain and no runtime change path exists.
 
 ### 6. Exact long-disconnect recovery strategy
 
-Part IV clearly states that once active-chain overlap is gone, resynchronization fails. It does not yet define any alternate recovery path such as trusted snapshots, external rebootstrap, or assisted reseeding.
+Out of MVP scope: the node logs `long-disconnect-detected` and continues on its own chain, forming a permanent fork; resynchronization needs operator action ([Blockchain PRD](./moonblokz-blockchain-prd.md) FR60). The post-MVP concept is [OG-006](./moonblokz-open-gaps-register.md).
 
 ### 7. Chain-config payload envelope vs. open parameter catalog
 
-The outer chain-config payload envelope is now fixed: it carries canonical configuration-content bytes plus a content-signature by node `#0`'s registering key, and replay chain-config blocks reproduce both byte-for-byte. The framing of the configuration content is also fixed — an override set of `config_key` / `config_value_length` / `config_value` entries prefixed by a `config_value_count`, where any parameter absent from the payload falls back to its code-defined default (see the algorithm model's [configuration-content override-set structure](./moonblokz-blockchain-algorythm.md#configuration-content-override-set-structure)). The inner parameter catalog is fixed too: a single flat key space shared by every consuming subsystem, with the key byte's high bit selecting between a literal and a bytecode value, and the registry itself treated as permanent wire format (see the algorithm model's [configuration-content override-set structure](./moonblokz-blockchain-algorythm.md#configuration-content-override-set-structure) and [the Configuration Module Specification](./moonblokz-configuration-specification.md) §4).
+Resolved ([Configuration Module Specification](./moonblokz-configuration-specification.md) §3–§4). The outer chain-config payload envelope is now fixed: it carries canonical configuration-content bytes plus a content-signature by node `#0`'s registering key, and replay chain-config blocks reproduce both byte-for-byte. The framing of the configuration content is also fixed — an override set of `key_byte` / `value_length` / `value` entries prefixed by a `config_value_count`, where any parameter absent from the payload falls back to its code-defined default (see the algorithm model's [configuration-content override-set structure](./moonblokz-blockchain-algorythm.md#configuration-content-override-set-structure)). The inner parameter catalog is fixed too: a single flat key space shared by every consuming subsystem, with the key byte's high bit selecting between a literal and a bytecode value, and the registry itself treated as permanent wire format (see the algorithm model's [configuration-content override-set structure](./moonblokz-blockchain-algorythm.md#configuration-content-override-set-structure) and [the Configuration Module Specification](./moonblokz-configuration-specification.md) §4).
 
 ## Practical Engineering Cautions
 
@@ -465,7 +427,7 @@ The safe interpretation is:
 
 - some behaviors are stable enough to structure code around,
 - some parameters are intentionally configurable,
-- and some critical mechanics are still pending future design work.
+- and the remaining open mechanics are tracked in the [Open Gaps Register](./moonblokz-open-gaps-register.md).
 
 ## Architect View: Suggested Boundary Discipline
 
@@ -480,7 +442,7 @@ Architecturally, the combined logic should eventually be implemented with a clea
 - packet fragmentation and reassembly,
 - and policy/configuration values.
 
-This separation should make later evolution easier when data structures, communication details, and cryptographic evidence become more concrete.
+This separation keeps later evolution manageable; the realized crate and module boundaries are in [`moonblokz-blockchain-architecture.md`](./moonblokz-blockchain-architecture.md) §2 and §4.
 
 ## Related Documents
 

@@ -72,6 +72,7 @@ This document explains:
 - flash and storage-geometry gaps such as unquantified wear-lifetime and the storage slot-count divisor verification item,
 - telemetry deployment-model and docs-vs-code drift across Probe, HUB, Collector, CLI, and Update Server,
 - the accepted MVP no-saturation-handling stance for bounded UTXO retention,
+- the blockchain specification gaps for the approval-evidence byte encoding and the missing chain-config mining-reward rule,
 - and the post-MVP open questions around dynamic custodian fees, long-disconnect recovery, and promoting processing to a concurrent-ingestion lifecycle state.
 
 It is explicitly **not authoritative**: each entry links to the source document where the underlying gap, drift, limitation, or open question is defined. Use this file before planning work that depends on unresolved deployment constraints, telemetry interoperability assumptions, UTXO saturation behavior, or long-disconnect recovery.
@@ -204,7 +205,7 @@ This document explains:
 - how canonical binary representation, serialization, and radio packetization affect design,
 - how processing-state restart policy, pruning cost, mempool behavior, and branch-switch recomputation affect engineering design,
 - which values should remain configurable,
-- and which details must remain open until later series parts define them.
+- and which article-era gaps are now settled, with pointers to the requirement, architecture, or configuration source that settles each.
 
 Use this file when you want implementation guidance that complements the conceptual and algorithm documents without guessing beyond the source material.
 

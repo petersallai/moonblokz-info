@@ -157,7 +157,7 @@ The chosen conceptual response is `snake_chain`:
 
 - the chain has a bounded active length,
 - when a new block arrives, the oldest block is eventually dropped,
-- and any critical information that would otherwise be lost must be reintroduced at the tail of the chain.
+- and when a new head would push out a block carrying essential state, that same head extension must replay it, so the tail never drops unpreserved state ([Blockchain PRD](./moonblokz-blockchain-prd.md) FR48).
 
 This is why the model is called `snake_chain`: the head moves forward while the tail also moves forward.
 
@@ -170,10 +170,12 @@ The combined model implies a practical lifecycle rather than one uniform runtime
 Conceptually, MoonBlokz operates in **two phases** joined by a single validating **processing transition**:
 
 - **collecting phase** — the node gathers blocks and looks for a dominant chain candidate,
-- **processing transition** — once a candidate chain of sufficient length has been found, the node reconstructs and validates the state that chain implies; this is a transient pass rather than a resting phase, and it has two outcomes: if every validation passes the node advances to the ready phase, and if a contradiction surfaces the candidate is rejected and the node falls back to the collecting phase to keep looking,
+- **processing transition** — once a candidate segment satisfies an FR2 stopping condition (a connected segment reaching genesis, or one at least as long as the `snake_chain` window, in either case containing a chain-config block), the node reconstructs and validates the state that chain implies; this is a transient pass rather than a resting phase, and it has two outcomes: if every validation passes the node advances to the ready phase, and if a contradiction surfaces the candidate is rejected and the node falls back to the collecting phase to keep looking,
 - **ready phase** — the node tracks an active chain, validates new arrivals, and maintains bounded retention.
 
 This lifecycle matters because MoonBlokz does not start from immediate full confidence. It must first discover, then reconstruct-and-validate, and only after that operate continuously. The companion algorithm document describes the transitions and operational consequences in more detail; the authoritative lifecycle contract is the [Blockchain PRD](./moonblokz-blockchain-prd.md) FR1–FR5 (the processing transition, its non-resumability, and the FR5 atomic recovery that returns a failed processing pass to the collecting phase).
+
+The genesis node is the exception: `initiateGenesis` durably locks the configuration and enters ready directly, without collecting or processing ([Blockchain PRD](./moonblokz-blockchain-prd.md) FR54).
 
 ## Dominant Chain Acquisition as the First Objective
 
@@ -187,25 +189,13 @@ This means startup behavior is biased toward:
 
 This emphasis fits the intended environment. On unreliable radio, recovering enough shared active state quickly can matter more than reconstructing the entire historical tree perfectly.
 
+Concretely, the collecting phase picks the qualifying segment with the highest tip sequence (lowest tip hash on ties). This is only a bootstrapping choice: once ready, branch value decides the authoritative chain and may switch away from it ([Blockchain PRD](./moonblokz-blockchain-prd.md) FR2, FR21–FR23).
+
 ## Staged Validation
 
-The todo material reinforces an important conceptual reading of the earlier articles: block handling does not have to collapse into a single yes-or-no acceptance moment.
+Block handling is not a single yes-or-no moment. A block is stored unless intake-time (Tier 1) checks give exact evidence of invalidity ([Blockchain PRD](./moonblokz-blockchain-prd.md) FR16). It then moves through three statuses — **Stored**, **Connected** (its ancestry reaches the active chain and Tier 2 passes), and **Active** (verified at Tier 3 against active-chain-derived state) — and an invalid block is deleted rather than kept as a status (FR9). Only Active blocks count as confirmed.
 
-A block may be:
-
-- structurally parseable,
-- worth storing,
-- connected to known ancestry,
-- and still not yet fully validated against all state-dependent rules.
-
-MoonBlokz should therefore be understood as allowing **staged validation**:
-
-- parsing and storage can happen first,
-- branch connectivity can be established next,
-- full semantic validation may require more chain context,
-- and active-chain selection can remain provisional while that context is still being reconstructed.
-
-This follows naturally from unreliable communication, bounded retention, and the late availability of some required state. The algorithm document translates this idea into a concrete block-acceptance pipeline and block-status progression model.
+This staging follows from unreliable communication, bounded retention, and the late availability of some required state.
 
 ## What Must Survive Tail Deletion
 
@@ -235,7 +225,7 @@ Conceptually, balance blocks are compact checkpoints for the known-node part of 
 
 ### 3. Chain-config blocks
 
-These store the chain configuration. The article treats configuration as immutable after initialization in the current model.
+These store the chain configuration, signed by node #0 and locked for the lifetime of the chain; every replay carries byte-identical content ([Blockchain PRD](./moonblokz-blockchain-prd.md) FR7, FR8).
 
 This means the configuration is not just deployment metadata. It is part of durable chain state and must remain available inside the active chain.
 
@@ -251,9 +241,9 @@ Part III focused on recovering enough of the same block-tree. Part IV added the 
 
 Under `snake_chain`, consistency means more than sharing branch structure. It also means:
 
-- the active chain still contains all node balances needed to reconstruct the current balance model,
-- the active chain still contains the chain configuration,
-- and any live UTXOs that would otherwise be lost have been reintroduced before their source block disappears.
+- every registered node still has at least one seed source — a balance-block entry or its registration — inside the active window ([Blockchain PRD](./moonblokz-blockchain-prd.md) FR50),
+- the active chain still contains the chain configuration (FR49),
+- and every still-unspent UTXO of a dropping block is carried forward by the head extension that drops it, reduced by the custodian fee or discarded below it (FR51).
 
 So consistency becomes both:
 
@@ -265,7 +255,7 @@ So consistency becomes both:
 The core preservation rule of Part IV is simple conceptually:
 
 - when an essential block is about to fall off the tail,
-- the information that must survive is appended again near the head.
+- the information that must survive is carried by the very head extension that would drop it ([Blockchain PRD](./moonblokz-blockchain-prd.md) FR48–FR51).
 
 Part V makes clear that this preservation strategy also depends on compact representations:
 
@@ -282,7 +272,7 @@ Part V adds a major conceptual principle: MoonBlokz avoids timestamp-based ident
 Instead:
 
 - block order is represented by chain sequence,
-- balance-style transactions use `anchor_sequence` plus free-form comment data to avoid accidental duplication,
+- balance-style transactions are identified by their full content including `anchor_sequence` and comment, and accepted only while `anchor_sequence` lies within the active window; registrations are unique by `new_public_key`, complex transactions by their full input set ([Blockchain PRD](./moonblokz-blockchain-prd.md) FR14),
 - and UTXO spending uses one-time consumption semantics rather than global-time ordering.
 
 Conceptually, this reflects the same anti-centralization choice seen elsewhere in the series: MoonBlokz avoids relying on globally synchronized clocks because that would introduce external infrastructure dependency and security risk.
@@ -327,7 +317,7 @@ The concept aligns with several decisions that are already part of the MVP model
 
 ### Open questions for the post-MVP design
 
-The concept introduces tensions that a post-MVP requirement and ADR pass must resolve. They are deliberately left open here:
+The concept introduces tensions that a post-MVP requirement and ADR pass must resolve; they are tracked as OG-005 in the [Open Gaps Register](./moonblokz-open-gaps-register.md). They are deliberately left open here:
 
 1. **Sampling moment.** “The count of unspent UTXOs on the active chain” must pin down exactly when the count is sampled inside the UTXO carry-forward flow, so that every node replaying the same active-chain state arrives at the same fee. Candidate moments include: at the start of carry-forward processing for the dropping tail block, per individual UTXO before it is reduced, or once per accepted block. Each choice has slightly different replay semantics and the post-MVP design must commit to one.
 2. **Cross-block consistency under chain switch.** Chain-switch reconciliation can change which blocks are on the active chain, which changes the unspent count, which retroactively changes the fee that would have applied. The post-MVP design must decide whether previously-applied fees are recomputed against the new active chain or whether the fee captured at acceptance time is canonical and carried forward unchanged.
@@ -344,11 +334,11 @@ Part IV introduced the conceptual model for adding new nodes, and Part V clarifi
 
 MoonBlokz uses a hybrid registration model:
 
-- nodes cannot simply self-join for free by default,
+- a new node cannot register itself; an existing node with enough balance must register it, and the new node receives the next node id ([Blockchain PRD](./moonblokz-blockchain-prd.md) FR6),
 - every node can register a new node,
 - registration has a configurable price,
 - the new key must prove possession of its private key,
-- and the registration price is absorbed by the network rather than paid to a specific node; the ordinary transaction fee is a distinct amount and is handled separately.
+- and the registration price is absorbed by the network rather than paid to a specific node; the ordinary transaction fee is a distinct amount credited to the block creator (FR6, FR36).
 
 The conceptual reason is that adding nodes is not free for the system. More nodes mean:
 
@@ -363,6 +353,8 @@ Part IV defines a two-block genesis model:
 - **Block #0** is a transaction block created by node `#0`, containing node `#0` registration and an initial self-transfer representing the initial currency.
 - **Block #1** is the chain configuration block, also created by node `#0`.
 
+Genesis is a local `initiateGenesis` command available only to node #0; it fixes the initial currency in block #0 (not in the configuration), durably locks the configuration and enters ready directly ([Blockchain PRD](./moonblokz-blockchain-prd.md) FR54).
+
 Conceptually, this means MoonBlokz does not begin from a purely symbolic genesis. It begins from the smallest chain state that can bring the system into normal operation.
 
 ## Efficient Distribution of Balance Blocks
@@ -373,7 +365,7 @@ Conceptually, this matters because:
 
 - a new node needs all node balances from the living chain,
 - balance blocks that are too clustered can increase transaction delay,
-- and replaying dropped balance blocks gives the system a chance to gradually smooth their distribution.
+- and balance blocks are actively spread: besides tail-imminent replay, a spacing trigger emits fully packed balance blocks that refresh the oldest seed sources first ([Blockchain PRD](./moonblokz-blockchain-prd.md) FR50).
 
 This means `snake_chain` is not only about keeping data alive. It is also about arranging active-state data in a way that supports practical network performance.
 
@@ -381,9 +373,9 @@ This means `snake_chain` is not only about keeping data alive. It is also about 
 
 The approval and branch-selection logic from Part III still applies, but Part IV adds a stronger preservation rule:
 
-- if a chain-config block or balance block is dropped from the chain,
-- repeating that block type at the tail takes precedence,
-- even if an approval-related block also needs to be added.
+- when a tail block carrying essential state (chain configuration, a node's latest seed source, or unspent UTXOs) is about to drop,
+- its replay at the head takes precedence over ordinary transactions,
+- and over approval evidence blocks ([Blockchain PRD](./moonblokz-blockchain-prd.md) FR29, FR49).
 
 Conceptually, preserving essential active-state data is the stronger rule because losing it would make the chain itself no longer reconstructable by active participants.
 
@@ -404,38 +396,19 @@ The conceptual claim of the series is that these are practical compromises requi
 
 Bounded storage limits not only the active chain window but also how many non-active branches can be preserved in parallel.
 
-MoonBlokz may therefore forget some branches deliberately:
-
-- branch tips still compete for scarce storage,
-- older or weaker branch endings may become less worth retaining,
-- and pruning a branch can be an operational choice rather than proof that the branch was impossible.
+MoonBlokz therefore forgets some branches deliberately: under capacity pressure the node evicts exactly one side branch — the one with the lowest branch value, with deterministic tie-breaks — and never active-chain blocks ([Blockchain PRD](./moonblokz-blockchain-prd.md) FR57). An evicted branch is not thereby proven invalid.
 
 The MoonBlokz block-tree is therefore not a full immutable historical forest. It is a bounded working set of branch knowledge maintained for continued operation under constrained storage.
 
 ## Immutable but Late-Validated Chain Configuration
 
-The todo material suggests a useful clarification of the current configuration model.
-
-Chain configuration is still treated as **immutable durable state** in the current MoonBlokz design. However, complete validation of that configuration may depend on having enough blockchain context available first.
-
-Both statements can therefore be true at the same time:
-
-- the chain configuration does not change during normal operation in the current model,
-- but a node may only confirm all configuration-dependent rules after enough chain state has been reconstructed.
+Chain configuration is immutable for the lifetime of the chain, yet committed in stages. Its node #0 signature is checked at intake. In collecting state the first acceptable configuration is loaded only tentatively, and checks derived from it cannot yet invalidate blocks. At the processing→ready transition it is durably locked once, after which any differing chain-config block is silently discarded ([Blockchain PRD](./moonblokz-blockchain-prd.md) FR7, FR8, FR9, FR17; [Configuration Module Specification](./moonblokz-configuration-specification.md) §8).
 
 This is another example of MoonBlokz favoring staged reconstruction over instant complete understanding.
 
 ## Local Query Surface as a Product Boundary
 
-The current design direction adds one more useful conceptual boundary: the local side of the blockchain module is not only for debugging or maintenance. It is also the foundation of a future payment-facing interface.
-
-That local-facing side should therefore expose active-chain-centered answers rather than full internal branch observability by default.
-
-Examples include:
-
-- transaction status queries that distinguish between unknown, present in mempool, and present in the active chain,
-- active-chain block lookup rather than arbitrary block-tree exploration,
-- and balance queries that can optionally report how deeply the visible answer is supported within the active chain.
+The local side of the blockchain module is not only for debugging or maintenance; it is also the foundation of a future payment-facing interface. It answers only from the active chain and the mempool: transaction status (Unknown, In-mempool, or Confirmed with active-chain depth), node balance with optional depth, address UTXOs, and active-chain block retrieval. Outside ready state it reports not-ready ([Blockchain PRD](./moonblokz-blockchain-prd.md) FR1, FR40–FR42).
 
 This keeps the internal block-tree and staged-validation complexity inside the blockchain module while still exposing a useful operational truth surface to higher-level local consumers.
 
@@ -448,7 +421,7 @@ If a node is disconnected so long that the entire active chain window moves past
 - the node can no longer resynchronize,
 - and the network suffers a permanent fork relative to that node’s history.
 
-This is one of the most important conceptual boundaries in the current MoonBlokz model. The system is designed for long but still bounded disconnection tolerance, not arbitrary offline recovery after unlimited time.
+This is one of the most important conceptual boundaries in the current MoonBlokz model. The system is designed for long but still bounded disconnection tolerance, not arbitrary offline recovery after unlimited time. The condition is detected and logged but not recovered in the MVP; recovery needs operator action ([Blockchain PRD](./moonblokz-blockchain-prd.md) FR60; post-MVP concept tracked as OG-006 in the [Open Gaps Register](./moonblokz-open-gaps-register.md)).
 
 ## Long-Disconnect Recovery (Post-MVP Concept)
 
@@ -485,7 +458,7 @@ The concept aligns with several decisions that are already part of the MVP model
 
 ### Open questions for the post-MVP design
 
-The concept introduces tensions that a post-MVP requirement and ADR pass must resolve. They are deliberately left open here:
+The concept introduces tensions that a post-MVP requirement and ADR pass must resolve; they are tracked as OG-006 in the [Open Gaps Register](./moonblokz-open-gaps-register.md). They are deliberately left open here:
 
 1. **Modification of the current long-disconnect intake behavior.** The current ready-state rule discards too-new blocks entirely. The watcher concept requires retaining at least the recovery anchor outside the regular block-tree, so the intake rule for too-new blocks needs an explicit watcher-mode exception.
 2. **Same-chain-only recovery as an explicit boundary.** The concept recovers only from a disconnect on the same chain (same locked chain-configuration content). Cross-chain merging remains out of scope, as in the MVP; the post-MVP wording must state this explicitly so the durable-lock failure path is treated as expected behavior rather than as a recovery defect.
@@ -529,7 +502,7 @@ The concept aligns with several ideas already part of the MVP model:
 
 ### Open questions for the post-MVP design
 
-The concept introduces tensions that a post-MVP requirement and ADR pass must resolve. They are deliberately left open here:
+The concept introduces tensions that a post-MVP requirement and ADR pass must resolve; they are tracked as OG-007 in the [Open Gaps Register](./moonblokz-open-gaps-register.md). They are deliberately left open here:
 
 1. **Non-resumability contract.** The current pass is a single forward pass that is not resumable across restarts (FR3 / FR59). A concurrent-ingestion processing state must decide whether the reconstruction pass stays atomic-and-non-resumable while only intake runs alongside it, or whether processing itself becomes interruptible and must define resume semantics. This directly affects FR3 / FR59 and must be reconciled with them.
 2. **Atomic-recovery scope on failure.** FR5 atomic recovery today discards the forward-traversal working set in full on any contradiction. The design must define precisely which state is rolled back and which concurrently-ingested blocks survive into the fallback collecting round, so that recovery stays atomic without throwing away independently-valid intake.
@@ -563,7 +536,7 @@ Complex and privacy-preserving transactions consume more bytes and therefore mor
 
 ### UTXO growth can stall the chain
 
-If live UTXOs occupy all available chain space, the chain may temporarily stop accepting new transactions until repeated custodian-fee reductions shrink the UTXO set. A post-MVP concept for making the custodian fee respond to active-chain UTXO saturation is captured under [Dynamic Custodian Fee (Post-MVP Concept)](#dynamic-custodian-fee-post-mvp-concept); the limitation above describes the MVP behavior under a fixed-by-default custodian fee and is not changed by the existence of that concept section.
+If live UTXOs occupy all available chain space, the chain may temporarily stop accepting new transactions until repeated custodian-fee reductions shrink the UTXO set. A post-MVP concept for making the custodian fee respond to active-chain UTXO saturation is captured under [Dynamic Custodian Fee (Post-MVP Concept)](#dynamic-custodian-fee-post-mvp-concept); the limitation above describes the MVP behavior, where the custodian fee is an input-less chain-config value and no saturation handling exists ([Blockchain PRD](./moonblokz-blockchain-prd.md) FR51, FR52, FR56; OG-005), and is not changed by the existence of that concept section.
 
 ### Long disconnects can become permanent forks
 
@@ -573,9 +546,9 @@ If no common active-chain overlap remains, rejoin is impossible in the current M
 
 On constrained hardware the processing reconstruct-and-validate pass can be slow, and in the MVP it behaves as a transient transition rather than a resting state that keeps ingesting blocks. A post-MVP concept for promoting processing to a first-class operating state that continues to accept blocks while it runs is captured under [Processing as a Concurrent-Ingestion State (Post-MVP Concept)](#processing-as-a-concurrent-ingestion-state-post-mvp-concept); the limitation above describes the MVP behavior and is not changed by the existence of that concept section.
 
-### Configuration mutability is deferred
+### Chain configuration is fixed for the chain's lifetime
 
-The article mentions future configuration changes as a possibility, but the current conceptual model treats chain configuration as fixed after initialization.
+Configuration is durably locked once and no runtime change path exists; blocks with differing configuration are discarded, and reconciliation across configuration boundaries is out of scope ([Blockchain PRD](./moonblokz-blockchain-prd.md) FR8, FR17, NFR12). The article mentions future configuration changes as a possibility, but the PRD lists no such post-MVP extension.
 
 ## Architect View: Structural Meaning of Parts III, IV, and V
 
