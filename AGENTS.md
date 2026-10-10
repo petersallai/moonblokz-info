@@ -57,6 +57,8 @@ This applies especially to cross-cutting facts: single values or rules that seve
 
 A consolidation document, such as the System Constraints & Limits Reference, may gather cross-cutting facts in one place for navigation and may restate a value with a one-line implication and a link to its authoritative home. Such a document is explicitly non-authoritative and must never become a second source of truth; on any divergence the linked source wins.
 
+The blockchain Product Requirements Document and Architecture Decision Document have no second copy: `_bmad-output/planning-artifacts/prd.md` and `architecture.md` are symbolic links to them, so BMAD workflows read and edit the knowledge-base files directly. Never replace such a link with a regular file; a tool that would rewrite it must write through it.
+
 When a cross-cutting fact changes, update its authoritative home and reconcile every restatement and link to it in the same change. A stale duplicate left elsewhere is a knowledge-base inconsistency and must be handled under the Source Fidelity and Post-Change Validation rules.
 
 ## FR Reference Namespacing

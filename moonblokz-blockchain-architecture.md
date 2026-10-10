@@ -14,6 +14,7 @@ The behavioral requirements (FR1–FR69) remain anchored in [`moonblokz-blockcha
 - Source artifact: `_bmad-output/planning-artifacts/architecture.md`.
 - Imported into the `moonblokz-info` knowledge base on 2026-06-17.
 - Frontmatter from the originating workflow output was stripped during import; the body below is otherwise byte-identical to the source artifact at import time.
+- **2026-10-10 single source:** `_bmad-output/planning-artifacts/architecture.md` is now a symbolic link to this file, so BMAD workflows read and edit it directly and no separate copy is kept. The two copies had drifted in both directions; they were merged by keeping this file's English wording, `MAX_NODES` roster note, mempool `own_node_id`, 72 B `ChainHeadEntry`, RAM budget and decision row 24, and taking from the BMAD copy the Story 5.10 init model (single `init`, `initialize_from_storage(&mut self, now) -> InitOutcome`), `NextCall` without `Immediate`, the `connected`-only `flags` note, and the as-built FR59 restart stack row — each checked against `moonblokz-blockchain/src`.
 
 ## Working Artifacts (Iteration History)
 
@@ -88,9 +89,9 @@ The architecture work was reframed from the BMAD default deliverables (generic t
 
 ### 1.3 The single-outcome scheduling-pull API pattern
 
-Every state-changing call returns **at most ONE outcome** (one semantic effect: one outbound, one classification, one phase transition) and a `NextCall` deadline (`Immediate` / `At(absolute_monotonic_ms)` / `Idle`) telling the bridge layer when to call back.
+Every state-changing call returns **at most ONE outcome** (one semantic effect: one outbound, one classification, one phase transition) and a `NextCall` deadline (`At(absolute_monotonic_ms)` / `Idle`) telling the bridge layer when to call back.
 
-If the blockchain has more work pending (e.g., a queued parent-recovery request after relaying a block), it returns `NextCall::Immediate` and emits the second outcome on the next call. Read-only queries do **not** change scheduling and do **not** carry a `NextCall`.
+If the blockchain has more work pending (e.g., a queued parent-recovery request after relaying a block), it returns `NextCall::At(now)` (the caller-supplied monotonic time — any now-or-past instant fires immediately) and emits the second outcome on the next call. Read-only queries do **not** change scheduling and do **not** carry a `NextCall`.
 
 **Why:**
 1. Radio outgoing queue overflow prevention — many FRs specify required delays between protocol actions; one-outcome-per-call lets the blockchain self-regulate its outbound rate naturally.
@@ -264,13 +265,13 @@ impl<...> Blockchain<...> {
         initial_chain_config_bytes: &[u8],
     ) -> Result<GenesisBlocks, GenesisRejectReason>;
 
-    // ⚠️ INCONSISTENCY TO RECONCILE (flagged per governance; resolution left to
-    // the maintainer): with genesis now `init` + `process_genesis`, the
-    // single-constructor model supersedes the "three separate `initialize_*`
-    // constructors" of decision row 18. The `initialize_join` / restart surfaces
-    // below still describe the old constructor shape; they should be reframed as
-    // `init` + a role-specific follow-up (join: mesh intake; restart:
-    // an FR59 storage-load method) once that redesign is decided.
+    // RECONCILED (Story 5.10, 2026-09-21). The single-constructor model won:
+    // every node is built by `init`, and the boot mode is a role-specific
+    // follow-up on the constructed instance — genesis `process_genesis`, and
+    // join/restart the one `initialize_from_storage` below (empty storage is the
+    // join path, a populated store the FR59 restart). No `initialize_join`
+    // constructor and no `InitJoinOutcome` / `InitRestartOutcome` were ever
+    // added; the single `InitOutcome` carries all of it.
 
     /// Initialize as a new node joining an existing network.
     /// Starts in `Collecting` phase; chain truth is acquired from the mesh.
@@ -284,20 +285,21 @@ impl<...> Blockchain<...> {
     ) -> CallResult<InitJoinOutcome>;
 
     /// FR59 — Restart from durable storage after a power cycle.
-    /// Reads `own_node_id` from storage; `node_zero_pk` is caller-supplied
-    /// from code (the out-of-band firmware trust anchor that identifies the
-    /// chain, per decision rows 1 / 20), never read from storage — corrupted
-    /// storage therefore cannot forge it. Then enters collecting state
-    /// unconditionally: it rebuilds the block-tree from the retained blocks
-    /// and, once the FR2 stopping conditions hold, runs the FR3 processing
-    /// pass through to ready. No lifecycle-state marker is persisted; any
-    /// prior in-flight processing state is discarded.
-    pub fn initialize_from_storage(
-        node_zero_pk: &[u8],
-        crypto: C, storage: S, chain_config: X,
-        prng_seed: u64,
-        now: u64,
-    ) -> CallResult<InitRestartOutcome>;
+    ///
+    /// **Corrected by Story 5.10 (2026-09-21).** This previously read "resumes
+    /// the previously persisted lifecycle phase (Processing → Ready)", which
+    /// contradicts PRD FR59 twice over: no lifecycle marker is persisted, and
+    /// the module "enters collecting state unconditionally". It also said the
+    /// node reads `node_zero_pk` from storage — decision row 1 below rules the
+    /// trust anchor a construction parameter in every init path precisely so a
+    /// corrupted store cannot supply a false one.
+    ///
+    /// As shipped it is a `&mut self` follow-up on the single `init`
+    /// constructor, not a constructor of its own (see §3.6): it reads the
+    /// control plane once, restores the FR8/FR54 durable lock from it, rebuilds
+    /// the block-tree / linkage / `chain_heads` from the retained slots, and
+    /// then drives the *same* FR2/FR3/FR6 acquisition spine a fresh join drives.
+    pub fn initialize_from_storage(&mut self, now: u64) -> CallResult<InitOutcome>;
 
     // === Intake (state-changing) (4) ===
     pub fn receive_block(&mut self, block: BlockView<'_>, now: u64)
@@ -333,8 +335,7 @@ Every state-changing method returns `CallResult<OutcomeEnum>` where `CallResult<
 
 ```rust
 pub enum NextCall {
-    Immediate,            // call back ASAP — pending internal work
-    At(u64),              // absolute monotonic ms
+    At(u64),              // absolute monotonic ms; At(now) (or any past instant) = call back ASAP
     Idle,                 // nothing scheduled
 }
 
@@ -432,7 +433,7 @@ Construction is a single infallible in-place constructor, `init`, used by **ever
 |---|---|---|---|
 | Genesis (node #0) | `init(...)` then `process_genesis(...)` — creates Blocks #0 **and** #1 in the one `process_genesis` call | Chain is empty; caller holds the node-zero key | `Ready` — node #0 authored a complete chain, so no FR2 acquisition / FR3 reconstruction is needed (join/restart still pass through `Collecting`) |
 | Join | `initialize_join(...)` *(to be reframed as `init` + mesh intake)* | Storage is empty; `node_zero_pk` known a priori (trust anchor) | `Collecting` |
-| Restart | `initialize_from_storage(...)` *(to be reframed as `init` + an FR59 storage-load)* | Storage non-empty; `node_zero_pk` supplied from code (trust anchor); no lifecycle phase persisted | `Collecting` (→ `Processing` → `Ready` once FR2 holds) |
+| Restart | `init(...)` then `initialize_from_storage(now)` — the FR59 storage-load follow-up (Story 5.10) | Storage non-empty. **No** lifecycle phase is persisted (FR59) | `Collecting` unconditionally, then the ordinary `Collecting → Processing → Ready` spine — or it stays `Collecting` when no candidate qualifies |
 
 **Genesis two-block bootstrap** (per `moonblokz-info` Part IV) — both blocks are built in the single `process_genesis` call and returned together so the bridge broadcasts both, lowest-sequence first:
 - **Block #0** — transaction block: node #0's own registration + an initial self-transfer of `initial_total_network_currency`.
@@ -454,11 +455,15 @@ pub enum InitJoinOutcome {
     Rejected(JoinRejectReason),
 }
 
-pub enum InitRestartOutcome {
-    ResumedProcessing,                                 // needs FR3 forward traversal first
-    ResumedReady,                                      // already in Ready
-    Rejected(RestartRejectReason),                     // storage corruption, etc.
-}
+// Superseded (Story 5.10): there is one `InitOutcome` for the single
+// join/restart follow-up, not a separate restart enum. As shipped:
+//   StartedCollecting                 // empty storage - fresh join
+//   ResumedReady                      // rebuilt, and the spine reached Ready
+//   ResumedCollecting                 // rebuilt, no candidate qualified yet
+//   Rejected(RestartRejectReason)     // control plane unreadable / config unusable
+// `ResumedCollecting` is deliberately not called `ResumedProcessing`: FR59
+// persists no phase and the node is in Collecting, so that name would
+// contradict the state it reports.
 
 // TickOutcome — no genesis variant: both genesis blocks come from
 // `process_genesis`, not from a tick (see decision row 19).
@@ -661,7 +666,7 @@ pub(crate) struct ChainHeadEntry {
 - No `head_sequence` cache → resolved via `blocks[head_idx].sequence` (single deref, padding makes the cache free-of-charge anyway)
 - `tail_or_connection_idx` overlaid (state-dependent semantics) → saves 480 B
 - Empty slot sentinel: `head_idx == u32::MAX`
-- No per-head Active flag — active membership is derived globally (`head_idx == active_chain_head_idx`, §6.4).
+- No per-head Active flag — active membership is derived globally (`head_idx == active_chain_head_idx`, §6.4), so `flags` carries only the `connected` bit (FR19).
 
 **Story 4.4 revision (2026-07-12, ratified).** `arrival_timestamp: u64` (the FR18 head-scoped arrival timestamp Story 4.1 deferred here — populated but read by Epic 8 for FR9 Tier 3 block-creation pacing, never a tie-break input) and `missing_parent_hash: [u8; 32]` (a Stored-only cache of the tail-point's `previous_hash`, so the parent-recovery scheduler and mutation event (ii) need no durable-storage read) were added and accepted, taking the entry from 25 B / 1 280 B to 65 B effective / 72 B padded (2 880 B, +1 600 B — trivial against the Schnorr ~67-77 KB margin).
 
@@ -819,7 +824,7 @@ pub struct VoteEngine<const MAX_NODES: usize> {
 | (3) **FR45 block creation** | on_tick → creator.try_create_block → BlockBuilder (~2 KB) → bc.crypto.sign → emit_scratch | **~4 KB** | BlockBuilder is the hot spot |
 | (4) FR23 chain-switch backward walk | reconciliation loop { storage.read_block (~2 KB) → undo } | ~2.2 KB | one Block on stack per iter |
 | (5) FR23 forward walk peak | reconciliation forward → mempool.recheck_eligibility | ~3 KB | accumulated locals |
-| (6) FR59 restart | lifecycle.restart_from_storage → reconciliation.reconstruct loop | ~3 KB | same iter pattern as FR23 |
+| (6) FR59 restart | api.initialize_from_storage → rebuild scan → run_processing_pass loop | ~3 KB | same iter pattern as FR23. As built (Story 5.10) the spine lives in `api.rs`, not in `lifecycle.rs`/`reconciliation.rs`: it drives `run_processing_pass` / `recover_from_failed_pass`, which are `api.rs` methods over private fields, so reaching them from another module would mean widening the field surface for no gain. One owned `Block` per scanned slot, released each iteration. |
 
 **Decision:** the `moonblokz-node-runtime` bridge layer must declare the blockchain hosting embassy task with a **6 KB stack** (not the 4 KB default). Other embassy tasks (radio, USB console) can remain 4 KB.
 
