@@ -15,7 +15,8 @@ If you already know your topic, use this table to jump straight to the relevant 
 | Functional and non-functional requirements (FR/NFR numbers) | Start here to find which requirement covers a topic and how to read just that one: [Blockchain FR/NFR Index](./moonblokz-blockchain-prd-fr-index.md), [Storage FR/NFR Index](./moonblokz-storage-prd-fr-index.md). Full requirement wording: [Blockchain PRD](./moonblokz-blockchain-prd.md) *(authoritative)*, [Storage PRD](./moonblokz-storage-prd.md) *(authoritative)* |
 | Architecture decisions, crate boundaries, public APIs, data-structure layouts | [Blockchain Architecture](./moonblokz-blockchain-architecture.md) *(authoritative)*, [Storage Architecture](./moonblokz-storage-architecture.md) *(authoritative)*, [Blockchain ADR Index](./blockchain-adrs/ADR-INDEX.md) |
 | Chain configuration — wire format, parameter registry, the mini virtual machine, commitment lifecycle | [Configuration Module Specification](./moonblokz-configuration-specification.md) *(authoritative)* |
-| Blockchain behavior — block-tree, branching, `snake_chain`, phases, queries | [Blockchain Concept](./moonblokz-blockchain-concept.md), [Blockchain Algorithm](./moonblokz-blockchain-algorythm.md), [Blockchain Implementation](./moonblokz-blockchain-implementation.md) |
+| Blockchain runtime logic at a glance — lifecycle phases × events, block statuses and check tiers, invariants, derived projections, main flows, what is built | [Blockchain Operating Model](./moonblokz-blockchain-operating-model.md) (first stop; consolidation, the PRD wins) |
+| Blockchain behavior — block-tree, branching, `snake_chain`, phases, queries | [Blockchain Operating Model](./moonblokz-blockchain-operating-model.md), [Blockchain Concept](./moonblokz-blockchain-concept.md), [Blockchain Algorithm](./moonblokz-blockchain-algorythm.md), [Blockchain Implementation](./moonblokz-blockchain-implementation.md) |
 | Cryptography — signatures, aggregation, Schnorr/BLS backends | [Crypto Concept](./moonblokz-crypto-concept.md), [Crypto Algorithm](./moonblokz-crypto-algorythm.md), [Crypto Implementation](./moonblokz-crypto-implementation.md) |
 | Radio mesh — connection matrix, echo mapping, relaying, packetization | [Radio Concept](./moonblokz-radio-concept.md), [Radio Algorithm](./moonblokz-radio-algorythm.md), [Radio Implementation](./moonblokz-radio-implementation.md) |
 | Simulation, historical replay, desktop validation | [Simulator Concept](./moonblokz-simulator-concept.md), [Simulator Algorithm](./moonblokz-simulator-algorythm.md), [Simulator Implementation](./moonblokz-simulator-implementation.md) |
@@ -39,6 +40,23 @@ The asymmetry is intentional: the requirements-first workflow that produces the 
 ## Cross-Cutting References
 
 These documents are organized by topic rather than by subsystem. They consolidate facts that are otherwise spread across multiple subsystem documents so that cross-cutting questions can be answered from one place. They are lookup references, not part of the linear reading order below.
+
+### [MoonBlokz Blockchain Operating Model](./moonblokz-blockchain-operating-model.md)
+
+A one-read consolidation of the blockchain module's runtime logic, built from the FRs it cites.
+
+This document explains:
+
+- the execution model (synchronous core; processing never observable between calls),
+- the lifecycle phases and every transition between them, with trigger, effect and failure path,
+- what each phase does with each event — block, transaction, local submit, support message, tick, query, creator determination,
+- the block status machine: Stored / Connected / Active, the Tier 1–3 check sets, and every transition including deletion and eviction,
+- a catalog of the 41 chain invariants with where each is checked,
+- the derived projections, how each is updated and reverted on a chain switch, and where it lives,
+- the main flows step by step: processing pass, forward extension, chain switch, tail advance and replay, block creation, deviation and approval, transaction lifecycle, restart,
+- and, per row, whether it is built yet and which story owns it.
+
+It is explicitly **not authoritative**: the [Blockchain PRD](./moonblokz-blockchain-prd.md) wins on any divergence. Use it as the first stop for any blockchain-logic question, then read the cited FRs.
 
 ### [MoonBlokz System Constraints & Limits Reference](./moonblokz-system-constraints.md)
 

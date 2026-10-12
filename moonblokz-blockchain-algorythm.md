@@ -1183,6 +1183,7 @@ Architecturally, Parts III, IV, and V imply that the full algorithm has at least
 
 ## Related Documents
 
+- [`moonblokz-blockchain-operating-model.md`](./moonblokz-blockchain-operating-model.md) — the current runtime logic at a glance (phases × events, block statuses, build state), consolidated from the PRD.
 - [MoonBlokz Configuration Module Specification](./moonblokz-configuration-specification.md) — authoritative for the parameter registry whose identifiers and defaults §8 references, and for the resolution model and virtual machine behind the values the algorithms consume.
 - [`moonblokz-blockchain-concept.md`](./moonblokz-blockchain-concept.md) — the conceptual role and design philosophy of the blockchain subsystem.
 - [`moonblokz-blockchain-implementation.md`](./moonblokz-blockchain-implementation.md) — code-level crate structure, APIs, and engineering cautions.
