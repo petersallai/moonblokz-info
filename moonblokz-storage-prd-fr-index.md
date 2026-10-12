@@ -11,7 +11,7 @@ To read just one requirement without reading the file in full:
 
 Search by anchor rather than citing a line: anchors are stable across edits, line numbers are not.
 
-## Functional Requirements (FR1–FR53)
+## Functional Requirements (FR1–FR54)
 
 ### Storage Lifecycle Management
 | FR | Subject |
@@ -30,7 +30,8 @@ Search by anchor rather than citing a line: anchors are stable across edits, lin
 | FR8 | Erase all pages during init() before writing control-plane data |
 | FR9 | Enforce immutable control-plane data after init() |
 | FR10 | Set-once chain-configuration block via set_chain_configuration() |
-| FR11 | Load all control-plane data via load_control_data() |
+| FR11 | Load control-plane data (without the private key) via load_control_data() |
+| FR54 | Load the private key only via load_private_key(), for the node runtime → crypto path |
 | FR12 | Explicit error from load_control_data() when uninitialized |
 | FR13 | Persist control-plane schema fields including version and CRC32 |
 | FR14 | Validate persisted size fields against runtime constants |

@@ -2,7 +2,7 @@
 
 ## Authoritative Source Notice
 
-This document is the **authoritative source** for the `moonblokz-storage` library's functional requirements (FR1–FR53) and Non-Functional Requirements (NFR1–NFR20) as referenced throughout the rest of the MoonBlokz knowledge base.
+This document is the **authoritative source** for the `moonblokz-storage` library's functional requirements (FR1–FR54) and Non-Functional Requirements (NFR1–NFR20) as referenced throughout the rest of the MoonBlokz knowledge base.
 
 When other storage knowledge-base files (concept, algorithm, implementation) cite an FR or NFR by number, the canonical wording of that requirement lives in this file. If any other knowledge-base text appears to diverge from the content here, the divergence must be flagged explicitly per the rule in [`AGENTS.md`](./AGENTS.md), and resolution must be left to the user.
 
@@ -13,6 +13,7 @@ When other storage knowledge-base files (concept, algorithm, implementation) cit
 - Imported into the `moonblokz-info` knowledge base on 2026-06-18.
 - Frontmatter from the originating workflow output was stripped during import; the body below is otherwise byte-identical to the source artifact at import time.
 - The 2026-02-28 edit pass added control-plane management requirements (FR6–FR20), storage layout and capacity updates, explicit control-plane lifecycle mapping in the User Journeys, and a normalized capability-oriented phrasing style across the FR catalog.
+- **2026-10-12 update:** FR11 no longer returns the private key and FR54 adds `load_private_key()` for the node runtime → crypto path, so the blockchain module never receives the key (BC-FR68) *(Project Lead decision)*. Implementation is pending.
 
 ## Related Knowledge-Base Documents
 
@@ -94,7 +95,8 @@ Value proposition: MoonBlokz Storage gives constrained microcontrollers determin
 - Control-plane initialization API: `init(private_key, own_node_id, init_params)` with destructive reset semantics.
 - Indexed block persistence/retrieval with deterministic address derivation.
 - Read-time hash verification and explicit error signaling on invalid data.
-- Control-plane load API: `load_control_data()` returning private key, own node id, init parameters, and optional chain configuration block.
+- Control-plane load API: `load_control_data()` returning own node id, init parameters, and optional chain configuration block — not the private key.
+- Private-key load API: `load_private_key()`, called only by the node runtime to hand the key to the crypto module; the blockchain module never receives the key ([BC-FR68](./moonblokz-blockchain-prd.md)).
 - Chain configuration control-plane API: `set_chain_configuration(Block)` as set-once operation unless full re-init is executed.
 - Replicated control-plane persistence using `CONTROL_PLANE_COUNT` instances, with CRC32 validation and recovery behavior.
 - Storage layout contract where control-plane replicas are stored first at `data_storage_start_address`, and block storage capacity/addressing is computed from the remaining region.
@@ -333,7 +335,8 @@ With a 1-engineer MVP team, scope discipline is critical. Mitigate by excluding 
 - FR8: Storage can erase (set to zero) all control-plane pages and all block-storage pages during `init()` before writing initial control-plane data.
 - FR9: Storage can enforce immutable control-plane initialization data after `init()`, except when `init()` is called again to restart from empty state.
 - FR10: Storage can persist a set-once chain configuration block via `set_chain_configuration(Block)` and return an explicit error if it was already set.
-- FR11: Storage can load all control-plane data through `load_control_data()` and return private key, own node id, init parameters, and optional chain configuration block.
+- FR11: Storage can load the control-plane data through `load_control_data()` and return own node id, init parameters, and optional chain configuration block; it does not return the private key (see FR54).
+- FR54: Storage can return the persisted private key only through a separate `load_private_key()` call. The node runtime uses it to hand the key to the crypto module; the blockchain module, which calls `load_control_data()`, never receives the key ([BC-FR68](./moonblokz-blockchain-prd.md); Project Lead decision, 2026-10-12).
 - FR12: Storage can return an explicit error from `load_control_data()` when storage has not been initialized.
 - FR13: Storage can persist control-plane schema fields including version constant, persisted size fields, `max_block_size`, reserved `chain_config_block` space, and `crc32`.
 - FR14: Storage can validate persisted size fields against runtime constants from the binary and return an explicit error on mismatch.
