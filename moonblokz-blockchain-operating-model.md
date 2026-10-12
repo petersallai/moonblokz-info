@@ -2,7 +2,7 @@
 
 One-read picture of how the `moonblokz-blockchain` module behaves at runtime: which lifecycle phase does what with each event, and how a block moves through its statuses. It is a **consolidation, not a source**: every row cites the requirement that defines it, and the [Blockchain PRD](./moonblokz-blockchain-prd.md) wins on any divergence. Read the cited FR before relying on a detail.
 
-The **Built** columns record implementation state as of 2026-10-12 (`moonblokz-blockchain` at `1496b76`): **built**, **partial**, or **not built**, with the owning story from the BMAD plan (`_bmad-output/planning-artifacts/epics.md`). Update them when a story lands.
+The **Built** columns record implementation state — **built**, **partial**, or **not built** — with story numbers from the BMAD plan (`_bmad-output/planning-artifacts/epics.md`): a number inside `built (…)` or after `built in` names the story that delivered that part; any other number names the story that owns the remaining work. They are kept current under [`AGENTS.md`](./AGENTS.md) (Operating Model Maintenance); last full review 2026-10-12 against `moonblokz-blockchain` `1496b76`.
 
 Sections: 1 execution model · 2 lifecycle transitions · 3 event × phase matrix · 4 block statuses · 5 invariant catalog · 6 derived projections · 7 main flows.
 
@@ -121,9 +121,9 @@ What a valid chain must satisfy, grouped by scope. **Checked** names where the r
 
 | # | Invariant | FRs | Checked | Built |
 |---|---|---|---|---|
-| I-16 | The creator is credited `mined_amount` + fees + `replay_block_reward` (if the block carries replay) once per block, and the resulting balance is consistent; #0 / #1 exempt | FR6, FR36, FR54 | T3; pass | partial — `mined_amount` + fees credited in the pass (5.3); replay reward and the consistency check 7.2, Epic 9 |
-| I-17 | No negative balance: initializers cover amount / price plus fee and every balance input | FR6, FR9 | T3; pass | partial — pass built for seeded nodes (5.4); arithmetic still saturating (6.0) |
-| I-18 | `registration_price` is absorbed by the network; the fee goes to the creator | FR6, FR36 | T3; pass | partial — built in the pass; price not yet checked against configuration (I-36) |
+| I-16 | The creator is credited `mined_amount` + fees + `replay_block_reward` (if the block carries replay) once per block, and the resulting balance is consistent; #0 / #1 exempt | FR6, FR36, FR54 | T3; pass | partial — `mined_amount` + fees credit built (5.3); replay reward and the consistency check 7.2, Epic 9 |
+| I-17 | No negative balance: initializers cover amount / price plus fee and every balance input | FR6, FR9 | T3; pass | partial — seeded nodes built (5.4); saturating arithmetic 6.0 |
+| I-18 | `registration_price` is absorbed by the network; the fee goes to the creator | FR6, FR36 | T3; pass | partial — debit and credit built (5.4); price check against configuration 7.3 (I-36) |
 | I-19 | A complex transaction with inputs has Σ inputs ≥ Σ outputs (zero-input carry-forward exempt) | FR6, FR9 | T1 when all inputs resolve, else T2 | partial — balance inputs built (4.2, 5.4); UTXO values 6.8, 7.1 |
 
 ### 5.4 Transactions by Type
@@ -131,7 +131,7 @@ What a valid chain must satisfy, grouped by scope. **Checked** names where the r
 | # | Invariant | FRs | Checked | Built |
 |---|---|---|---|---|
 | I-20 | `block.sequence > anchor_sequence` for node transfers and complex balance inputs (block #0 waived) | FR6, FR9, FR54 | T1 | built (4.2) |
-| I-21 | Transaction and input signatures valid (UTXO inputs against the referenced output's address) | FR3, FR6, FR9 | T3 (T1 opportunistic); pass | partial — transfers and registrations in the pass (5.4); balance and UTXO inputs 7.1 |
+| I-21 | Transaction and input signatures valid (UTXO inputs against the referenced output's address) | FR3, FR6, FR9 | T3 (T1 opportunistic); pass | partial — transfers and registrations built (5.4); balance and UTXO inputs 7.1 |
 | I-22 | No duplicate of a confirmed transaction (transfer key, complex input set) | FR6, FR9, FR14 | T3; pass | not built for balance-side keys (ratified deferral to Epic 7); UTXO side covered by spent bits |
 | I-23 | Every referenced node id lies within `[0, max_known_node_id]` | FR6 | T3; pass | built (5.4) |
 | I-24 | A registration's `new_public_key` is globally unique, also within a block | FR6, FR9, FR14 | T2; T3; pass | partial — pass built (5.4); ready 6.0 |
@@ -173,7 +173,7 @@ Checked at head extension in Ready, and inside the FR3 pass against the candidat
 |---|---|---|---|---|
 | I-39 | No artifact may assert a node #0 key other than `node_zero_public_key` (registration of id 0, balance entry of node 0, content signature) | FR7, FR9, FR50, FR69 | T1 | built (4.2, 5.9) |
 | I-40 | Chain-config content carries node #0's signature, valid against the anchor | FR7 | T1 | built (5.9) |
-| I-41 | Blocks #0 / #1 have the fixed genesis shape (all-zero `previous_hash`, node #0 registration and self-transfer, then the configuration); bootstrap exceptions need sequence **and** content match; self-built #0 / #1 skip the Tier 1 re-check | FR54, FR69 | T1 / pass for received genesis blocks | partial — creation and anchor checks built (1.4, 5.1); zero hash and content match not checked |
+| I-41 | Blocks #0 / #1 have the fixed genesis shape (all-zero `previous_hash`, node #0 registration and self-transfer, then the configuration); bootstrap exceptions need sequence **and** content match; self-built #0 / #1 skip the Tier 1 re-check | FR54, FR69 | T1 / pass for received genesis blocks | partial — creation and anchor checks built (1.4, 5.1); zero hash and content match 6.10 |
 
 ## 6. Derived Projections
 
@@ -181,14 +181,14 @@ Durable truth is only the node id, the private key (never handed to this module)
 
 | Projection | Derived from | Forward update / chain-switch revert | Lives in | FRs | Built |
 |---|---|---|---|---|---|
-| Per-node balance | Seeds, transaction effects, creator credit | Apply per block / inverse of the block's effects | `NodeInfo.balances` (8 KB) | FR34, FR36, FR23 | partial — pass (5.3, 5.4); ready and inverse 6.0, 6.3 |
+| Per-node balance | Seeds, transaction effects, creator credit | Apply per block / inverse of the block's effects | `NodeInfo.balances` (8 KB) | FR34, FR36, FR23 | partial — pass built (5.3, 5.4); ready and inverse 6.0, 6.3 |
 | Accumulated vote | Vote credits, anti-capture interest, creator reset, deviation penalty, balance-block seeds | FR37 steps in order / `undo_block` in reverse | `VoteEngine.accumulated_vote` (4 KB) | FR34, FR37 | built (3.1, 3.2); walk 6.3 |
-| Public-key map | Registrations; slot 0 = trust anchor | Set per registration / clear on rollback | `NodeInfo.public_keys` (32 KB Schnorr, 96 KB BLS) | FR34, FR35 | partial — pass (5.3); ready 6.0 |
+| Public-key map | Registrations; slot 0 = trust anchor | Set per registration / clear on rollback | `NodeInfo.public_keys` (32 KB Schnorr, 96 KB BLS) | FR34, FR35 | partial — pass built (5.3); ready 6.0 |
 | `max_known_node_id` | Earliest balance block's `max_node_id` (0 at genesis), +1 per registration | Increment / decrement | `NodeInfo.max_known_node_id` | FR3, FR34, FR54 | built (5.3, 5.4) |
 | `seed_source_sequence` | Latest balance entry or registration per node | Set to the applied block / bounded backward scan (≤ `W`) | `NodeInfo.seed_source_idx` (block index today) | FR34, FR50, FR23 | partial — pass sets it; sequence form and scan 9.3, 6.3 |
 | Block navigation and UTXO spent bits | Durable block-tree; consumed UTXO inputs | Set on consumption / un-set for leaving blocks; re-zeroed on FR5 | `BlockEntry` table (600 × 76 B) | FR34, FR35, ADR-016 | partial — built (4.1, 5.3–5.5); ADR-016 form 6.8; walk 6.3 |
 | Creator order | Accumulated vote, descending, ties by lower id | Recomputed on demand | not stored | FR38 | built (3.3) |
-| Mempool contents and eligibility | FR14 classification, Deferred marker, expiry sequence | Remove confirmed and expired / re-add on the backward walk, remove on the forward walk; FR15 re-evaluation | `Mempool` crate (~23–25 KB) | FR14, FR15, FR30, FR32 | partial — crate primitives (2.1, 2.2); wiring 7.3–7.5 |
+| Mempool contents and eligibility | FR14 classification, Deferred marker, expiry sequence | Remove confirmed and expired / re-add on the backward walk, remove on the forward walk; FR15 re-evaluation | `Mempool` crate (~23–25 KB) | FR14, FR15, FR30, FR32 | partial — crate primitives built (2.1, 2.2); wiring 7.3–7.5 |
 | Head `branch_value` | Per-block values above `S_tail` | Add on extension, subtract on tail advance / unchanged by a switch | `ChainHeadEntry.branch_value` | FR19, FR21 | not built (6.1) |
 | `chain_heads` and block flags | Block-tree graph and the active-chain selection | FR19 events (i)–(v) | `ChainHeadsTable`, `BlockEntry.flags` | FR9, FR19, FR59 | partial — built (4.1, 4.4, 5.10); event (iii) 6.3, (v) 9.1 |
 | `snake_chain` head and tail | Selected active chain | Promotion and head extension / set by the walk | two `u32` indices | FR19, FR48 | partial — head built (5.4); tail 9.1; ready advance 6.0 |
@@ -209,7 +209,7 @@ Each flow lists its trigger, its steps, and what happens on failure. Step tables
 | 2 | Mark the candidate backward from the tip; note the earliest balance block and first chain-config block | FR3 | built (5.3) |
 | 3 | Zero the candidate's spent bits; preload and check its configuration against the held one (mismatch → T5 adopt) | FR3, FR8 | built (5.3, 5.9) |
 | 4 | Seed the node-id watermark (earliest `max_node_id`, or 0 at genesis) | FR3, FR50, FR54 | built (5.3) |
-| 5 | Traverse forward: FR6 state checks interleaved with derivation (roster, keys, balances, votes, spent bits, seed sources), including the `snake_chain` preservation checks inside the candidate; pre-seed acceptance only for window-anchored candidates | FR3, FR6, FR9, FR37, FR38, FR50 | partial (5.3, 5.4) — see §5 for missing checks; `snake_chain` checks 9.2, 9.3, 9.5, 6.6 |
+| 5 | Traverse forward: FR6 state checks interleaved with derivation (roster, keys, balances, votes, spent bits, seed sources), including the `snake_chain` preservation checks inside the candidate; pre-seed acceptance only for window-anchored candidates | FR3, FR6, FR9, FR37, FR38, FR50 | partial — built (5.3, 5.4); missing checks see §5; `snake_chain` checks 9.2, 9.3, 9.5, 6.6 |
 | 6 | Durably lock the configuration (storage first), promote the candidate Stored → Active, clean up mismatching or oversized blocks, enter Ready | FR4, FR8, FR9 | built (5.4, 5.9); `S_tail` and `branch_value` seeding 9.1, 6.1 |
 
 **On failure:** an FR6 violation runs FR5 (T4); the code retries once, plus one adopt retry. A local failure (storage read, missing vote parameter) deletes nothing: the node stays in Collecting and retries later (FR5; the code still deletes the head until Story 6.0). A durable-commit failure resets the projections and leaves the node in Collecting with its blocks intact. **Writes:** only the lock and deletions; everything else is RAM.
@@ -270,7 +270,7 @@ Each flow lists its trigger, its steps, and what happens on failure. Step tables
 
 | # | Step | FRs | Built |
 |---|---|---|---|
-| 1 | Is the local node the FR38 top, an admitted fallback, or the proposer? | FR38, FR44 | not built (8.2; vote-crate primitives 3.3) |
+| 1 | Is the local node the FR38 top, an admitted fallback, or the proposer? | FR38, FR44 | not built (8.2; vote-crate primitives built in 3.3) |
 | 2 | Trigger: fill threshold reached, or timer elapsed with at least one includable transaction; replay obligations go at once | FR45, FR46 | not built (8.3) |
 | 3 | Assemble: replay first, then mempool by fee per byte (own first on ties), never mixing registrations and complex transactions, within `block_size_limit` | FR45 | not built (8.3) |
 | 4 | Header: next sequence, creator, `mined_amount = mining_reward`, `consumed_votes`, deviation fields, parent hash, signature via the crypto module | FR45, FR53, FR68 | not built (8.1, 8.3) |
