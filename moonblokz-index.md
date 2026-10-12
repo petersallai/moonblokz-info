@@ -15,7 +15,8 @@ If you already know your topic, use this table to jump straight to the relevant 
 | Functional and non-functional requirements (FR/NFR numbers) | Start here to find which requirement covers a topic and how to read just that one: [Blockchain FR/NFR Index](./moonblokz-blockchain-prd-fr-index.md), [Storage FR/NFR Index](./moonblokz-storage-prd-fr-index.md). Full requirement wording: [Blockchain PRD](./moonblokz-blockchain-prd.md) *(authoritative)*, [Storage PRD](./moonblokz-storage-prd.md) *(authoritative)* |
 | Architecture decisions, crate boundaries, public APIs, data-structure layouts | [Blockchain Architecture](./moonblokz-blockchain-architecture.md) *(authoritative)*, [Storage Architecture](./moonblokz-storage-architecture.md) *(authoritative)*, [Blockchain ADR Index](./blockchain-adrs/ADR-INDEX.md) |
 | Chain configuration — wire format, parameter registry, the mini virtual machine, commitment lifecycle | [Configuration Module Specification](./moonblokz-configuration-specification.md) *(authoritative)* |
-| Blockchain behavior — block-tree, branching, `snake_chain`, phases, queries | [Blockchain Concept](./moonblokz-blockchain-concept.md), [Blockchain Algorithm](./moonblokz-blockchain-algorythm.md), [Blockchain Implementation](./moonblokz-blockchain-implementation.md) |
+| Blockchain runtime logic at a glance — lifecycle phases × events, block statuses and check tiers, invariants, derived projections, main flows, what is built | [Blockchain Operating Model](./moonblokz-blockchain-operating-model.md) (first stop; consolidation, the PRD wins) |
+| Blockchain behavior — block-tree, branching, `snake_chain`, phases, queries | [Blockchain Operating Model](./moonblokz-blockchain-operating-model.md), [Blockchain Concept](./moonblokz-blockchain-concept.md), [Blockchain Algorithm](./moonblokz-blockchain-algorythm.md), [Blockchain Implementation](./moonblokz-blockchain-implementation.md) |
 | Cryptography — signatures, aggregation, Schnorr/BLS backends | [Crypto Concept](./moonblokz-crypto-concept.md), [Crypto Algorithm](./moonblokz-crypto-algorythm.md), [Crypto Implementation](./moonblokz-crypto-implementation.md) |
 | Radio mesh — connection matrix, echo mapping, relaying, packetization | [Radio Concept](./moonblokz-radio-concept.md), [Radio Algorithm](./moonblokz-radio-algorythm.md), [Radio Implementation](./moonblokz-radio-implementation.md) |
 | Simulation, historical replay, desktop validation | [Simulator Concept](./moonblokz-simulator-concept.md), [Simulator Algorithm](./moonblokz-simulator-algorythm.md), [Simulator Implementation](./moonblokz-simulator-implementation.md) |
@@ -39,6 +40,23 @@ The asymmetry is intentional: the requirements-first workflow that produces the 
 ## Cross-Cutting References
 
 These documents are organized by topic rather than by subsystem. They consolidate facts that are otherwise spread across multiple subsystem documents so that cross-cutting questions can be answered from one place. They are lookup references, not part of the linear reading order below.
+
+### [MoonBlokz Blockchain Operating Model](./moonblokz-blockchain-operating-model.md)
+
+A one-read consolidation of the blockchain module's runtime logic, built from the FRs it cites.
+
+This document explains:
+
+- the execution model (synchronous core; processing never observable between calls),
+- the lifecycle phases and every transition between them, with trigger, effect and failure path,
+- what each phase does with each event — block, transaction, local submit, support message, tick, query, creator determination,
+- the block status machine: Stored / Connected / Active, the Tier 1–3 check sets, and every transition including deletion and eviction,
+- a catalog of the 41 chain invariants with where each is checked,
+- the derived projections, how each is updated and reverted on a chain switch, and where it lives,
+- the main flows step by step: processing pass, forward extension, chain switch, tail advance and replay, block creation, deviation and approval, transaction lifecycle, restart,
+- and, per row, whether it is built yet and which story owns it.
+
+It is explicitly **not authoritative**: the [Blockchain PRD](./moonblokz-blockchain-prd.md) wins on any divergence. Use it as the first stop for any blockchain-logic question, then read the cited FRs.
 
 ### [MoonBlokz System Constraints & Limits Reference](./moonblokz-system-constraints.md)
 
@@ -72,6 +90,7 @@ This document explains:
 - flash and storage-geometry gaps such as unquantified wear-lifetime and the storage slot-count divisor verification item,
 - telemetry deployment-model and docs-vs-code drift across Probe, HUB, Collector, CLI, and Update Server,
 - the accepted MVP no-saturation-handling stance for bounded UTXO retention,
+- the blockchain specification gap for the approval-evidence byte encoding and the post-MVP sequence wrap-around question,
 - and the post-MVP open questions around dynamic custodian fees, long-disconnect recovery, and promoting processing to a concurrent-ingestion lifecycle state.
 
 It is explicitly **not authoritative**: each entry links to the source document where the underlying gap, drift, limitation, or open question is defined. Use this file before planning work that depends on unresolved deployment constraints, telemetry interoperability assumptions, UTXO saturation behavior, or long-disconnect recovery.
@@ -204,7 +223,7 @@ This document explains:
 - how canonical binary representation, serialization, and radio packetization affect design,
 - how processing-state restart policy, pruning cost, mempool behavior, and branch-switch recomputation affect engineering design,
 - which values should remain configurable,
-- and which details must remain open until later series parts define them.
+- and which article-era gaps are now settled, with pointers to the requirement, architecture, or configuration source that settles each.
 
 Use this file when you want implementation guidance that complements the conceptual and algorithm documents without guessing beyond the source material.
 
@@ -421,14 +440,14 @@ Use this file when you want implementation guidance that complements the concept
 
 ### 22. [MoonBlokz Storage Product Requirements Document](./moonblokz-storage-prd.md) — Authoritative
 
-The authoritative source for the `moonblokz-storage` library's functional requirements (FR1–FR53) and Non-Functional Requirements (NFR1–NFR20).
+The authoritative source for the `moonblokz-storage` library's functional requirements (FR1–FR54) and Non-Functional Requirements (NFR1–NFR20).
 
 This document explains:
 
 - the executive summary, success criteria, and product scope of the `moonblokz-storage` crate and its companion `moonblokz-chain-types` crate,
 - the user journeys covering chain-runtime success path, edge-case recovery, chain-developer integration, node-operator troubleshooting, and backend-implementer baseline,
 - the domain-specific requirements including embedded constraints, control-plane schema, layout rules, and simplicity-first policy,
-- the full FR1–FR53 functional requirement catalog covering storage lifecycle, control-plane management, indexed persistence and retrieval, integrity and error semantics, chain integration, backend abstraction, blockchain-types boundary, developer distribution, and documentation,
+- the full FR1–FR54 functional requirement catalog covering storage lifecycle, control-plane management, indexed persistence and retrieval, integrity and error semantics, chain integration, backend abstraction, blockchain-types boundary, developer distribution, and documentation,
 - and the NFR1–NFR20 catalog covering performance, security, reliability, integration, and implementation simplicity.
 
 Use this file as the canonical reference whenever any other storage knowledge-base document — concept, algorithm, implementation, or architecture — cites an FR or NFR by number. Other knowledge-base files reference this document instead of restating its content, so divergence from the PRD must be treated as exact evidence of a knowledge-base inconsistency.
@@ -451,7 +470,7 @@ This document explains:
 
 Use this file as the canonical reference whenever any other storage knowledge-base document — concept, algorithm, or implementation — describes a crate boundary, backend isolation rule, feature gating model, public API surface, naming convention, or block/storage data-structure contract. Divergence from the Architecture Decision Document must be treated as exact evidence of a knowledge-base inconsistency.
 
-The document was originally authored on 2026-02-25 and was reconciled on 2026-06-18 with the current `moonblokz-storage` and `moonblokz-chain-types` codebases. The reconciliation updated the FR-count framing to FR1–FR53, the RP2040 slot geometry to the shipped per-slot hash layout, and the Project Structure section to the actual repository file set.
+The document was originally authored on 2026-02-25 and was reconciled on 2026-06-18 with the current `moonblokz-storage` and `moonblokz-chain-types` codebases. The reconciliation updated the FR-count framing to FR1–FR54, the RP2040 slot geometry to the shipped per-slot hash layout, and the Project Structure section to the actual repository file set.
 
 ### 24. [MoonBlokz Storage Concept Model](./moonblokz-storage-concept.md)
 
@@ -537,7 +556,7 @@ Use this file when you need a quick orientation to the current public web presen
 19. Then read [MoonBlokz Telemetry Concept Model](./moonblokz-telemetry-concept.md) to understand why field testing needs a separate telemetry architecture and how the operational components fit together.
 20. Continue with [MoonBlokz Telemetry Algorithm Model](./moonblokz-telemetry-algorythm.md) for the formal flow of logs, commands, polling control, OTA, and analyzer interaction.
 21. Continue with [MoonBlokz Telemetry Implementation Notes](./moonblokz-telemetry-implementation.md) for repository-level responsibilities, update-path cautions, and telemetry-specific engineering constraints.
-22. Then read [MoonBlokz Storage Product Requirements Document](./moonblokz-storage-prd.md) for the authoritative FR1–FR53 functional requirements and NFR1–NFR20 Non-Functional Requirements that anchor the storage subsystem.
+22. Then read [MoonBlokz Storage Product Requirements Document](./moonblokz-storage-prd.md) for the authoritative FR1–FR54 functional requirements and NFR1–NFR20 Non-Functional Requirements that anchor the storage subsystem.
 23. Then read [MoonBlokz Storage Architecture Decision Document](./moonblokz-storage-architecture.md) for the authoritative crate-split, backend feature model, naming and structure patterns, and data structure contracts that realize those requirements.
 24. Then read [MoonBlokz Storage Concept Model](./moonblokz-storage-concept.md) to understand why bounded blockchain persistence on flash is possible at all and how MoonBlokz separates recoverable block data from recovery-critical control data.
 25. Continue with [MoonBlokz Storage Algorithm Model](./moonblokz-storage-algorythm.md) for the formal storage-unit layout, integrity-check rules, redundancy behavior, crash recovery, and wear-lifetime model.
