@@ -298,17 +298,19 @@ impl<...> Blockchain<...> {
     pub fn receive_support(&mut self, s: SupportView<'_>, now: u64)
         -> CallResult<ReceiveSupportOutcome>;
     pub fn submit_local_transaction(&mut self, tx: TransactionView<'_>, now: u64)
-        -> CallResult<ReceiveTransactionOutcome>;
+        -> CallResult<LocalTransactionOutcome>;   // FR55: Created / Held(reason) / Rejected(reason); NotReady outside Ready
 
     // === Tick (1) ===
     pub fn on_tick(&mut self, now: u64) -> CallResult<TickOutcome>;
 
     // === Read-only (12) — no NextCall ===
-    pub fn serve_block_by_hash(&self, hash: &[u8; 32]) -> Option<BlockView<'_>>;
-    pub fn serve_block_by_sequence(&self, seq: u32) -> Option<BlockView<'_>>;
-    pub fn serve_transaction_by_hash(&self, hash: &[u8; 32]) -> Option<TransactionView<'_>>;
-    pub fn query_balance(&self, node_id: u32) -> u64;
-    pub fn query_top_mempool_items(&self) -> impl Iterator<Item = TransactionView<'_>> + '_;
+    // Each query returns a `Result` so the FR1 / FR42 not-ready case stays distinct
+    // from the domain answer (e.g. FR42 not-available); the error enums carry `NotReady`.
+    pub fn query_block_by_hash(&self, hash: &[u8; 32]) -> Result<BlockView<'_>, BlockQueryError>;   // FR42
+    pub fn query_block_by_sequence(&self, seq: u32) -> Result<BlockView<'_>, BlockQueryError>;      // FR42
+    pub fn query_transaction_state(&self, tx_hash: &[u8; 32]) -> Result<TransactionState, TxStateQueryError>; // FR40
+    pub fn query_balance(&self, node_id: u32) -> Result<u64, BalanceQueryError>;                     // FR41
+    pub fn query_top_mempool_items(&self, snapshot_hash_crc32s: &[u32]) -> Option<TransactionView<'_>>; // FR43 (annotation); not-ready gating shaped in Epic 10
     pub fn is_block_known(&self, hash: &[u8; 32]) -> bool;
     pub fn is_transaction_known(&self, hash: &[u8; 32]) -> bool;
     pub fn current_phase(&self) -> LifecyclePhase;
@@ -330,9 +332,8 @@ pub enum NextCall {
 
 pub enum ReceiveBlockOutcome<'a> {
     DuplicateKnown,                                                   // FR11
-    Rejected(RejectReason),                                           // FR9 tier failure
+    Rejected(RejectReason),                                           // FR10 Invalid-evidence / Out-of-window — names the outcome, never a cause (cause → FR64 log)
     AcceptedSilently,                                                 // FR16 storage-only
-    AcceptedAndSendBlock(BlockView<'a>),                              // FR26 relay (Epic 8)
     AcceptedAndSendSupport(SupportView<'a>),                          // FR12 deviance support (Epic 6)
     // FR19 parent-recovery is NOT a ReceiveBlockOutcome (revised 2026-07-12,
     // Story 4.4): it is scheduler-driven, not a reaction to the just-received
@@ -340,8 +341,9 @@ pub enum ReceiveBlockOutcome<'a> {
     // gated by the FR46 global cooldown, and the receiving block only schedules
     // the tick (NextCall::At). Keeping it off receive_block also avoids the radio
     // immediately relaying + emitting a recovery request in the same receive step
-    // (send-side contention). The relay/support variants above ARE receive-driven
-    // and correctly stay here.
+    // (send-side contention). The support / re-dissemination / new-block variants
+    // (FR10 response components) ARE receive-driven and correctly stay here; block
+    // relay itself is the radio layer's (FR61).
     // ... one per FR-defined effect, exactly one variant per call
 }
 

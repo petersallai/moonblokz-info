@@ -34,7 +34,7 @@ Node #0 after genesis behaves as Ready. "Not-ready" is the FR1 indication return
 
 | Event | Collecting | Processing | Ready | Built (Ready path) |
 |---|---|---|---|---|
-| Inbound block | Outcomes reduce to Accepted-new / Already-known / Invalid-evidence (no window check); Tier 1 only, so every kept block stays Stored; the first valid chain-config loads tentatively; FR2 re-evaluated (FR1, FR8, FR9, FR60) | Not separately specified for external intake; the pass itself runs Tier 1 + 2 + 3 atomically on the candidate (FR9) | Exactly one FR10 outcome: Accepted-new, Already-known, Invalid-evidence, Out-of-Snake-Chain-Window, Deferred; may carry one support message (FR12), one re-disseminated transaction (FR13), one new block (FR45) | partial — Tier 1 and storage built (4.2, 4.3); window check 9.1; Tier 2 has no owner; Tier 3 / forward extension 6.0, 6.3; response components 6.4, 7.5, 8.3 |
+| Inbound block | Outcomes reduce to Accepted-new / Already-known / Invalid-evidence (no window check); Tier 1 only, so every kept block stays Stored; the first valid chain-config loads tentatively; FR2 re-evaluated (FR1, FR8, FR9, FR60) | Not separately specified for external intake; the pass itself runs Tier 1 + 2 + 3 atomically on the candidate (FR9) | Exactly one FR10 outcome: Accepted-new, Already-known, Invalid-evidence, Out-of-Snake-Chain-Window, Deferred; may carry one support message (FR12), one re-disseminated transaction (FR13), one new block (FR45); no cause is returned — it goes to the FR64 log | partial — Tier 1 and storage built (4.2, 4.3); window check 9.1; Tier 2 6.1; Tier 3 / forward extension 6.0, 6.3; response components 6.4, 7.5, 8.3 |
 | Inbound transaction | Not-ready; no classification, no mempool admission (FR14) | Not-ready (FR10) | Exactly one FR14 outcome: Accepted-to-mempool, Already-confirmed, Duplicate-in-mempool, Deferred, Rejected | not built (7.3) |
 | Local transaction submit | `Rejected(not-ready)` (FR55) | `Rejected(not-ready)` | Created, Held(reason), or Rejected(reason) (FR55) | not built (10.5) |
 | Inbound support message | Accepted on format validity and LRU de-duplication alone; state-dependent checks deferred (FR26) | Same as Collecting (FR26) | Full FR26 checks; an Accepted message is accumulated by the proposer (FR27) | not built (6.5, 6.6) |
@@ -64,7 +64,7 @@ In Collecting every kept block is Stored; Processing exposes no intermediate sta
 |---|---|---|---|
 | 1 | Stored (durable storage) | Intake, every phase; items marked *ready* only in Ready | version and payload schema; *ready + locked:* size ≤ `block_size_limit`, chain-config content equals the lock (FR17), window membership (FR60); `block.sequence > anchor_sequence`; no self-vote; registration / complex-transaction exclusivity; `new_key_signature`; node-#0 trust-anchor checks (FR69); *ready:* creator signature when the block directly extends the active head |
 | 2 | Connected | Ready (Processing: inside the FR3 pass) | ancestry reaches the active chain; locked chain-config rules at the block's sequence (fee policy, registration price, custodian fee, approval threshold); `mined_amount` equals `mining_reward`; UTXO-input structural completion; registration key unique; structural `snake_chain` replay checks where the reference is retained (else deferred to Tier 3) |
-| 3 | Active | Only via the FR3 pass or FR23 chain-switch forward replay (and FR35 forward extension) | vote fields against candidate vote state; creator balance; balance-block contents and `max_node_id`; transaction signatures, balances, duplicates, node-id stride, UTXO spent bits, no negative balance; carry-forward validity; approval-evidence cluster; pacing (soft-fail to Deferred) |
+| 3 | Active | The FR3 pass, FR23 chain-switch forward replay, and in Ready a direct extension of the active head or an already-stored child of it (FR16, FR9) | vote fields against candidate vote state; creator balance; balance-block contents and `max_node_id`; transaction signatures, balances, duplicates, node-id stride, UTXO spent bits, no negative balance; carry-forward validity; approval-evidence cluster; pacing (soft-fail to Deferred) |
 
 Checks derived from chain configuration can invalidate a block only after the configuration is durably locked (FR8, FR54). Under a tentative configuration a failure does not delete the block; it is re-evaluated when the tentative configuration changes or the lock happens (FR9).
 
@@ -74,16 +74,17 @@ Checks derived from chain configuration can invalidate a block only after the co
 |---|---|---|---|
 | intake → Stored | Tier 1 passes | FR9, FR16 | built (4.2) |
 | intake → not stored | Tier 1 exact evidence (Invalid-evidence); outside the window in Ready; chain-config content ≠ lock (silent); duplicate (no-op) | FR10, FR11, FR16, FR17, FR60 | built (4.2, 4.3) — window check inactive until 9.1 |
-| Stored → Connected | Ancestry reaches the active chain and Tier 2 passes | FR9 | not built — no owner yet |
-| Connected → Active | FR23 reconciliation succeeds, or FR35 forward extension on the active head | FR9 | not built (6.0, 6.3) — Story 6.0 ratified that a direct head extension goes Stored → Active with no Connected step; the PRD amendment is pending |
+| Stored → Connected | Ancestry reaches the active chain and Tier 2 passes | FR9 | not built (6.1) |
+| Stored → Active | A direct extension of the active head (checked before storing; a failure is not stored), or an already-stored child of the active head, passes Tier 2 and Tier 3 in one step | FR9, FR16 | not built (6.0) |
+| Connected → Active | FR23 reconciliation succeeds | FR9 | not built (6.3) |
 | Stored → Active | FR3 pass succeeds (including the FR58 deep zone) | FR3, FR9 | built (5.4) |
 | Active → Connected | FR23 demotes the block's branch | FR9, FR23 | not built (6.3) |
-| Stored / Connected stays | Tier 3 pacing soft-fail → Deferred, no deletion | FR9, FR10 | not built — owner not found |
-| any → deleted (Invalid) | Tier 1 / Tier 2 / Tier 3 failure (Tier 3 via FR5 in the pass or FR23); FR8 lock mismatch | FR5, FR8, FR9 | partial — FR3-pass and FR8 paths built (5.5, 5.9); Ready paths 6.0, 6.3 |
+| Stored / Connected stays | Tier 3 pacing soft-fail → Deferred, no deletion | FR9, FR10 | not built (8.3) |
+| → deleted (Invalid) | Tier 1 failure or FR8 lock mismatch (from Stored); Tier 2 failure (from Stored); Tier 3 failure — via FR5 in the FR3 pass, via FR23, or for a stored child of the active head, always with descendants; FR5 rollback and phase reversion apply to the FR3 pass only | FR5, FR8, FR9 | partial — FR3-pass and FR8 paths built (5.5, 5.9); Ready paths 6.0, 6.1, 6.3 |
 | non-active → deleted | `chain_heads` overflow: evict the lowest non-active head, delete blocks whose reference count reaches 0 | FR19 | built (4.4) |
-| side branch → deleted | Storage pressure: exactly one lowest-value side branch, never active-chain blocks | FR57 | not built (9.6) |
+| side branch → deleted | Storage pressure: exactly one lowest-value side branch; never active-chain blocks | FR57, FR9 | not built (9.6) |
 | side branch → deleted | Its divergence point fell below `S_tail` | FR58 | not built (9.7) |
-| Active tail → dropped | Head extension past `W` (essential state replayed in that head, FR48) | FR48 | not built (9.1) |
+| Active tail → dropped | Head extension past `W` (essential state replayed in that head, FR48): the block is released, a surviving child is unlinked, and a side head whose fork point falls below `S_tail` demotes to Stored until FR58 reclaims it | FR19 (v), FR48 | not built (9.1) |
 
 Durable storage keeps only the node id, the private key, the chain-config block with its lock flag, and the retained blocks — no phase marker, no projections (FR59).
 
