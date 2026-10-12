@@ -177,7 +177,7 @@ The header has ten fields.
    Node identifier of the block creator.
 
 4. **`mined_amount: u32`**  
-   Reward given to miners, excluding transaction fees. Part V explicitly stores this even though it is derivable from full history, because `snake_chain` may remove the historical blocks that would otherwise be needed for recalculation. The MoonBlokz blockchain module additionally credits the block creator with a chain-config-derived `replay_block_reward` whenever the accepted block carries a `snake_chain` essential-state replay obligation (chain-config replay, balance replay, or zero-input UTXO carry-forward); this reward is paid in addition to `mined_amount` and is not stored in the block header — it is computed from chain-config inputs at acceptance time. The `replay_block_reward` compensates the creator for fee-neutral maintenance content. Source: this addition is normatively defined by [Blockchain PRD](./moonblokz-blockchain-prd.md) FR36 (c) (chain-config parameter ID 28, [Configuration Module Specification](./moonblokz-configuration-specification.md) §4.1) and is not in the original Part III–V articles.
+   Reward given to miners, excluding transaction fees. Its value is fixed by the chain-config `mining_reward` parameter (ID 5, default 0), which every block's `mined_amount` must equal ([Blockchain PRD](./moonblokz-blockchain-prd.md) FR6 / FR36 (a)). Part V explicitly stores this even though it is derivable from full history, because `snake_chain` may remove the historical blocks that would otherwise be needed for recalculation. The MoonBlokz blockchain module additionally credits the block creator with a chain-config-derived `replay_block_reward` whenever the accepted block carries a `snake_chain` essential-state replay obligation (chain-config replay, balance replay, or zero-input UTXO carry-forward); this reward is paid in addition to `mined_amount` and is not stored in the block header — it is computed from chain-config inputs at acceptance time. The `replay_block_reward` compensates the creator for fee-neutral maintenance content. Source: this addition is normatively defined by [Blockchain PRD](./moonblokz-blockchain-prd.md) FR36 (c) (chain-config parameter ID 28, [Configuration Module Specification](./moonblokz-configuration-specification.md) §4.1) and is not in the original Part III–V articles.
 
 5. **`payload_type: u8`**  
    Current values are:
@@ -212,7 +212,7 @@ The Part V header is not merely descriptive metadata. Several fields directly su
 
 ### Block size bound
 
-The total block size is bounded by chain configuration (`MAX_BLOCK_SIZE`). This cap is algorithmically important because it constrains:
+The total block size is bounded by the chain-config `block_size_limit` (ID 3), which is itself at most the node's physical block limit `MAX_BLOCK_SIZE` (the compile-time buffer width, 2016 B). This cap is algorithmically important because it constrains:
 
 - how many transactions fit in a block,
 - how many balances can be replayed at once,
@@ -246,7 +246,7 @@ A transaction block begins with:
 - **`transaction_count: u16`**
 - followed by a list of transactions.
 
-The theoretical limit is `65535` transactions, but in practice `MAX_BLOCK_SIZE` is the real limiting factor.
+The theoretical limit is `65535` transactions, but in practice `block_size_limit` is the real limiting factor.
 
 Each transaction starts with a fixed mini-header:
 
@@ -684,12 +684,12 @@ The original article-era framing described vote preference in terms of directly 
 
 A new transactional block is created when either:
 
-- the currently eligible ordinary mempool transactions can fill at least a configured target percentage of `MAX_BLOCK_SIZE`,
+- the currently eligible ordinary mempool transactions can fill at least a configured target percentage of `block_size_limit`,
 - or the configured inter-block time has elapsed since the previous block and at least one ordinary transaction can be included.
 
 Tail-drop preservation work is stricter: if a chain-config replay, balance replay, or UTXO carry-forward block is required to prevent loss of state, that replay block is emitted as soon as the local node is eligible to create the next block (expected creator, admitted fallback creator, or deviation proposer), without waiting for the transactional fill threshold or the ordinary inter-block timer, but never by a non-eligible node ([Blockchain PRD](./moonblokz-blockchain-prd.md) FR45); UTXO carry-forward in particular always proceeds without waiting whenever a transaction block is about to drop.
 
-Replay-block content rule: each replay block emitted at the head reproduces every essential-state structure contained in the corresponding dropping tail block, subject to `MAX_BLOCK_SIZE`. The replay block's payload type matches the dropping block's content category — a dropping balance block is reproduced by a balance replay block carrying NodeInfo entries, a dropping chain-config block by a chain-config replay block carrying the durable-locked configuration, and a dropping transaction block by a transaction block carrying zero-input complex transactions for unspent UTXO carry-forward (which may also carry ordinary mempool transactions up to `MAX_BLOCK_SIZE`).
+Replay-block content rule: each replay block emitted at the head reproduces every essential-state structure contained in the corresponding dropping tail block, subject to `block_size_limit`. The replay block's payload type matches the dropping block's content category — a dropping balance block is reproduced by a balance replay block carrying NodeInfo entries, a dropping chain-config block by a chain-config replay block carrying the durable-locked configuration, and a dropping transaction block by a transaction block carrying zero-input complex transactions for unspent UTXO carry-forward (which may also carry ordinary mempool transactions up to `block_size_limit`).
 
 Single-payload-type-per-dropping-block invariant: under the registration / complex-transaction mutual-exclusivity rule of Section 3, a dropping transaction block (`payload_type=1`) contains either registrations or complex transactions, but never both, and therefore triggers at most one of the two transaction-driven replay obligations — balance replay (Algorithm 11, when a registration in the dropping block is the only in-window seed source for the newly registered node) or UTXO carry-forward (Algorithm 12, when the dropping block contains complex-transaction UTXO outputs still unspent at drop time). A dropping balance block (`payload_type=2`) triggers balance replay only; a dropping chain-config block (`payload_type=3`) triggers chain-config replay only; a dropping approval-evidence block (`payload_type=4`) triggers no replay obligation. A single tail advance therefore requires at most one replay block at the head, so the active chain length never exceeds `W` in steady-state operation. The replay-bearing creator receives one `replay_block_reward` for the replay block they produce, and creator selection for that replay block follows the ordinary creator-order projection.
 
@@ -698,7 +698,7 @@ Approval-workflow exception: under the approval workflow (Algorithm 6), the devi
 Parts IV and V add two further constraints:
 
 - maintenance work may have to consume part of the available block capacity before ordinary traffic,
-- and `MAX_BLOCK_SIZE` limits what can be packed into a single block.
+- and `block_size_limit` limits what can be packed into a single block.
 
 Source: the per-replay-type content rules originate in Parts III–V; the always-without-wait carry-forward rule, the approval-workflow attribution, and the single-payload-type-per-dropping-block invariant follow from the registration / complex-transaction mutual-exclusivity rule of Section 3 and from the per-payload-type single-replay scheduling that Algorithm 11 and Algorithm 12 rely on.
 
@@ -826,7 +826,7 @@ If balances would be lost from the active chain:
 
 1. identify the affected nodes,
 2. take each entry's (balance, accumulated vote, public key) as of sequence `block.sequence − 1`,
-3. create a balance block at the head with those mandatory entries, then fill it with further entries in ascending `seed_source_sequence`, then `node_id`, up to `MAX_BLOCK_SIZE` (the mandatory bonus-pack rule; any other entry set is invalid, [Blockchain PRD](./moonblokz-blockchain-prd.md) FR50),
+3. create a balance block at the head with those mandatory entries, then fill it with further entries in ascending `seed_source_sequence`, then `node_id`, up to `block_size_limit` (the mandatory bonus-pack rule; any other entry set is invalid, [Blockchain PRD](./moonblokz-blockchain-prd.md) FR50),
 4. ensure the living chain still contains balances for all affected nodes and therefore preserves full rolling-window coverage across the chain,
 5. rely on the fact that this replay step fits into one balance block because a single tail advance makes only one block's worth of seed sources newly droppable and the replacement block only has to restate the nodes affected by that frontier.
 
@@ -849,7 +849,7 @@ Repeated carry-forward is intentionally self-clearing: each preservation step re
 
 ### Compression rule
 
-There is no cross-block compression: each carry-forward transaction maps 1:1 to the single dropping tail block, with no coalescing across tail blocks. The carrying head block may additionally hold ordinary mempool transactions (no registrations) up to `MAX_BLOCK_SIZE` ([Blockchain PRD](./moonblokz-blockchain-prd.md) FR51 / FR45).
+There is no cross-block compression: each carry-forward transaction maps 1:1 to the single dropping tail block, with no coalescing across tail blocks. The carrying head block may additionally hold ordinary mempool transactions (no registrations) up to `block_size_limit` ([Blockchain PRD](./moonblokz-blockchain-prd.md) FR51 / FR45).
 
 ## Algorithm 13: Transaction Validity Rules by Structure
 
@@ -908,10 +908,9 @@ Permit network growth without making Sybil-style expansion free.
 3. the transaction registers a new public key as a node,
 4. the registration price is absorbed by the network rather than paid to a specific node; the ordinary transaction fee is a distinct amount and is handled separately.
 
-### Configurable variants stated by the article
+### Self-registration only at genesis
 
-- free joining if registration price is `0` and self-signed registration is enabled,
-- permissioned joining if only node `#0` may register new nodes.
+The one self-registration is node `#0`'s own, in block `#0` (Algorithm 17, [Blockchain PRD](./moonblokz-blockchain-prd.md) FR54). The article's configurable variants — free self-signed joining and node-`#0`-only registration — are not part of the design; only the registration price is configurable, and a price of `0` makes sponsored joining free *(Project Lead decision, 2026-10-12)*.
 
 ## Algorithm 15: Balance-Block Scheduling for New Nodes
 
@@ -1114,7 +1113,7 @@ If re-added live UTXOs occupy all available block capacity, the chain may tempor
 - ancestry-based sequence-comparison rules so that `snake_chain`-window membership, `anchor_sequence` bounds, head/tail ordering, and out-of-window detection remain consistent across the wrap point; an implementation may still use the modular distance `(S_head − target) mod 2^32 < W` as an equivalent fast check while the chain is fully in window, falling back to ancestry traversal when an ambiguity arises;
 - re-scoping of genesis-anchored bootstrap clauses (Algorithm 2A genesis-anchored stopping condition, Algorithm 8 genesis-anchored admissibility) so they refer exclusively to the original genesis identified by content match — once the chain has wrapped at least once, the original genesis has long since left the active window and only the active-length-satisfying clauses apply.
 
-None of this post-MVP behavior is implemented in MVP. FR53's MVP rejection of `u32::MAX` keeps the wrap surface closed until that work is taken up.
+None of this post-MVP behavior is implemented in MVP; it is tracked as [OG-010](./moonblokz-open-gaps-register.md). FR53's MVP rejection of `u32::MAX` keeps the wrap surface closed until that work is taken up.
 
 Source: the MVP no-wrap rule and the post-MVP deferral are normatively pinned by [Blockchain PRD](./moonblokz-blockchain-prd.md) FR53 (and the Project Scoping § Post-MVP Extensions section that lists sequence wrap-around as a deferred feature). The original Part III–V articles only note that "sequence numbering can restart if needed after very long time horizons" without specifying the mechanism.
 
@@ -1151,7 +1150,7 @@ Parts III, IV, and V left several details for later work. They are now specified
 
 - communication protocol — the radio message model ([Radio Algorithm](./moonblokz-radio-algorythm.md) Section C) and the whole-block boundary (FR61),
 - approval messaging and evidence content — FR26 / FR27 and Section 9 above; only the exact evidence-payload byte encoding remains open ([OG-008](./moonblokz-open-gaps-register.md)),
-- multi-signature efficiency — Schnorr vs. BLS per-supporter cost ([architecture](./moonblokz-blockchain-architecture.md) §6.5) and the chain-config `max_aggregated_signatures` ([Configuration Module Specification](./moonblokz-configuration-specification.md) §4.1),
+- multi-signature efficiency — Schnorr vs. BLS per-supporter cost ([architecture](./moonblokz-blockchain-architecture.md) §6.5) and the backend's `MAX_AGGREGATED_SIGNATURES`, above which `required_support` is refused at acceptance ([Configuration Module Specification](./moonblokz-configuration-specification.md) §6 check 3),
 - chain-configuration schema — the parameter registry (Configuration Module Specification §4),
 - mutable future configuration — none: configuration is locked for the lifetime of the chain (FR8; Configuration Module Specification §1),
 - subgroup selection and active-node window — [ADR-015](./blockchain-adrs/ADR-015-approval-subgroup-selection.md) ([Blockchain PRD](./moonblokz-blockchain-prd.md)).
@@ -1184,6 +1183,7 @@ Architecturally, Parts III, IV, and V imply that the full algorithm has at least
 
 ## Related Documents
 
+- [`moonblokz-blockchain-operating-model.md`](./moonblokz-blockchain-operating-model.md) — the current runtime logic at a glance (phases × events, block statuses, build state), consolidated from the PRD.
 - [MoonBlokz Configuration Module Specification](./moonblokz-configuration-specification.md) — authoritative for the parameter registry whose identifiers and defaults §8 references, and for the resolution model and virtual machine behind the values the algorithms consume.
 - [`moonblokz-blockchain-concept.md`](./moonblokz-blockchain-concept.md) — the conceptual role and design philosophy of the blockchain subsystem.
 - [`moonblokz-blockchain-implementation.md`](./moonblokz-blockchain-implementation.md) — code-level crate structure, APIs, and engineering cautions.
