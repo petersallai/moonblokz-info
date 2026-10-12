@@ -34,7 +34,7 @@ Node #0 after genesis behaves as Ready. "Not-ready" is the FR1 indication return
 
 | Event | Collecting | Processing | Ready | Built (Ready path) |
 |---|---|---|---|---|
-| Inbound block | Outcomes reduce to Accepted-new / Already-known / Invalid-evidence (no window check); Tier 1 only, so every kept block stays Stored; the first valid chain-config loads tentatively; FR2 re-evaluated (FR1, FR8, FR9, FR60) | Not separately specified for external intake; the pass itself runs Tier 1 + 2 + 3 atomically on the candidate (FR9) | Exactly one FR10 outcome: Accepted-new, Already-known, Invalid-evidence, Out-of-Snake-Chain-Window, Deferred; may carry one support message (FR12), one re-disseminated transaction (FR13), one new block (FR45); no cause is returned — it goes to the FR64 log | partial — Tier 1 and storage built (4.2, 4.3); window check 9.1; Tier 2 6.1; Tier 3 / forward extension 6.0, 6.3; response components 6.4, 7.5, 8.3 |
+| Inbound block | Outcomes reduce to Accepted-new / Already-known / Invalid-evidence (no window check); Tier 1 only, so every kept block stays Stored; the first valid chain-config loads tentatively; FR2 re-evaluated (FR1, FR8, FR9, FR60) | Not separately specified for external intake; the pass itself runs Tier 1 + 2 + 3 atomically on the candidate (FR9) | Exactly one FR10 outcome: Accepted-new, Already-known, Invalid-evidence, Out-of-Snake-Chain-Window, Deferred; may carry a support message (FR12), a re-disseminated transaction (FR13), or a new block (FR45) — one per call, the rest through `NextCall`; no cause is returned — it goes to the FR64 log | partial — Tier 1 and storage built (4.2, 4.3); window check 9.1; Tier 2 6.1; Tier 3 / forward extension 6.0, 6.3; response components 6.4, 7.5, 8.3 |
 | Inbound transaction | Not-ready; no classification, no mempool admission (FR14) | Not-ready (FR10) | Exactly one FR14 outcome: Accepted-to-mempool, Already-confirmed, Duplicate-in-mempool, Deferred, Rejected | not built (7.3) |
 | Local transaction submit | `Rejected(not-ready)` (FR55) | `Rejected(not-ready)` | Created, Held(reason), or Rejected(reason) (FR55) | not built (10.5) |
 | Inbound support message | Accepted on format validity and LRU de-duplication alone; state-dependent checks deferred (FR26) | Same as Collecting (FR26) | Full FR26 checks; an Accepted message is accumulated by the proposer (FR27) | not built (6.5, 6.6) |
@@ -102,7 +102,7 @@ What a valid chain must satisfy, grouped by scope. **Checked** names where the r
 | I-04 | No block has `sequence == u32::MAX`; creation stops at `u32::MAX − 1` | FR53 | T1; creator side | partial — intake built; creation ceiling 8.1 |
 | I-05 | Creator signature valid against the chain-derived key (node #0: the trust anchor) | FR6, FR9, FR16, FR54 | T1 for a ready direct head extension; T3; pass | partial — pass built (5.4); ready paths 6.0 |
 | I-06 | A transaction block never holds both a registration and a complex transaction (carry-forward included) | FR6, FR9, FR51 | T1 | built (4.2) |
-| I-07 | A block's UTXO-output count ≤ `max_block_utxo_output` | FR34, FR56 | intake | not built (7.1) |
+| I-07 | A block's UTXO-output count ≤ `max_block_utxo_output` | FR9, FR34, FR56 | T1 (locked) | not built (7.1) |
 
 ### 5.2 Creator, Votes, and Approval
 
@@ -111,11 +111,11 @@ What a valid chain must satisfy, grouped by scope. **Checked** names where the r
 | I-08 | `mined_amount` equals `mining_reward` in scope (genesis exempt) | FR6, FR9, FR36, FR56 | T2; pass | not built (7.2) — the pass credits the header value unchecked |
 | I-09 | `consumed_votes`, `first_voted_node`, `consumed_votes_from_first_voted_node` match the derived vote state | FR6, FR9, FR37 | T3; pass | not built (6.2, decision E6-8) |
 | I-10 | The creator is entitled: FR38 top, an admitted grace-period fallback, or the deviation proposer | FR6, FR38, FR44, FR27 | T3; pass | not built (Epic 8) |
-| I-11 | Above a deviation block only its creator extends the branch, with `consumed_votes = 0` and `first_voted_node = self`; intervening replays follow the tail fall-out order | FR16, FR27, FR29 | intake exact evidence; T2 | not built (6.6; incoming evidence validation has no story yet) |
+| I-11 | Above a deviation block only its creator extends the branch, with `consumed_votes = 0` and `first_voted_node = self`; intervening replays follow the tail fall-out order | FR9, FR16, FR27, FR29 | T1 for a direct head extension; T2; pass | not built (6.6; incoming evidence 6.7) |
 | I-12 | Every `vote` names an existing node; `vote == 0` is always valid; at transaction intake an unknown target is Deferred, not invalid | FR6, FR14, FR37, FR54 | T3; pass | partial — pass built (5.4); ready 6.0 |
 | I-13 | No self-vote, except node #0 voting 0 | FR6, FR9, FR54 | T1 | built (4.2) |
 | I-14 | Accumulated-vote arithmetic never overflows `u32`; an overflowing step is invalid | FR23, FR37 | vote step (pass, T3) | built (3.1) |
-| I-15 | Approval evidence: subgroup members, valid aggregate signature, count ≥ `required_support`, size ≤ `MAX_AGGREGATED_SIGNATURES`, `supporter_vote_sum` per formula | FR6, FR9, FR12, FR21, ADR-015 | T3; pass | not built — the pass skips evidence blocks; 6.4, 6.6 |
+| I-15 | Approval evidence: subgroup members, valid aggregate signature, count ≥ `required_support`, size ≤ `MAX_AGGREGATED_SIGNATURES`, `supporter_vote_sum` per formula | FR6, FR9, FR12, FR21, ADR-015 | T3; pass | not built — the pass skips evidence blocks; 6.7 |
 
 ### 5.3 Value and Balances
 
@@ -145,23 +145,25 @@ What a valid chain must satisfy, grouped by scope. **Checked** names where the r
 | I-27 | A UTXO input references `(block_sequence, output_index)` of a retained ancestor at or above `S_tail`, index within its output stream | ADR-016, FR6, FR9, FR14 | T2; pass | partial — code still resolves by transaction hash (6.8) |
 | I-28 | The referenced output is unspent at inclusion and spent once | ADR-016, FR6, FR9 | T3; pass | partial — pass built (5.4); ready 6.0 |
 
-### 5.6 `snake_chain` Preservation (Ready only — not part of the FR6 pass)
+### 5.6 `snake_chain` Preservation
+
+Checked at head extension in Ready, and inside the FR3 pass against the candidate's own projections wherever the context lies inside the candidate; only obligations whose dropping block precedes the candidate are trusted (FR6, FR9).
 
 | # | Invariant | FRs | Checked | Built |
 |---|---|---|---|---|
 | I-29 | Active-chain length ≤ `W` (before maturity: block #0 to the head) | FR48 | head extension | not built (9.1) |
 | I-30 | The tail never drops unpreserved state: a head extension at a drop is (or carries) the replay of the dropping block's one payload category | FR45, FR48 | T2 (T3 in the deep zone); creator side | not built (9.1) |
-| I-31 | A dropping chain-config block is replayed in the next head with identical content | FR49 | T2 | not built (9.2) |
-| I-32 | Every registered node keeps a seed source (balance entry or registration) inside every `W` window | FR50 | T2 (T3 in the deep zone) | not built (9.3) |
+| I-31 | A dropping chain-config block is replayed in the next head with identical content | FR49 | T2; pass | not built (9.2) |
+| I-32 | Every registered node keeps a seed source (balance entry or registration) inside every `W` window | FR50 | T2 (T3 in the deep zone); pass | not built (9.3) |
 | I-33 | A balance block's entries equal the state at `seq − 1`, `max_node_id` equals the watermark, and the entry set is the canonical mandatory set plus bonus pack | FR9, FR50 | T3; pass (`max_node_id` only) | partial — `max_node_id` built (5.4); entries 6.0 (D9), set 9.3 |
-| I-34 | Carry-forward: exactly one tail block drops, it holds UTXO outputs, outputs equal `(recipient, amount − custodian_fee)` for every unspent output, below-fee outputs are dropped, nothing extra, no registration alongside, vote-neutral | FR9, FR51 | T2; T3 | not built (9.5) |
+| I-34 | Carry-forward: exactly one tail block drops, it holds UTXO outputs, outputs equal `(recipient, amount − custodian_fee)` for every unspent output, below-fee outputs are dropped, nothing extra, no registration alongside, vote-neutral | FR9, FR51 | T1 for a direct head extension; T2; T3; pass | not built (9.5) |
 
 ### 5.7 Configuration
 
 | # | Invariant | FRs | Checked | Built |
 |---|---|---|---|---|
 | I-35 | Every chain-config block is byte-identical to the durable lock | FR3, FR6, FR8, FR17 | T1 (silent discard after the lock); pass; FR8 cleanup | built (4.3, 5.9) |
-| I-36 | Blocks comply with the locked configuration in scope (fee policy, registration price, custodian fee, approval threshold, other limits) | FR6, FR9 | T2 | not built beyond the size limit — no owning story found |
+| I-36 | Blocks comply with the locked configuration in scope (fee policy, registration price, custodian fee, approval threshold, other limits) | FR6, FR9 | T2 | not built beyond the size limit — fee policy and registration price 7.3, custodian fee 9.5, approval threshold 6.7 |
 | I-37 | Configuration content is accepted: well-formed, within the §6 bounds of the [specification](./moonblokz-configuration-specification.md) (including `1 ≤ required_support ≤ MAX_AGGREGATED_SIGNATURES`) | FR8, FR56 | accept (→ FR16 exact evidence) | partial — built (5.7, 5.9, 5.11) except the restored check 3; code still clamps (6.4) |
 | I-38 | A candidate segment contains at least one chain-config block | FR2, FR3, FR8 | FR2 selection; pass | built (5.9, 5.13) |
 
@@ -207,10 +209,10 @@ Each flow lists its trigger, its steps, and what happens on failure. Step tables
 | 2 | Mark the candidate backward from the tip; note the earliest balance block and first chain-config block | FR3 | built (5.3) |
 | 3 | Zero the candidate's spent bits; preload and check its configuration against the held one (mismatch → T5 adopt) | FR3, FR8 | built (5.3, 5.9) |
 | 4 | Seed the node-id watermark (earliest `max_node_id`, or 0 at genesis) | FR3, FR50, FR54 | built (5.3) |
-| 5 | Traverse forward: FR6 state checks interleaved with derivation (roster, keys, balances, votes, spent bits, seed sources); pre-seed acceptance only for window-anchored candidates | FR3, FR6, FR37, FR38, FR50 | partial (5.3, 5.4) — see §5 for missing checks |
+| 5 | Traverse forward: FR6 state checks interleaved with derivation (roster, keys, balances, votes, spent bits, seed sources), including the `snake_chain` preservation checks inside the candidate; pre-seed acceptance only for window-anchored candidates | FR3, FR6, FR9, FR37, FR38, FR50 | partial (5.3, 5.4) — see §5 for missing checks; `snake_chain` checks 9.2, 9.3, 9.5, 6.6 |
 | 6 | Durably lock the configuration (storage first), promote the candidate Stored → Active, clean up mismatching or oversized blocks, enter Ready | FR4, FR8, FR9 | built (5.4, 5.9); `S_tail` and `branch_value` seeding 9.1, 6.1 |
 
-**On failure:** an FR6 violation runs FR5 (T4); the code retries once, plus one adopt retry. A durable-commit failure resets the projections and leaves the node in Collecting with its blocks intact. **Writes:** only the lock and deletions; everything else is RAM.
+**On failure:** an FR6 violation runs FR5 (T4); the code retries once, plus one adopt retry. A local failure (storage read, missing vote parameter) deletes nothing: the node stays in Collecting and retries later (FR5; the code still deletes the head until Story 6.0). A durable-commit failure resets the projections and leaves the node in Collecting with its blocks intact. **Writes:** only the lock and deletions; everything else is RAM.
 
 ### 7.2 Forward Extension of the Active Head (Ready)
 
@@ -224,7 +226,7 @@ Each flow lists its trigger, its steps, and what happens on failure. Step tables
 | 4 | On success: store the block, mark it Active (no Connected step), move the head, refresh `chain_heads`; advance the tail if gated | FR9, FR19, FR48 | not built (6.0, 9.1) |
 | 5 | Side effects: `branch_value`, mempool removal and expiry, deferred re-evaluation, seed sources | FR15, FR19, FR21, FR32, FR50 | not built (6.1, 7.4, 7.5, 9.3) |
 | 6 | Loop over stored children of the new head (interim order: lowest hash); a failing child is deleted with descendants | FR9, FR16 | not built (6.0) |
-| 7 | Response: at most one component — support message, re-disseminated transaction, or chained new block | FR10, FR12, FR13, FR45 | not built (6.4, 7.5, 8.3) |
+| 7 | Response: at most one component per call — support message, re-disseminated transaction, or chained new block; further ones through `NextCall` | FR10, FR12, FR13, FR45 | not built (6.4, 7.5, 8.3) |
 
 **On failure:** a failing direct extension is not stored (`Invalid-evidence`) and leaves derived state unchanged; a local error admits the block as Stored for a later retry; a storage failure after a good step reverts the step and reads as Already-known to the radio (the code still returns `Unstorable` until Story 11.2). No FR5 rollback or phase reversion in Ready.
 
@@ -287,7 +289,7 @@ Each flow lists its trigger, its steps, and what happens on failure. Step tables
 | 4 | Support intake in every phase: format and de-duplication always; signature, coherence and subgroup checks once the deviation is on the local active chain; Accepted → relay | FR26 | not built (6.5) |
 | 5 | Proposer: collect subgroup supporters; at `required_support` aggregate once and build the evidence block (`supporter_vote_sum`, signature, ids) | FR12, FR27 | not built (6.6) |
 | 6 | The deviation block is Active at once and penalizes the original top creator; its branch stays weaker until the evidence block lands | FR21, FR28, FR37 | not built (6.0–6.2) |
-| 7 | Validate incoming evidence blocks (I-15) | FR6, FR9 | not built — no story yet |
+| 7 | Validate incoming evidence blocks (I-15) | FR6, FR9 | not built (6.7) |
 
 **On failure:** an ineligible node sends nothing and gives no reason; eligibility is re-evaluated as the chain advances. The accumulator is not durable.
 

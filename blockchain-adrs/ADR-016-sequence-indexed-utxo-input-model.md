@@ -15,6 +15,8 @@ MoonBlokz shall reference UTXOs by `(block_sequence, output_index)` rather than 
 
 Spent-state for UTXO outputs shall be represented as a **per-block spent-bit vector** co-located with the block in storage. Each block carries one bit per UTXO output produced by its transactions; the bit is `0` while the output is unspent on the current active chain and `1` once spent.
 
+*Note (2026-10-12):* "co-located with the block" means kept with the block's in-memory cache entry, not written to flash: the vector is derived, not durable, and is rebuilt by forward replay ([PRD](../moonblokz-blockchain-prd.md) FR34; [architecture](../moonblokz-blockchain-architecture.md) §6.2).
+
 The spent-bit vector is a **derived projection** of the current active chain, not durable blockchain truth. The authoritative record of spend events remains the transactions contained in accepted blocks. On chain switch, spent-bit vectors covering blocks inside the rollback scope shall be recomputed by forward-replaying the new active chain from the common ancestor, consistent with the chain-switch reconciliation workflow defined in PRD FR23 and realized in `moonblokz-blockchain-architecture.md` §4.2 (`reconciliation.rs`).
 
 This decision supersedes the Part V rationale that hash-based references are preferred because they "survive branch changes". Under `snake_chain` bounds, the sequence reference is equally stable within its valid scope (the active chain inside the retained window), and carry-forward already invalidates key references in both models, so the hash-based stability argument does not provide a net advantage.
