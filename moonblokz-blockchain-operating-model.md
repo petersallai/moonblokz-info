@@ -173,7 +173,7 @@ Checked at head extension in Ready, and inside the FR3 pass against the candidat
 |---|---|---|---|---|
 | I-39 | No artifact may assert a node #0 key other than `node_zero_public_key` (registration of id 0, balance entry of node 0, content signature) | FR7, FR9, FR50, FR69 | T1 | built (4.2, 5.9) |
 | I-40 | Chain-config content carries node #0's signature, valid against the anchor | FR7 | T1 | built (5.9) |
-| I-41 | Blocks #0 / #1 have the fixed genesis shape (all-zero `previous_hash`, node #0 registration and self-transfer, then the configuration); bootstrap exceptions need sequence **and** content match; self-built #0 / #1 skip the Tier 1 re-check | FR54, FR69 | T1 / pass for received genesis blocks | partial — creation and anchor checks built (1.4, 5.1); zero hash and content match not checked |
+| I-41 | Blocks #0 / #1 have the fixed genesis shape (all-zero `previous_hash`, node #0 registration and self-transfer, then the configuration); bootstrap exceptions need sequence **and** content match; self-built #0 / #1 skip the Tier 1 re-check | FR54, FR69 | T1 / pass for received genesis blocks | partial — creation and anchor checks built (1.4, 5.1); zero hash and content match 6.10 |
 
 ## 6. Derived Projections
 
