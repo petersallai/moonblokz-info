@@ -23,6 +23,7 @@ If you already know your topic, use this table to jump straight to the relevant 
 | Field testing — telemetry, Probe, HUB, OTA updates, CLI, analyzer | [Telemetry Concept](./moonblokz-telemetry-concept.md), [Telemetry Algorithm](./moonblokz-telemetry-algorythm.md), [Telemetry Implementation](./moonblokz-telemetry-implementation.md) |
 | Storage and flash persistence — backends, block layout, integrity, wear | [Storage PRD](./moonblokz-storage-prd.md), [Storage Architecture](./moonblokz-storage-architecture.md), [Storage Concept](./moonblokz-storage-concept.md), [Storage Algorithm](./moonblokz-storage-algorythm.md), [Storage Implementation](./moonblokz-storage-implementation.md) |
 | Memory and RAM budgets, embedded-minimal coding discipline, capacity caps, const-generics, flash and airtime limits | [System Constraints](./moonblokz-system-constraints.md) (first stop; see §0 for project-wide embedded implementation discipline), then [Blockchain Architecture](./moonblokz-blockchain-architecture.md) §7/§12 and [Radio Implementation](./moonblokz-radio-implementation.md) |
+| Project Lead decisions — what was decided, when, where it is recorded, what is still open | [Decision Register](./moonblokz-decision-register.md) |
 | Open gaps, unresolved verification items, known telemetry drift, post-MVP recovery questions | [Open Gaps Register](./moonblokz-open-gaps-register.md) |
 | Term meanings and cross-subsystem disambiguation | [Glossary](./moonblokz-glossary.md) |
 | Public website | [Website Summary](./website.md) |
@@ -57,6 +58,18 @@ This document explains:
 - and, per row, whether it is built yet and which story owns it.
 
 It is explicitly **not authoritative**: the [Blockchain PRD](./moonblokz-blockchain-prd.md) wins on any divergence. Use it as the first stop for any blockchain-logic question, then read the cited FRs.
+
+### [MoonBlokz Decision Register](./moonblokz-decision-register.md)
+
+An index of the Project Lead's decisions on the blockchain stack: behavior, requirements, public API, configuration, and plan.
+
+This document explains:
+
+- each decision with its date, scope, where it is recorded (KB document, BMAD story, epics, deferred work), and its owner story,
+- which decisions still hold and which were superseded or withdrawn, and by what,
+- and which decisions are still open, with the recommendation on the table and where they will be decided.
+
+It is not authoritative for the rules themselves — the owning document wins — and it does not repeat the architecture decision log (§14) or the ADRs. Use it to check whether a question has already been decided before raising it.
 
 ### [MoonBlokz System Constraints & Limits Reference](./moonblokz-system-constraints.md)
 
