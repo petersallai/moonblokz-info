@@ -121,7 +121,7 @@ Content is malformed — and its chain-config block is rejected as exact evidenc
 
 The registry is a single flat key space shared by every consuming subsystem. It is **permanent wire format**: an ID's meaning cannot change once any chain exists, IDs are allocated densely and are never reused or renumbered, and a new parameter takes the next free ID.
 
-**Next free ID: 30.**
+**Next free ID: 31.**
 
 Value-form column: `L` = literal only; `L/B` = literal or bytecode. **Parameters take no arguments**: a program computes from other parameters (`GETCONFIG` with an argument count of 0) and from chain-info (`GETCHAININFO`, §4.6). Which inputs a value depends on is the bytecode's decision, not the accessor's *(Project Lead, 2026-10-09)*.
 
@@ -148,6 +148,7 @@ Value-form column: `L` = literal only; `L/B` = literal or bytecode. **Parameters
 | 26 | `tx_fee_per_byte_max` | u64 | 8 | 1000 | L/B | FR56 fee policy |
 | 27 | `deviation_replay_insertion_delay_ms` | u32 | 4 | 300_000 | L/B | FR29 pacing |
 | 28 | `replay_block_reward` | u64 | 8 | 100 | L/B | FR36 (c) |
+| 30 | `mining_reward` | u32 | 4 | 0 | L/B | FR36 (a); FR6 requires a block's `mined_amount` header field to equal it. Width matches the header field |
 
 ### 4.2 Radio parameters
 

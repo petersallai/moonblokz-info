@@ -268,7 +268,7 @@ The articles say monetary behavior may depend on chain-level configuration, incl
 - additional currency creation or consumption,
 - and economic functions based on network-wide parameters such as actual node count, total currency, and average transaction size.
 
-The economic parameters are registry entries IDs 23–26 and 28 ([Configuration Module Specification](./moonblokz-configuration-specification.md) §4.1). Network-wide inputs reach a program through chain-info (§4.6), where only the registered-node count is allocated so far. The chain-config reward rule for `mined_amount` that FR6 / FR36 reference has no registry parameter ([OG-009](./moonblokz-open-gaps-register.md)).
+The economic parameters are registry entries IDs 23–26 and 28 ([Configuration Module Specification](./moonblokz-configuration-specification.md) §4.1). Network-wide inputs reach a program through chain-info (§4.6), where only the registered-node count is allocated so far. The mining reward is the `mining_reward` parameter (ID 30, default 0): FR6 requires each block's `mined_amount` to equal it, and FR36 (a) credits it to the creator.
 
 ### Timing configuration
 
