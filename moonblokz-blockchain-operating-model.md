@@ -62,7 +62,7 @@ In Collecting every kept block is Stored; Processing exposes no intermediate sta
 
 | Tier | Gate into | Where it runs | What it checks (summary — FR9 holds the full list) |
 |---|---|---|---|
-| 1 | Stored (durable storage) | Intake, every phase; items marked *ready* only in Ready | version and payload schema; *ready + locked:* size ≤ `block_size_limit`, chain-config content equals the lock (FR17), window membership (FR60); `block.sequence > anchor_sequence`; no self-vote; registration / complex-transaction exclusivity; `new_key_signature`; node-#0 trust-anchor checks (FR69); *ready:* creator signature when the block directly extends the active head |
+| 1 | Stored (durable storage) | Intake, every phase; items marked *ready* only in Ready | version and payload schema; *locked (any phase):* size ≤ `block_size_limit`, chain-config content equals the lock (FR17); *ready:* window membership (FR60); `block.sequence > anchor_sequence`; no self-vote; registration / complex-transaction exclusivity; `new_key_signature`; node-#0 trust-anchor checks (FR69); *ready:* creator signature when the block directly extends the active head |
 | 2 | Connected | Ready (Processing: inside the FR3 pass) | ancestry reaches the active chain; locked chain-config rules at the block's sequence (fee policy, registration price, custodian fee, approval threshold); `mined_amount` equals `mining_reward`; UTXO-input structural completion; registration key unique; structural `snake_chain` replay checks where the reference is retained (else deferred to Tier 3) |
 | 3 | Active | The FR3 pass, FR23 chain-switch forward replay, and in Ready a direct extension of the active head or an already-stored child of it (FR16, FR9) | vote fields against candidate vote state; creator balance; balance-block contents and `max_node_id`; transaction signatures, balances, duplicates, node-id stride, UTXO spent bits, no negative balance; carry-forward validity; approval-evidence cluster; pacing (soft-fail to Deferred) |
 
@@ -73,7 +73,7 @@ Checks derived from chain configuration can invalidate a block only after the co
 | From → To | Trigger | FRs | Built |
 |---|---|---|---|
 | intake → Stored | Tier 1 passes | FR9, FR16 | built (4.2) |
-| intake → not stored | Tier 1 exact evidence (Invalid-evidence); outside the window in Ready; chain-config content ≠ lock (silent); duplicate (no-op) | FR10, FR11, FR16, FR17, FR60 | built (4.2, 4.3) — window check inactive until 9.1 |
+| intake → not stored | Tier 1 exact evidence (Invalid-evidence); outside the window in Ready; chain-config content ≠ lock (silent); duplicate (no-op); a valid block storage fails to persist (reported as Already-known, cause logged) | FR10, FR11, FR16, FR17, FR60 | built (4.2, 4.3) — window check inactive until 9.1 |
 | Stored → Connected | Ancestry reaches the active chain and Tier 2 passes | FR9 | not built (6.1) |
 | Stored → Active | A direct extension of the active head (checked before storing; a failure is not stored), or an already-stored child of the active head, passes Tier 2 and Tier 3 in one step | FR9, FR16 | not built (6.0) |
 | Connected → Active | FR23 reconciliation succeeds | FR9 | not built (6.3) |
