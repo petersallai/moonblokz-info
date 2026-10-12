@@ -91,6 +91,8 @@ Each knowledge-base document should help readers reach the other documents most 
 - a row with remaining work names its owner story, or points to the section (`§`) that does; an unowned gap is raised with the Project Lead rather than left unnamed;
 - a Project Lead decision that changes behavior is recorded in the owning document's Provenance and reflected in the operating model in the same change.
 
+The FR digest in [`moonblokz-blockchain-prd-fr-index.md`](./moonblokz-blockchain-prd-fr-index.md) follows the same rule: a change to a blockchain FR updates that FR's digest (and subject label, if its scope changed) in the same change.
+
 ## Knowledge Base Entry Point
 
 The primary entry point to this knowledge base is [`moonblokz-index.md`](./moonblokz-index.md).
