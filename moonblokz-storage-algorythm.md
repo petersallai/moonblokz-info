@@ -187,6 +187,8 @@ The current public contract exposes exactly these methods:
 - `init_params: [u8; INIT_PARAMS_SIZE]`
 - `chain_configuration: Option<Block>`
 
+Decided 2026-10-12, not yet implemented: `load_control_data()` stops returning `private_key`, and a separate `load_private_key()` serves the node runtime → crypto path, so the blockchain module never receives the key ([`moonblokz-storage-prd.md`](./moonblokz-storage-prd.md) FR11 / FR54; BC-FR68).
+
 ## C3. Public error categories
 
 The current public error model is:

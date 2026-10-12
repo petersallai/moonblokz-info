@@ -129,7 +129,7 @@ Conceptually, `moonblokz-blockchain` is best understood as a **stateful semantic
 It:
 
 - receives blockchain-relevant semantic events from network, local, and timer directions,
-- maintains authoritative blockchain knowledge — the retained known blocks, the node's own identity, and the saved chain-configuration,
+- maintains authoritative blockchain knowledge — the retained known blocks and the saved chain-configuration — while its node identity is supplied at construction ([Blockchain PRD](./moonblokz-blockchain-prd.md) FR67) and all signing is delegated to the crypto module, which alone holds the private key (FR68),
 - treats the mempool as independent, network-held state and the operating mode as non-durable runtime state rather than durable truth,
 - derives the active chain and current economic state from that authoritative base,
 - and answers local blockchain-facing queries needed by higher-level payment or application interfaces.
@@ -142,7 +142,7 @@ The current design direction also clarifies that not every useful blockchain-fac
 
 Conceptually, MoonBlokz distinguishes between:
 
-- **durable authoritative truth** — the retained known blocks, the node's own identity (its `node_id` and private key), and the saved chain-configuration,
+- **durable authoritative truth** — the retained known blocks, the node's own identity (its `node_id`, and the private key that storage keeps for the crypto module and never hands to the blockchain module — FR59 / FR68), and the saved chain-configuration,
 - and **derived operational views** — the currently selected active chain and the currently usable balance, UTXO, and vote state — recomputed from that durable base rather than stored as primary truth.
 
 The mempool and the current operating mode sit outside this durable base: the mempool is independent, network-held runtime state (empty after a restart and repopulated from ordinary network activity), and the operating mode is never persisted, since a node always restarts in the collecting phase. The authoritative persistence boundary is defined in the [Blockchain PRD](./moonblokz-blockchain-prd.md) FR59, and the derived projections in FR34.
@@ -334,7 +334,7 @@ Part IV introduced the conceptual model for adding new nodes, and Part V clarifi
 
 MoonBlokz uses a hybrid registration model:
 
-- a new node cannot register itself; an existing node with enough balance must register it, and the new node receives the next node id ([Blockchain PRD](./moonblokz-blockchain-prd.md) FR6),
+- a new node cannot register itself — the only self-registration is node `#0`'s own at genesis (FR54) — so an existing node with enough balance must register it, and the new node receives the next node id ([Blockchain PRD](./moonblokz-blockchain-prd.md) FR6),
 - every node can register a new node,
 - registration has a configurable price,
 - the new key must prove possession of its private key,

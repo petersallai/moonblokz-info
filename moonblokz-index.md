@@ -72,7 +72,7 @@ This document explains:
 - flash and storage-geometry gaps such as unquantified wear-lifetime and the storage slot-count divisor verification item,
 - telemetry deployment-model and docs-vs-code drift across Probe, HUB, Collector, CLI, and Update Server,
 - the accepted MVP no-saturation-handling stance for bounded UTXO retention,
-- the blockchain specification gap for the approval-evidence byte encoding,
+- the blockchain specification gap for the approval-evidence byte encoding and the post-MVP sequence wrap-around question,
 - and the post-MVP open questions around dynamic custodian fees, long-disconnect recovery, and promoting processing to a concurrent-ingestion lifecycle state.
 
 It is explicitly **not authoritative**: each entry links to the source document where the underlying gap, drift, limitation, or open question is defined. Use this file before planning work that depends on unresolved deployment constraints, telemetry interoperability assumptions, UTXO saturation behavior, or long-disconnect recovery.
@@ -422,14 +422,14 @@ Use this file when you want implementation guidance that complements the concept
 
 ### 22. [MoonBlokz Storage Product Requirements Document](./moonblokz-storage-prd.md) — Authoritative
 
-The authoritative source for the `moonblokz-storage` library's functional requirements (FR1–FR53) and Non-Functional Requirements (NFR1–NFR20).
+The authoritative source for the `moonblokz-storage` library's functional requirements (FR1–FR54) and Non-Functional Requirements (NFR1–NFR20).
 
 This document explains:
 
 - the executive summary, success criteria, and product scope of the `moonblokz-storage` crate and its companion `moonblokz-chain-types` crate,
 - the user journeys covering chain-runtime success path, edge-case recovery, chain-developer integration, node-operator troubleshooting, and backend-implementer baseline,
 - the domain-specific requirements including embedded constraints, control-plane schema, layout rules, and simplicity-first policy,
-- the full FR1–FR53 functional requirement catalog covering storage lifecycle, control-plane management, indexed persistence and retrieval, integrity and error semantics, chain integration, backend abstraction, blockchain-types boundary, developer distribution, and documentation,
+- the full FR1–FR54 functional requirement catalog covering storage lifecycle, control-plane management, indexed persistence and retrieval, integrity and error semantics, chain integration, backend abstraction, blockchain-types boundary, developer distribution, and documentation,
 - and the NFR1–NFR20 catalog covering performance, security, reliability, integration, and implementation simplicity.
 
 Use this file as the canonical reference whenever any other storage knowledge-base document — concept, algorithm, implementation, or architecture — cites an FR or NFR by number. Other knowledge-base files reference this document instead of restating its content, so divergence from the PRD must be treated as exact evidence of a knowledge-base inconsistency.
@@ -452,7 +452,7 @@ This document explains:
 
 Use this file as the canonical reference whenever any other storage knowledge-base document — concept, algorithm, or implementation — describes a crate boundary, backend isolation rule, feature gating model, public API surface, naming convention, or block/storage data-structure contract. Divergence from the Architecture Decision Document must be treated as exact evidence of a knowledge-base inconsistency.
 
-The document was originally authored on 2026-02-25 and was reconciled on 2026-06-18 with the current `moonblokz-storage` and `moonblokz-chain-types` codebases. The reconciliation updated the FR-count framing to FR1–FR53, the RP2040 slot geometry to the shipped per-slot hash layout, and the Project Structure section to the actual repository file set.
+The document was originally authored on 2026-02-25 and was reconciled on 2026-06-18 with the current `moonblokz-storage` and `moonblokz-chain-types` codebases. The reconciliation updated the FR-count framing to FR1–FR54, the RP2040 slot geometry to the shipped per-slot hash layout, and the Project Structure section to the actual repository file set.
 
 ### 24. [MoonBlokz Storage Concept Model](./moonblokz-storage-concept.md)
 
@@ -538,7 +538,7 @@ Use this file when you need a quick orientation to the current public web presen
 19. Then read [MoonBlokz Telemetry Concept Model](./moonblokz-telemetry-concept.md) to understand why field testing needs a separate telemetry architecture and how the operational components fit together.
 20. Continue with [MoonBlokz Telemetry Algorithm Model](./moonblokz-telemetry-algorythm.md) for the formal flow of logs, commands, polling control, OTA, and analyzer interaction.
 21. Continue with [MoonBlokz Telemetry Implementation Notes](./moonblokz-telemetry-implementation.md) for repository-level responsibilities, update-path cautions, and telemetry-specific engineering constraints.
-22. Then read [MoonBlokz Storage Product Requirements Document](./moonblokz-storage-prd.md) for the authoritative FR1–FR53 functional requirements and NFR1–NFR20 Non-Functional Requirements that anchor the storage subsystem.
+22. Then read [MoonBlokz Storage Product Requirements Document](./moonblokz-storage-prd.md) for the authoritative FR1–FR54 functional requirements and NFR1–NFR20 Non-Functional Requirements that anchor the storage subsystem.
 23. Then read [MoonBlokz Storage Architecture Decision Document](./moonblokz-storage-architecture.md) for the authoritative crate-split, backend feature model, naming and structure patterns, and data structure contracts that realize those requirements.
 24. Then read [MoonBlokz Storage Concept Model](./moonblokz-storage-concept.md) to understand why bounded blockchain persistence on flash is possible at all and how MoonBlokz separates recoverable block data from recovery-critical control data.
 25. Continue with [MoonBlokz Storage Algorithm Model](./moonblokz-storage-algorythm.md) for the formal storage-unit layout, integrity-check rules, redundancy behavior, crash recovery, and wear-lifetime model.

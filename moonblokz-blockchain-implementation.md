@@ -268,14 +268,14 @@ The articles say monetary behavior may depend on chain-level configuration, incl
 - additional currency creation or consumption,
 - and economic functions based on network-wide parameters such as actual node count, total currency, and average transaction size.
 
-The economic parameters are registry entries IDs 23–26 and 28 ([Configuration Module Specification](./moonblokz-configuration-specification.md) §4.1). Network-wide inputs reach a program through chain-info (§4.6), where only the registered-node count is allocated so far. The mining reward is the `mining_reward` parameter (ID 30, default 0): FR6 requires each block's `mined_amount` to equal it, and FR36 (a) credits it to the creator.
+The economic parameters are registry entries IDs 23–26 and 28 ([Configuration Module Specification](./moonblokz-configuration-specification.md) §4.1). Network-wide inputs reach a program through chain-info (§4.6), where only the registered-node count is allocated so far. The mining reward is the `mining_reward` parameter (ID 5, default 0): FR6 requires each block's `mined_amount` to equal it, and FR36 (a) credits it to the creator.
 
 ### Timing configuration
 
 The following are implied configuration candidates:
 
 - enough time has passed to force block creation,
-- transactional block-fill threshold percentage of `MAX_BLOCK_SIZE`,
+- transactional block-fill threshold percentage of `block_size_limit`,
 - grace-period duration,
 - approval timing windows,
 - mempool-replenishment request interval (used continuously whenever the local mempool is below the transactional fill threshold, independently of whether the local node is the currently expected creator; see Algorithm 4 mempool replenishment in `moonblokz-blockchain-algorythm.md`),
@@ -296,11 +296,7 @@ Parts IV and V introduce or imply:
 
 ### Registration policy configuration
 
-The implementation must be able to represent at least the options explicitly mentioned by the article:
-
-- registration price,
-- self-registration enablement,
-- and permissioned registration by node `#0`.
+Only the registration price is configurable (`registration_price`, ID 24). Registration is always initiated by an existing node ([Blockchain PRD](./moonblokz-blockchain-prd.md) FR6); the one self-registration is node `#0`'s own, in block `#0` at genesis (FR54). The article's self-registration and node-`#0`-only variants are not part of the design *(Project Lead decision, 2026-10-12)*.
 
 ### Majority and support thresholds
 
@@ -360,7 +356,7 @@ Resolved by the radio message model ([`moonblokz-radio-algorythm.md`](./moonblok
 
 ### 2. Multi-signature or evidence efficiency
 
-Partly resolved. Per [ADR-015](./blockchain-adrs/ADR-015-approval-subgroup-selection.md), `MAX_AGGREGATED_SIGNATURES = 50` is the default; the chain also declares it as `max_aggregated_signatures` (ID 5, default 50, bounded by the backend constant; [Configuration Module Specification](./moonblokz-configuration-specification.md) §4.1). Per [`moonblokz-blockchain-architecture.md`](./moonblokz-blockchain-architecture.md) §6.5, the `ApprovalAccumulator` allocates a fixed `MAX_BLOCK_SIZE` buffer (~2 KB) that is crypto-agnostic; BLS aggregation packs roughly 5-10× more supporters into the same buffer than Schnorr (per-supporter cost ~4 B with BLS vs ~36 B with Schnorr). What remains open is whether future crypto backends introduce new aggregation primitives that change this tradeoff.
+Partly resolved. Per [ADR-015](./blockchain-adrs/ADR-015-approval-subgroup-selection.md), `MAX_AGGREGATED_SIGNATURES = 50` is the backend constant (`moonblokz-crypto`, every backend), and the chain-config `required_support` is refused at acceptance above it ([Configuration Module Specification](./moonblokz-configuration-specification.md) §6 check 3). Per [`moonblokz-blockchain-architecture.md`](./moonblokz-blockchain-architecture.md) §6.5, the `ApprovalAccumulator` allocates a fixed `MAX_BLOCK_SIZE` buffer (~2 KB) that is crypto-agnostic; BLS aggregation packs roughly 5-10× more supporters into the same buffer than Schnorr (per-supporter cost ~4 B with BLS vs ~36 B with Schnorr). What remains open is whether future crypto backends introduce new aggregation primitives that change this tradeoff.
 
 ### 3. Random subgroup selection
 
