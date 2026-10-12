@@ -82,6 +82,15 @@ This review only adds or revises entries that satisfy those criteria; a term tha
 
 Each knowledge-base document should help readers reach the other documents most useful alongside it. When creating a new document, include a short "Related Documents" section that links those documents — typically the other concept, algorithm, and implementation files for the same subsystem, the owning Product Requirements Document and Architecture Decision Document, and any relevant cross-cutting reference such as the System Constraints & Limits Reference or the Glossary. When modifying a document that lacks such a section, add one if its related set is clear. Keep these sections to links with a short reason each, not restated content.
 
+## Operating Model Maintenance
+
+[`moonblokz-blockchain-operating-model.md`](./moonblokz-blockchain-operating-model.md) is a consolidation of the blockchain PRD, architecture, and configuration specification. It is only useful while it is current, so:
+
+- any change to a blockchain FR, the architecture, or the configuration specification that alters behavior, an invariant, a projection, or a flow updates the affected operating-model rows in the same change;
+- when a story's code lands, its Built cells are updated in the same knowledge-base change that records the story: a number inside `built (…)` or after `built in` names the story that delivered that part, and any other number names the story that owns the remaining work;
+- a row with remaining work names its owner story, or points to the section (`§`) that does; an unowned gap is raised with the Project Lead rather than left unnamed;
+- a Project Lead decision that changes behavior is recorded in the owning document's Provenance and reflected in the operating model in the same change.
+
 ## Knowledge Base Entry Point
 
 The primary entry point to this knowledge base is [`moonblokz-index.md`](./moonblokz-index.md).
