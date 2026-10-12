@@ -69,12 +69,12 @@ Not repeated here: architecture decisions logged in [architecture §14](./moonbl
 | DEC-052 | 2026-10-08 | No `VERIFICATION_HORIZON` const generic: `H` is node-level, derived from `W`. | FR58 | ARCH §14 row 24; story 5.11 | in force · 9.7 |
 | DEC-053 | 2026-10-09 | R1 — a Ready-state forward-extension driver opens Epic 6 as Story 6.0; order 9.1 → 6.8 → 6.0 → 6.1. | FR9, FR48 | epics (Epic 6 reconciliation); story 9.1 | in force · 6.0 |
 | DEC-054 | 2026-10-09 | Story 9.1 runs before Epic 6. | plan | retro-5; epics | done |
-| DEC-055 | 2026-10-09 | R2 — the tail drop releases the block (retention 0 until 9.7), unlinks a surviving child, and can demote a side head to Stored. | FR19, FR48, FR58 | PRD FR19 (v); epics; story 9.1 | in force · 9.1 |
+| DEC-055 | 2026-10-09 | R2 — the tail drop releases the block (retention 0 until 9.7), unlinks a surviving child, and can demote a side head to Stored. | FR19, FR48, FR58 | PRD FR19 (v); epics; story 9.1 | in force |
 | DEC-056 | 2026-10-09 | R3 — blocks deleted before a restart may come back; no tombstones, no eager erase. | FR48, FR59 | ARCH §3.6; epics; story 9.1 | in force |
 | DEC-057 | 2026-10-09 | Epic 6 builds the cheap-zone walk only; zone dispatch and the deep zone go to 9.7. | FR23, FR58 | epics (Epic 6) | in force · 9.7 |
 | DEC-058 | 2026-10-09 | The chain-switch walk gets its mempool calls from Story 7.4, not a pre-built slot. | FR23, FR32 | epics (Epic 6) | in force · 7.4 |
 | DEC-059 | 2026-10-09 | Accepted interim: between 9.1 and 6.0 the FR60 window is live while the head is frozen. | FR48, FR60 | story 9.1 | in force (interim) |
-| DEC-060 | 2026-10-10 | At Ready entry, blocks below the new `S_tail` are released even if obligated; FR48's binding governs extensions, not adoption. | FR2, FR48 | story 9.1 | in force · 9.1 |
+| DEC-060 | 2026-10-10 | At Ready entry, blocks below the new `S_tail` are released even if obligated; FR48's binding governs extensions, not adoption. | FR2, FR48 | story 9.1 | in force |
 | DEC-061 | 2026-10-10 | Per-block atomicity comes from invertible operations shared by 6.0 and 6.3 (checked arithmetic); no journal or copy. | FR23, FR35 | story 6.0 D1; epics E6-10 | in force · 6.0, 6.3 |
 | DEC-062 | 2026-10-10 | UTXO resolution is a bounded ancestor walk plus one storage read; the code moves to ADR-016 `(block_sequence, output_index)` inputs (Story 6.8). | FR6, FR14, FR39 | story 6.0 D4; epics 6.8 | in force · 6.8 |
 | DEC-063 | 2026-07-30 | On an FR8 mismatch the candidate's configuration is adopted and the pass re-run in the same call; at most 3 passes. | FR5, FR8 | story 5.9 #1 | in force |
@@ -189,6 +189,7 @@ Not repeated here: architecture decisions logged in [architecture §14](./moonbl
 | O-021 | 2026-10-12 | Does DEC-037 (no deletion on local failure) also cover mark-overflow and missing-block failures in the pass? | FR5 | DEC-013, DEC-037 | 6.0 |
 | O-022 | 2026-10-09 | BLS Miri script never run — rec.: won't-do while BLS is not an embedded target. | crypto | DW triage D12 | — |
 | O-023 | 2026-10-09 | Up to 4 boot sweeps, O(`MAX_BLOCKS`²) tip discovery — rec.: won't-do until boot latency is measured. | FR59 | DW triage D51 | — |
+| O-024 | 2026-10-12 | A Ready head entered without any release keeps a Stored `chain_heads` entry and requests the anchor's parent (below `S_tail`) — rec.: recompute every head at Ready entry, owned by 6.0. | FR19, FR48, FR60 | DW (9.1 implementation #1) | 6.0 (rec.) |
 
 ## Related Documents
 

@@ -556,7 +556,7 @@ The full per-module breakdown (processes / data structures / relationships / API
 | `scheduler.rs` | FR46 | `SchedulerState` (~72 B) |
 | `blocks.rs` | FR18 | `BlockTable { blocks: [BlockEntry; 600] }` (45.6 KB) |
 | `chain_heads.rs` | FR19 | `ChainHeadsTable { heads: [ChainHeadEntry; 40] }` (2.88 KB — Story 4.4, §6.3) |
-| `snake_chain.rs` | FR48-FR53 | 2 u32 fields on Blockchain (8 B) |
+| `snake_chain.rs` | FR48-FR53 | 2 u32 indices on Blockchain (8 B, §6.4); stateless tail-drop classification and binding |
 | `branch_value.rs` | FR21 | (stateless; operates on `ChainHeadEntry.branch_value`) |
 | `intake.rs` | FR10/FR14/FR16/FR26 | (stateless dispatcher) |
 | `staged_validation.rs` | FR9 | (stateless tier 1/2/3 checks) |
@@ -663,10 +663,12 @@ pub(crate) struct ChainHeadEntry {
 ```rust
 // Blockchain struct fields:
 active_chain_head_idx: u32,    // 4 B   index into blocks
-snake_chain_tail_idx:  u32,    // 4 B   index into blocks (W blocks behind head)
+snake_chain_tail_idx:  u32,    // 4 B   index into blocks; NONE_REF = no window (every phase but Ready)
 ```
 
-No standalone struct — only 2 u32 fields. `snake_chain.rs` module remains as operations container.
+No standalone struct — only 2 u32 indices; the FR60 window `(S_tail, S_head)` is their blocks' sequences (Story 9.1). The tail is always the active chain's root (`parent_ref == NONE_REF`). It is established wherever the node enters Ready (genesis, the Processing→Ready promotion): set to the root, then advanced by the release step until the chain is at most `W` long, releasing obligated blocks too at that point (FR48 binds head extensions, not adoption). Every reset of the active head clears it.
+
+The release step frees the dropped block in one step: clear `is_on_active_chain`, free the slot with the lazy `BlockTable::delete` (durable bytes stay until reuse; a restart re-admits them and the next Ready entry releases them again), run FR19 event (v) in `chain_heads` (a branch forked at the dropped block demotes to Stored with the dropped hash as its missing parent), then unlink every surviving child (`parent_ref = NONE_REF`). Its delete-set is not closed under the child relation, so it is not the FR5 subtree deletion. Below-tail retention `R` is a code constant, `0` (Story 9.7 derives it from the horizon `H`). `snake_chain.rs` holds the stateless parts: the FR49/FR50/FR51 classification of the dropping block (fixed order, a storage read failure is an error) and the binding decision on a head extension.
 
 ### 6.5 `ApprovalAccumulator` — FR27 proposer-mode evidence
 
