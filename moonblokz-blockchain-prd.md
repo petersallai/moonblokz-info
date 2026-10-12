@@ -20,6 +20,7 @@ When other knowledge-base files cite an FR by number (for example, `per FR9`, `p
 
 ## Related Knowledge-Base Documents
 
+- [`moonblokz-blockchain-operating-model.md`](./moonblokz-blockchain-operating-model.md) — non-authoritative one-read consolidation of these requirements: lifecycle phases × events, block statuses and check tiers, and build state.
 - [`moonblokz-blockchain-prd-fr-index.md`](./moonblokz-blockchain-prd-fr-index.md) — non-authoritative FR/NFR navigation index for this PRD: per-FR titles by section, the NFR1–NFR26 catalog by category, and a recipe for reading a single requirement without loading the whole file.
 - [`moonblokz-blockchain-concept.md`](./moonblokz-blockchain-concept.md) — operating-model background for the requirements stated here.
 - [`moonblokz-blockchain-algorythm.md`](./moonblokz-blockchain-algorythm.md) — formal algorithm description that implements these requirements.
