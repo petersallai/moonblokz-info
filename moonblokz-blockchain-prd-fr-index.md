@@ -4,10 +4,10 @@
 
 ## How to read a single requirement without loading the whole PRD
 
-The PRD is large and each functional requirement is a single very long line, so reading the file in full is costly. To read just one:
+The PRD is large and most functional requirements are a single very long line, so reading the file in full is costly. To read just one:
 
 1. Search the PRD for the requirement's anchor — functional requirements begin a line with `- FR<n>:` and non-functional requirements with `- NFR<n>:`. For FR52 the anchor pattern is `^- FR52:`; for NFR12 it is `^- NFR12:` (the trailing colon keeps `FR5`/`FR52` and `NFR1`/`NFR12` distinct).
-2. Read that single line at the reported line number.
+2. Read from that line up to the next line starting with `- FR`, `- NFR`, or `#`. Most requirements are one line, but FR10, FR21, FR22, FR23, FR27, FR43 and FR64 continue in further paragraphs (annotations, lists, or continuation text) that a single-line read misses.
 
 Search by anchor rather than citing a line: anchors are stable across edits, line numbers are not.
 
