@@ -93,6 +93,16 @@ Each knowledge-base document should help readers reach the other documents most 
 
 The FR digest in [`moonblokz-blockchain-prd-fr-index.md`](./moonblokz-blockchain-prd-fr-index.md) follows the same rule: a change to a blockchain FR updates that FR's digest (and subject label, if its scope changed) in the same change.
 
+## Decision Register
+
+[`moonblokz-decision-register.md`](./moonblokz-decision-register.md) indexes every Project Lead decision that shapes behavior, requirements, public API, configuration, or the delivery plan. When a decision is taken:
+
+- add a row (next free `DEC-` number) in the same change that applies it, naming where it is recorded and the owner story of any code work;
+- when it replaces an earlier decision, mark that row *superseded by DEC-n* rather than deleting it;
+- record a decision that is raised but not yet made as an `O-` row, and move it to a `DEC-` row once decided.
+
+The register points to where each rule lives; the owning document stays authoritative for the rule itself. Architecture-level decisions already logged in the Architecture Decision Document §14 or in an ADR are not repeated.
+
 ## Knowledge Base Entry Point
 
 The primary entry point to this knowledge base is [`moonblokz-index.md`](./moonblokz-index.md).

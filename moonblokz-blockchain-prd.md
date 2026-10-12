@@ -8,6 +8,8 @@ When other knowledge-base files cite an FR by number (for example, `per FR9`, `p
 
 ## Provenance
 
+Every Project Lead decision recorded below is also indexed, with its status and owner story, in the [Decision Register](./moonblokz-decision-register.md).
+
 - Originating workflow: BMAD planning, twelve steps completed (`step-01-init` through `step-12-complete`).
 - Source artifact: `_bmad-output/planning-artifacts/prd.md`.
 - Imported into the `moonblokz-info` knowledge base on 2026-05-21.
