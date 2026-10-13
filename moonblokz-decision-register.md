@@ -75,6 +75,9 @@ Not repeated here: architecture decisions logged in [architecture §14](./moonbl
 | DEC-058 | 2026-10-09 | The chain-switch walk gets its mempool calls from Story 7.4, not a pre-built slot. | FR23, FR32 | epics (Epic 6) | in force · 7.4 |
 | DEC-059 | 2026-10-09 | Accepted interim: between 9.1 and 6.0 the FR60 window is live while the head is frozen. | FR48, FR60 | story 9.1 | in force (interim) |
 | DEC-060 | 2026-10-10 | At Ready entry, blocks below the new `S_tail` are released even if obligated; FR48's binding governs extensions, not adoption. | FR2, FR48 | story 9.1 | in force |
+| DEC-122 | 2026-10-13 | Ready entry recomputes every `chain_heads` entry, so the adopted chain's head never stays Stored asking for a parent below `S_tail` (resolves O-024). | FR19, FR48, FR60 | story 9.1 (review) | in force |
+| DEC-123 | 2026-10-13 | DEC-060 also covers a block whose Ready-entry classification read fails: at adoption it is released; the classification only feeds the AR16 log. | FR48 | story 9.1 (review) | in force |
+| DEC-124 | 2026-10-13 | Stored heads whose missing parent lies below `S_tail` (demoted side roots, late tail siblings, restart-resurrected fragments) keep requesting it as specified; the airtime cost is reclaimed by FR57/FR58. | FR19, FR48, FR57, FR58, FR60 | story 9.1 (review); DW | in force · 9.6, 9.7 |
 | DEC-061 | 2026-10-10 | Per-block atomicity comes from invertible operations shared by 6.0 and 6.3 (checked arithmetic); no journal or copy. | FR23, FR35 | story 6.0 D1; epics E6-10 | in force · 6.0, 6.3 |
 | DEC-062 | 2026-10-10 | UTXO resolution is a bounded ancestor walk plus one storage read; the code moves to ADR-016 `(block_sequence, output_index)` inputs (Story 6.8). | FR6, FR14, FR39 | story 6.0 D4; epics 6.8 | in force · 6.8 |
 | DEC-063 | 2026-07-30 | On an FR8 mismatch the candidate's configuration is adopted and the pass re-run in the same call; at most 3 passes. | FR5, FR8 | story 5.9 #1 | in force |
@@ -189,7 +192,6 @@ Not repeated here: architecture decisions logged in [architecture §14](./moonbl
 | O-021 | 2026-10-12 | Does DEC-037 (no deletion on local failure) also cover mark-overflow and missing-block failures in the pass? | FR5 | DEC-013, DEC-037 | 6.0 |
 | O-022 | 2026-10-09 | BLS Miri script never run — rec.: won't-do while BLS is not an embedded target. | crypto | DW triage D12 | — |
 | O-023 | 2026-10-09 | Up to 4 boot sweeps, O(`MAX_BLOCKS`²) tip discovery — rec.: won't-do until boot latency is measured. | FR59 | DW triage D51 | — |
-| O-024 | 2026-10-12 | A Ready head entered without any release keeps a Stored `chain_heads` entry and requests the anchor's parent (below `S_tail`) — rec.: recompute every head at Ready entry, owned by 6.0. | FR19, FR48, FR60 | DW (9.1 implementation #1) | 6.0 (rec.) |
 
 ## Related Documents
 
