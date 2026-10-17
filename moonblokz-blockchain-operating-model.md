@@ -142,7 +142,7 @@ What a valid chain must satisfy, grouped by scope. **Checked** names where the r
 
 | # | Invariant | FRs | Checked | Built |
 |---|---|---|---|---|
-| I-27 | A UTXO input references `(block_sequence, output_index)` of a retained ancestor at or above `S_tail`, index within its output stream | ADR-016, FR6, FR9, FR14 | T2; pass | partial — Tier-1 causality and the FR3-pass resolver (ancestor walk plus one read) built (6.8); Ready path 6.0 |
+| I-27 | A UTXO input references `(block_sequence, output_index)` of a retained ancestor at or above `S_tail`, index within its output stream | ADR-016, FR3, FR6, FR9, FR14 | T1 (causality); T2; pass | partial — Tier-1 causality, the `W` distance bound, the window-anchored pre-anchor trust (DEC-129) and the FR3-pass resolver (ancestor walk plus one read) built (6.8); Ready path 6.0 |
 | I-28 | The referenced output is unspent at inclusion and spent once | ADR-016, FR6, FR9 | T3; pass | partial — pass built (5.4); ready 6.0 |
 
 ### 5.6 `snake_chain` Preservation

@@ -24,7 +24,7 @@ Not repeated here: architecture decisions logged in [architecture §14](./moonbl
 | DEC-012 | 2026-07-30 | After an `Invalid` recovery FR2 is re-evaluated in the same call; at most 2 passes per call (raised to 3 by DEC-063). | FR2, FR5 | story 5.5; DW | in force |
 | DEC-013 | 2026-07-30 | A storage-read or mark-overflow failure in the pass deletes one block, like an FR6 violation. | FR5 | DW (5.5 review) | superseded by DEC-037 for storage reads; mark overflow open (O-021) |
 | DEC-014 | 2026-07-30 | An FR5 delete set always includes every descendant. | FR5, FR57 | story 5.5; DW | in force |
-| DEC-015 | 2026-09-20 | Chain-config-derived checks invalidate a block only after the durable lock, and re-run at the lock. | FR8, FR9 | PRD FR9; story 5.9 | in force |
+| DEC-015 | 2026-09-20 | Chain-config-derived checks invalidate a block only after the durable lock, and re-run at the lock. | FR8, FR9 | PRD FR9; story 5.9 | in force (exception: the UTXO `W` distance bound, DEC-129) |
 | DEC-016 | 2026-09-20 | Every chain-config block's content is checked at intake, not only the one that loads. | FR8, FR16 | story 5.9; retro-5 | in force |
 | DEC-017 | 2026-09-20 | FR54 genesis waivers stay keyed on sequence alone at Tier 1. | FR54 | DW (4.2) | superseded by DEC-040 |
 | DEC-018 | 2026-10-08 | FR2 selects only segments that carry a chain-config block (no head loss). | FR2, FR5, FR8 | PRD FR2; story 5.13 | in force |
@@ -121,6 +121,7 @@ Not repeated here: architecture decisions logged in [architecture §14](./moonbl
 | DEC-088 | 2026-10-12 | Mempool capacity is a compile-time parameter, not chain configuration. | FR30, FR31, FR33 | PRD | in force |
 | DEC-089 | 2026-10-12 | Eviction frees as much space as FR33 requires (repeated draws for own transactions). | FR31, FR33 | PRD FR31 | in force |
 | DEC-090 | 2026-10-12 | The seeded eviction PRNG makes a node replayable from its own seed; no protocol correctness depends on eviction outcomes. | FR30, FR33, FR63 | PRD FR33 | in force |
+| DEC-129 | 2026-10-17 | On a window-anchored FR3 candidate a UTXO input referencing a block below the anchor is trusted pre-window history if it is at most `W` back (no spent bit; its transaction's sum rule and fee are skipped); more than `W` back is invalid on every candidate. `W` is the candidate's own preloaded configuration, so the bound applies before the durable lock (an exception to DEC-015). | FR3, FR6, FR14 | PRD FR3; story 6.8 review | done (6.8) |
 | DEC-128 | 2026-10-12 | UTXO value accounting moves from 7.1 into 6.8: a UTXO input's referenced amount counts as an input, `Σ inputs ≥ Σ outputs` holds for every complex transaction with an input, and the fee is the surplus over all inputs and outputs. UTXO-input signatures stay in 7.1. | FR6, FR36 | story 6.8 D1 | done (6.8) |
 
 ## 5. Configuration and the VM
