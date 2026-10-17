@@ -62,19 +62,25 @@ Not repeated here: architecture decisions logged in [architecture §14](./moonbl
 | DEC-045 | 2026-07-12 | Deletion is lazy: storage has no delete; a freed slot is overwritten on reuse. | FR19, storage | story 4.4; ARCH §3.6 | in force (reaffirmed by DEC-056) |
 | DEC-046 | 2026-07-12 | Parent recovery is emitted from the tick on exact `NextCall::At` deadlines; the global cooldown stays; the fixed tick interval is removed. | FR19, FR46 | story 4.4; epics | in force |
 | DEC-047 | 2026-07-30 | After an FR5 deletion the surviving parent of the deleted root becomes an indexed tip (retargeting a removed entry). | FR5, FR19 | PRD FR19; story 5.5 | in force |
-| DEC-048 | 2026-07-30 | Connected → Stored head demotion cannot arise (FR5, FR23). | FR19, FR23 | story 5.5; DW | superseded by DEC-055 for the tail drop |
+| DEC-048 | 2026-07-30 | Connected → Stored head demotion cannot arise (FR5, FR23). | FR19, FR23 | story 5.5; DW | in force (the tail drop deletes rather than demotes, DEC-125) |
 | DEC-049 | 2026-07-30 | A retargeted head keeps the deleted head's arrival timestamp. | FR18 | story 5.5; DW | in force |
 | DEC-050 | 2026-08-14 | The const generic is a capacity, `SNAKE_CHAIN_LENGTH_MAX`; the window `W` is chain configuration with `W ≤` capacity at acceptance. | FR2, FR48, FR56 | CFG §6; ARCH §14 row 23 | done (5.11) |
 | DEC-051 | 2026-10-08 | FR2 uses the held configuration's `W`; a larger stray `W` only delays acquisition. | FR2, FR8 | story 5.11 | in force |
 | DEC-052 | 2026-10-08 | No `VERIFICATION_HORIZON` const generic: `H` is node-level, derived from `W`. | FR58 | ARCH §14 row 24; story 5.11 | in force · 9.7 |
 | DEC-053 | 2026-10-09 | R1 — a Ready-state forward-extension driver opens Epic 6 as Story 6.0; order 9.1 → 6.8 → 6.0 → 6.1. | FR9, FR48 | epics (Epic 6 reconciliation); story 9.1 | in force · 6.0 |
 | DEC-054 | 2026-10-09 | Story 9.1 runs before Epic 6. | plan | retro-5; epics | done |
-| DEC-055 | 2026-10-09 | R2 — the tail drop releases the block (retention 0 until 9.7), unlinks a surviving child, and can demote a side head to Stored. | FR19, FR48, FR58 | PRD FR19 (v); epics; story 9.1 | in force · 9.1 |
+| DEC-055 | 2026-10-09 | R2 — the tail drop releases the block (retention 0 until 9.7), unlinks a surviving child, and can demote a side head to Stored. | FR19, FR48, FR58 | PRD FR19 (v); epics; story 9.1 | in force; demotion part superseded by DEC-125 |
 | DEC-056 | 2026-10-09 | R3 — blocks deleted before a restart may come back; no tombstones, no eager erase. | FR48, FR59 | ARCH §3.6; epics; story 9.1 | in force |
 | DEC-057 | 2026-10-09 | Epic 6 builds the cheap-zone walk only; zone dispatch and the deep zone go to 9.7. | FR23, FR58 | epics (Epic 6) | in force · 9.7 |
 | DEC-058 | 2026-10-09 | The chain-switch walk gets its mempool calls from Story 7.4, not a pre-built slot. | FR23, FR32 | epics (Epic 6) | in force · 7.4 |
 | DEC-059 | 2026-10-09 | Accepted interim: between 9.1 and 6.0 the FR60 window is live while the head is frozen. | FR48, FR60 | story 9.1 | in force (interim) |
-| DEC-060 | 2026-10-10 | At Ready entry, blocks below the new `S_tail` are released even if obligated; FR48's binding governs extensions, not adoption. | FR2, FR48 | story 9.1 | in force · 9.1 |
+| DEC-060 | 2026-10-10 | At Ready entry, blocks below the new `S_tail` are released even if obligated; FR48's binding governs extensions, not adoption. | FR2, FR48 | story 9.1 | in force |
+| DEC-122 | 2026-10-13 | Ready entry recomputes every `chain_heads` entry, so the adopted chain's head never stays Stored asking for a parent below `S_tail` (resolves O-024). | FR19, FR48, FR60 | story 9.1 (review) | in force |
+| DEC-123 | 2026-10-13 | DEC-060 also covers a block whose Ready-entry classification read fails: at adoption it is released; the classification only feeds the AR16 log. | FR48 | story 9.1 (review) | in force |
+| DEC-124 | 2026-10-13 | Stored heads whose missing parent lies below `S_tail` (demoted side roots, late tail siblings, restart-resurrected fragments) keep requesting it as specified; the airtime cost is reclaimed by FR57/FR58. | FR19, FR48, FR57, FR58, FR60 | story 9.1 (review); DW | superseded by DEC-125 / DEC-126 (requests remain only between admission and the next tail advance) |
+| DEC-125 | 2026-10-17 | The tail drop deletes every branch forked at the dropped block, whole, before releasing it (FR58 reclamation pulled forward from 9.7); no head is demoted to Stored. | FR19, FR48, FR58 | PRD FR19 (v); story 9.1 | in force |
+| DEC-126 | 2026-10-17 | A Stored fragment whose lowest block's missing parent is at or below `S_tail` can never connect and is deleted whole by the tail advance that makes it so, or, if admitted later, by the next one (FR58 pulled forward from 9.7). | FR19, FR58, FR60 | PRD FR58; story 9.1 | in force |
+| DEC-127 | 2026-10-17 | Ready entry unmarks every block outside the adopted chain and reclaims tail-out-of-range Stored fragments at once (after the `chain_heads` recompute), so a stale Collecting genesis anchor is removed rather than left Connected. | FR4, FR19, FR58 | PRD FR58; story 9.1 (review r2) | in force |
 | DEC-061 | 2026-10-10 | Per-block atomicity comes from invertible operations shared by 6.0 and 6.3 (checked arithmetic); no journal or copy. | FR23, FR35 | story 6.0 D1; epics E6-10 | in force · 6.0, 6.3 |
 | DEC-062 | 2026-10-10 | UTXO resolution is a bounded ancestor walk plus one storage read; the code moves to ADR-016 `(block_sequence, output_index)` inputs (Story 6.8). | FR6, FR14, FR39 | story 6.0 D4; epics 6.8 | in force · 6.8 |
 | DEC-063 | 2026-07-30 | On an FR8 mismatch the candidate's configuration is adopted and the pass re-run in the same call; at most 3 passes. | FR5, FR8 | story 5.9 #1 | in force |
