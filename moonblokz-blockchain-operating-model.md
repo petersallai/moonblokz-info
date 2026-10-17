@@ -83,8 +83,8 @@ Checks derived from chain configuration can invalidate a block only after the co
 | → deleted (Invalid) | Tier 1 failure or FR8 lock mismatch (from Stored); Tier 2 failure (from Stored); Tier 3 failure — via FR5 in the FR3 pass, via FR23, or for a stored child of the active head, always with descendants; FR5 rollback and phase reversion apply to the FR3 pass only | FR5, FR8, FR9 | partial — FR3-pass and FR8 paths built (5.5, 5.9); Ready paths 6.0, 6.1, 6.3 |
 | non-active → deleted | `chain_heads` overflow: evict the lowest non-active head, delete blocks whose reference count reaches 0 | FR19 | built (4.4) |
 | side branch → deleted | Storage pressure: exactly one lowest-value side branch; never active-chain blocks | FR57, FR9 | not built (9.6) |
-| side branch → deleted | Its divergence point fell below `S_tail` | FR58 | not built (9.7) |
-| Active tail → dropped | Head extension past `W` (essential state replayed in that head, FR48): the block is released, a surviving child is unlinked, and a side head whose fork point falls below `S_tail` demotes to Stored until FR58 reclaims it | FR19 (v), FR48 | partial — release, unlink and side-head demotion built (9.1); triggered by the head extension 6.0; replay content 9.2, 9.3, 9.5 |
+| side branch → deleted | Its divergence point fell below `S_tail`: deleted whole at the tail advance that drops its fork block | FR58, FR19 (iv) | partial — at the tail advance built (9.1); orphans whose missing parent is already below `S_tail` (late tail siblings, restart-resurrected fragments) 9.7 |
+| Active tail → dropped | Head extension past `W` (essential state replayed in that head, FR48): every branch forked at the block is deleted (FR58), the block is released, and the new tail is unlinked | FR19 (v), FR48, FR58 | partial — release, branch reclamation and unlink built (9.1); triggered by the head extension 6.0; replay content 9.2, 9.3, 9.5 |
 
 Durable storage keeps only the node id, the private key, the chain-config block with its lock flag, and the retained blocks — no phase marker, no projections (FR59).
 
@@ -258,8 +258,8 @@ Each flow lists its trigger, its steps, and what happens on failure. Step tables
 | 4 | Replay content: configuration identical to the lock; balance entries at `seq − 1` plus bonus pack; carry-forward 1:1 with fee reduction | FR9, FR49, FR50, FR51 | not built (9.2, 9.3, 9.5) |
 | 5 | Spacing trigger: at length `W` with nothing pending, emit a bonus-pack balance block when spacing exceeds `⌈W / ⌈N_active / K_max⌉⌉` | FR50 | not built (9.4) |
 | 6 | On acceptance: `replay_block_reward` once per replay-bearing block; seed sources updated | FR36, FR50 | not built (7.2, 9.x) |
-| 7 | Advance the tail in the same step: release the block, unlink surviving children, demote orphaned side heads to Stored, subtract the tail's value from every head | FR19, FR21, FR48 | partial — release, unlink and demotion built (9.1); `branch_value` subtraction 6.1 |
-| 8 | Reclaim side branches whose divergence fell below `S_tail`; keep the verification horizon `H` | FR58 | not built (9.7; horizon 0 until then) |
+| 7 | Advance the tail in the same step: delete the branches forked at the block (FR58), release it, unlink the new tail, subtract the tail's value from every head | FR19, FR21, FR48, FR58 | partial — reclamation, release and unlink built (9.1); `branch_value` subtraction 6.1 |
+| 8 | Reclaim side branches whose divergence fell below `S_tail`; keep the verification horizon `H` | FR58 | partial — reclamation at the tail advance built (9.1, step 7); horizon `H` and the remaining orphans 9.7 (horizon 0 until then) |
 | 9 | On a deviation branch the proposer emits intervening replays in tail fall-out order, spaced by `deviation_replay_insertion_delay_ms` | FR27, FR29 | not built (6.6) |
 
 **On failure:** a non-preserving inbound extension is invalid (not stored, or deleted if already stored); a read error blocks the advance without mutation. Released blocks stay in storage until overwritten (restart footprint, 7.8). No UTXO-saturation handling (FR52).
