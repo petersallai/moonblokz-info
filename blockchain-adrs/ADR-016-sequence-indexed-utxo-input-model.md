@@ -38,7 +38,7 @@ This decision supersedes the Part V rationale that hash-based references are pre
 
 ### Follow-up implications
 This decision implies that later design work and dependent artifacts must define or update:
-- the binary serialization of the UTXO input field (Algorithm 25 and Section 6.1 of the algorithm document),
+- the binary serialization of the UTXO input field (Sections 6.1 and 10 of the algorithm document),
 - the complex-transaction validity rules so that input existence and unspent status are resolved against the sequence-indexed block storage and the per-block spent-bit vector (Algorithm 13),
 - the carry-forward algorithm so that the unspent output set is read from the spent-bit vector of the dropping block (Algorithm 12),
 - the chain-switch reconciliation workflow so that spent-bit vectors within the rollback scope are recomputed as part of the forward-replay step (PRD FR23 and the derived-state projection definitions; realized in architecture §4.2 `reconciliation.rs`),

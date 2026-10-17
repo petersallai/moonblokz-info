@@ -19,7 +19,7 @@ Not repeated here: architecture decisions logged in [architecture §14](./moonbl
 | DEC-007 | 2026-07-23 | FR6 runs inside the single derive walk; on failure spent bits are re-zeroed before the phase reverts. | FR3, FR6 | story 5.4 | in force |
 | DEC-008 | 2026-07-23 | Approval-evidence validation is not part of 5.4. | FR6, FR27 | story 5.4 | in force · 6.7 (DEC-077) |
 | DEC-009 | 2026-07-23 | Duplicates of confirmed transactions: UTXO side via spent bits now; balance side at FR14 append. | FR6, FR14 | story 5.4 #4; DW | in force · 7.3 |
-| DEC-010 | 2026-07-23 | UTXO value accounting and input signatures move to 7.1; the creator-entitlement check moves to Epic 8. | FR6, FR44 | story 5.4 review; DW | in force · 7.1, 8.2 |
+| DEC-010 | 2026-07-23 | UTXO value accounting and input signatures move to 7.1; the creator-entitlement check moves to Epic 8. | FR6, FR44 | story 5.4 review; DW | value accounting superseded by DEC-128; signatures in force · 7.1, 8.2 |
 | DEC-011 | 2026-07-29 | Byte-decidable invariants are Tier 1 only and are not re-checked by the FR6 pass. | FR6, FR9 | PRD FR6; story 5.4 | in force |
 | DEC-012 | 2026-07-30 | After an `Invalid` recovery FR2 is re-evaluated in the same call; at most 2 passes per call (raised to 3 by DEC-063). | FR2, FR5 | story 5.5; DW | in force |
 | DEC-013 | 2026-07-30 | A storage-read or mark-overflow failure in the pass deletes one block, like an FR6 violation. | FR5 | DW (5.5 review) | superseded by DEC-037 for storage reads; mark overflow open (O-021) |
@@ -82,7 +82,7 @@ Not repeated here: architecture decisions logged in [architecture §14](./moonbl
 | DEC-126 | 2026-10-17 | A Stored fragment whose lowest block's missing parent is at or below `S_tail` can never connect and is deleted whole by the tail advance that makes it so, or, if admitted later, by the next one (FR58 pulled forward from 9.7). | FR19, FR58, FR60 | PRD FR58; story 9.1 | in force |
 | DEC-127 | 2026-10-17 | Ready entry unmarks every block outside the adopted chain and reclaims tail-out-of-range Stored fragments at once (after the `chain_heads` recompute), so a stale Collecting genesis anchor is removed rather than left Connected. | FR4, FR19, FR58 | PRD FR58; story 9.1 (review r2) | in force |
 | DEC-061 | 2026-10-10 | Per-block atomicity comes from invertible operations shared by 6.0 and 6.3 (checked arithmetic); no journal or copy. | FR23, FR35 | story 6.0 D1; epics E6-10 | in force · 6.0, 6.3 |
-| DEC-062 | 2026-10-10 | UTXO resolution is a bounded ancestor walk plus one storage read; the code moves to ADR-016 `(block_sequence, output_index)` inputs (Story 6.8). | FR6, FR14, FR39 | story 6.0 D4; epics 6.8 | in force · 6.8 |
+| DEC-062 | 2026-10-10 | UTXO resolution is a bounded ancestor walk plus one storage read; the code moves to ADR-016 `(block_sequence, output_index)` inputs (Story 6.8). | FR6, FR14, FR39 | story 6.0 D4; epics 6.8 | done (6.8) |
 | DEC-063 | 2026-07-30 | On an FR8 mismatch the candidate's configuration is adopted and the pass re-run in the same call; at most 3 passes. | FR5, FR8 | story 5.9 #1 | in force |
 | DEC-064 | 2026-10-12 | A chain switch never disconnects a head (FR23 no longer demotes). | FR19, FR23 | PRD FR23 | in force |
 | DEC-065 | 2026-10-12 | FR34 field forms are logical; the architecture's representations (`NONE_REF`, block-index seed source) are equivalent. | FR34 | PRD FR34 | in force |
@@ -121,6 +121,7 @@ Not repeated here: architecture decisions logged in [architecture §14](./moonbl
 | DEC-088 | 2026-10-12 | Mempool capacity is a compile-time parameter, not chain configuration. | FR30, FR31, FR33 | PRD | in force |
 | DEC-089 | 2026-10-12 | Eviction frees as much space as FR33 requires (repeated draws for own transactions). | FR31, FR33 | PRD FR31 | in force |
 | DEC-090 | 2026-10-12 | The seeded eviction PRNG makes a node replayable from its own seed; no protocol correctness depends on eviction outcomes. | FR30, FR33, FR63 | PRD FR33 | in force |
+| DEC-128 | 2026-10-12 | UTXO value accounting moves from 7.1 into 6.8: a UTXO input's referenced amount counts as an input, `Σ inputs ≥ Σ outputs` holds for every complex transaction with an input, and the fee is the surplus over all inputs and outputs. UTXO-input signatures stay in 7.1. | FR6, FR36 | story 6.8 D1 | done (6.8) |
 
 ## 5. Configuration and the VM
 
