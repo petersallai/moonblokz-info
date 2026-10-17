@@ -396,7 +396,7 @@ Fields:
    Sequence number of the block containing the complex transaction whose UTXO is being spent. The reference is resolved against the current active chain only; within the `snake_chain` window the sequence uniquely identifies a stored block.
 
 2. **`output_index: u8`**  
-   Index of the referenced UTXO output within the block at that sequence. The index addresses the UTXO output position in the block's flattened transaction-output stream, consistent with the block's per-block spent-bit vector layout.
+   Position of the referenced output in the block's UTXO-output stream: UTXO outputs only (balance outputs are not counted), transaction by transaction in block order, output by output within each transaction. This is the output's bit in the block's per-block spent-bit vector (PRD FR34).
 
 3. **`signature: [u8;64]`**  
    Signature over this input and all outputs, using the private key corresponding to the referenced UTXO address.
