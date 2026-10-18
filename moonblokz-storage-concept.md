@@ -124,7 +124,7 @@ The current `StorageTrait` exposes only six synchronous operations:
 
 - `init(...)`
 - `save_block(...)`
-- `read_block(...)`
+- `read_block_into(...)` (plus the provided owned-block form `read_block(...)`)
 - `capacity()`
 - `set_chain_configuration(...)`
 - `load_control_data()`
