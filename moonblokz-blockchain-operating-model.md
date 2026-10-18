@@ -102,7 +102,7 @@ What a valid chain must satisfy, grouped by scope. **Checked** names where the r
 | I-04 | No block has `sequence == u32::MAX`; creation stops at `u32::MAX − 1` | FR53 | T1; creator side | partial — intake built; creation ceiling 8.1 |
 | I-05 | Creator signature valid against the chain-derived key (node #0: the trust anchor) | FR6, FR9, FR16, FR54 | T1 for a ready direct head extension; T3; pass | partial — pass built (5.4); ready paths 6.0 |
 | I-06 | A transaction block never holds both a registration and a complex transaction (carry-forward included) | FR6, FR9, FR51 | T1 | built (4.2) |
-| I-07 | A block's UTXO-output count ≤ `max_block_utxo_output` | FR9, FR34, FR56 | T1 (locked) | not built (7.1) |
+| I-07 | A block's UTXO-output count ≤ `max_block_utxo_output` | FR9, FR34, FR56 | T1 (locked; bitfield width before the lock) | not built (6.11, DEC-132) |
 
 ### 5.2 Creator, Votes, and Approval
 
