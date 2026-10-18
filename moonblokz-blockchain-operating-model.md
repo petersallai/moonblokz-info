@@ -62,11 +62,11 @@ In Collecting every kept block is Stored; Processing exposes no intermediate sta
 
 | Tier | Gate into | Where it runs | What it checks (summary — FR9 holds the full list) |
 |---|---|---|---|
-| 1 | Stored (durable storage) | Intake, every phase; items marked *ready* only in Ready | version and payload schema; *locked (any phase):* size ≤ `block_size_limit`, chain-config content equals the lock (FR17); *ready:* window membership (FR60); `block.sequence > anchor_sequence`; no self-vote; registration / complex-transaction exclusivity; `new_key_signature`; node-#0 trust-anchor checks (FR69); *ready:* creator signature when the block directly extends the active head |
+| 1 | Stored (durable storage) | Intake, every phase; items marked *ready* only in Ready | version and payload schema; *locked (any phase):* size ≤ `block_size_limit`, chain-config content equals the lock (FR17); UTXO-output count ≤ `max_block_utxo_output` (bitfield width before the lock); *ready:* window membership (FR60); `block.sequence > anchor_sequence`; no self-vote; registration / complex-transaction exclusivity; `new_key_signature`; node-#0 trust-anchor checks (FR69); *ready:* creator signature when the block directly extends the active head |
 | 2 | Connected | Ready (Processing: inside the FR3 pass) | ancestry reaches the active chain; locked chain-config rules at the block's sequence (fee policy, registration price, custodian fee, approval threshold); `mined_amount` equals `mining_reward`; UTXO-input structural completion; registration key unique; structural `snake_chain` replay checks where the reference is retained (else deferred to Tier 3) |
-| 3 | Active | The FR3 pass, FR23 chain-switch forward replay, and in Ready a direct extension of the active head or an already-stored child of it (FR16, FR9) | vote fields against candidate vote state; creator balance; balance-block contents and `max_node_id`; transaction signatures, balances, duplicates, node-id stride, UTXO spent bits, no negative balance; carry-forward validity; approval-evidence cluster; pacing (soft-fail to Deferred) |
+| 3 | Active | The FR3 pass, FR23 chain-switch forward replay, and in Ready a direct extension of the active head or an already-stored child of it (FR16, FR9) | vote fields against candidate vote state; creator balance; balance-block contents and `max_node_id`; transaction signatures, balances, duplicates, node-id stride, available-UTXO bits, no negative balance; carry-forward validity; approval-evidence cluster; pacing (soft-fail to Deferred) |
 
-Checks derived from chain configuration can invalidate a block only after the configuration is durably locked (FR8, FR54). Under a tentative configuration a failure does not delete the block; it is re-evaluated when the tentative configuration changes or the lock happens (FR9).
+Checks derived from chain configuration can invalidate a block only after the configuration is durably locked (FR8, FR54). Under a tentative configuration a failure does not delete the block; it is re-evaluated when the tentative configuration changes or the lock happens (FR9). Two exceptions are enforced in the FR3 pass against the candidate's own preloaded configuration: the UTXO `W` distance bound (DEC-129) and the per-block UTXO-output cap (DEC-133).
 
 ### 4.3 Transitions
 
@@ -102,7 +102,7 @@ What a valid chain must satisfy, grouped by scope. **Checked** names where the r
 | I-04 | No block has `sequence == u32::MAX`; creation stops at `u32::MAX − 1` | FR53 | T1; creator side | partial — intake built; creation ceiling 8.1 |
 | I-05 | Creator signature valid against the chain-derived key (node #0: the trust anchor) | FR6, FR9, FR16, FR54 | T1 for a ready direct head extension; T3; pass | partial — pass built (5.4); ready paths 6.0 |
 | I-06 | A transaction block never holds both a registration and a complex transaction (carry-forward included) | FR6, FR9, FR51 | T1 | built (4.2) |
-| I-07 | A block's UTXO-output count ≤ `max_block_utxo_output` | FR9, FR34, FR56 | T1 (locked; bitfield width before the lock) | not built (6.11, DEC-132) |
+| I-07 | A block's UTXO-output count ≤ `max_block_utxo_output` | FR6, FR9, FR34, FR56 | T1 (locked; bitfield width before the lock, DEC-132); pass (held configuration, also before the lock, DEC-133) | built (6.11) |
 
 ### 5.2 Creator, Votes, and Approval
 
@@ -132,7 +132,7 @@ What a valid chain must satisfy, grouped by scope. **Checked** names where the r
 |---|---|---|---|---|
 | I-20 | `block.sequence > anchor_sequence` for node transfers and complex balance inputs (block #0 waived) | FR6, FR9, FR54 | T1 | built (4.2) |
 | I-21 | Transaction and input signatures valid (UTXO inputs against the referenced output's address) | FR3, FR6, FR9 | T3 (T1 opportunistic); pass | partial — transfers and registrations built (5.4); balance and UTXO inputs 7.1 |
-| I-22 | No duplicate of a confirmed transaction (transfer key, complex input set) | FR6, FR9, FR14 | T3; pass | not built for balance-side keys (ratified deferral to Epic 7); UTXO side covered by spent bits |
+| I-22 | No duplicate of a confirmed transaction (transfer key, complex input set) | FR6, FR9, FR14 | T3; pass | not built for balance-side keys (ratified deferral to Epic 7); UTXO side covered by available-UTXO bits |
 | I-23 | Every referenced node id lies within `[0, max_known_node_id]` | FR6 | T3; pass | built (5.4) |
 | I-24 | A registration's `new_public_key` is globally unique, also within a block | FR6, FR9, FR14 | T2; T3; pass | partial — pass built (5.4); ready 6.0 |
 | I-25 | `new_key_signature` proves possession of the new key | FR6, FR9 | T1 | built (4.2) |
@@ -142,7 +142,7 @@ What a valid chain must satisfy, grouped by scope. **Checked** names where the r
 
 | # | Invariant | FRs | Checked | Built |
 |---|---|---|---|---|
-| I-27 | A UTXO input references `(block_sequence, output_index)` of a retained ancestor at or above `S_tail`, index within its output stream | ADR-016, FR3, FR6, FR9, FR14 | T1 (causality); T2; pass | partial — Tier-1 causality, the `W` distance bound, the window-anchored pre-anchor trust (DEC-129) and the FR3-pass resolver (ancestor walk plus one read) built (6.8); Ready path 6.0 |
+| I-27 | A UTXO input references `(block_sequence, output_index)` of a retained ancestor at or above `S_tail`, index within its output stream | ADR-016, FR3, FR6, FR9, FR14 | T1 (causality); T2; pass | partial — Tier-1 causality, the `W` distance bound, the window-anchored pre-anchor trust (DEC-129) and the FR3-pass resolver (ancestor walk plus one read) built (6.8); available-UTXO bit checked before the read, so a spent or missing output costs no read, built (6.11); Ready path 6.0 |
 | I-28 | The referenced output is unspent at inclusion and spent once | ADR-016, FR6, FR9 | T3; pass | partial — pass built (5.4); ready 6.0 |
 
 ### 5.6 `snake_chain` Preservation
@@ -186,7 +186,7 @@ Durable truth is only the node id, the private key (never handed to this module)
 | Public-key map | Registrations; slot 0 = trust anchor | Set per registration / clear on rollback | `NodeInfo.public_keys` (32 KB Schnorr, 96 KB BLS) | FR34, FR35 | partial — pass built (5.3); ready 6.0 |
 | `max_known_node_id` | Earliest balance block's `max_node_id` (0 at genesis), +1 per registration | Increment / decrement | `NodeInfo.max_known_node_id` | FR3, FR34, FR54 | built (5.3, 5.4) |
 | `seed_source_sequence` | Latest balance entry or registration per node | Set to the applied block / bounded backward scan (≤ `W`) | `NodeInfo.seed_source_idx` (block index today) | FR34, FR50, FR23 | partial — pass sets it; sequence form and scan 9.3, 6.3 |
-| Block navigation and UTXO spent bits | Durable block-tree; consumed UTXO inputs | Set on consumption / un-set for leaving blocks; re-zeroed on FR5 | `BlockEntry` table (600 × 76 B) | FR34, FR35, ADR-016 | partial — built (4.1, 5.3–5.5, 6.8); walk 6.3 |
+| Block navigation and available-UTXO bits | Durable block-tree; derived UTXO outputs and consumed UTXO inputs | Set on derivation, cleared on consumption / inverse for leaving blocks; re-zeroed on FR5 | `BlockEntry` table (600 × 76 B) | FR34, FR35, ADR-016 | partial — built (4.1, 5.3–5.5, 6.8, 6.11); walk 6.3 |
 | Creator order | Accumulated vote, descending, ties by lower id | Recomputed on demand | not stored | FR38 | built (3.3) |
 | Mempool contents and eligibility | FR14 classification, Deferred marker, expiry sequence | Remove confirmed and expired / re-add on the backward walk, remove on the forward walk; FR15 re-evaluation | `Mempool` crate (~23–25 KB) | FR14, FR15, FR30, FR32 | partial — crate primitives built (2.1, 2.2); wiring 7.3–7.5 |
 | Head `branch_value` | Per-block values above `S_tail` | Add on extension, subtract on tail advance / unchanged by a switch | `ChainHeadEntry.branch_value` | FR19, FR21 | not built (6.1) |
@@ -207,9 +207,9 @@ Each flow lists its trigger, its steps, and what happens on failure. Step tables
 |---|---|---|---|
 | 1 | Enter Processing, reset the working set; the pass is not resumable | FR3, FR5 | built (5.3) |
 | 2 | Mark the candidate backward from the tip; note the earliest balance block and first chain-config block | FR3 | built (5.3) |
-| 3 | Zero the candidate's spent bits; preload and check its configuration against the held one (mismatch → T5 adopt) | FR3, FR8 | built (5.3, 5.9) |
+| 3 | Zero the candidate's available-UTXO bits; preload and check its configuration against the held one (mismatch → T5 adopt) | FR3, FR8 | built (5.3, 5.9) |
 | 4 | Seed the node-id watermark (earliest `max_node_id`, or 0 at genesis) | FR3, FR50, FR54 | built (5.3) |
-| 5 | Traverse forward: FR6 state checks interleaved with derivation (roster, keys, balances, votes, spent bits, seed sources), including the `snake_chain` preservation checks inside the candidate; pre-seed acceptance only for window-anchored candidates | FR3, FR6, FR9, FR37, FR38, FR50 | partial — built (5.3, 5.4); missing checks see §5; `snake_chain` checks 9.2, 9.3, 9.5, 6.6 |
+| 5 | Traverse forward: FR6 state checks interleaved with derivation (roster, keys, balances, votes, available-UTXO bits, seed sources), including the `snake_chain` preservation checks inside the candidate; pre-seed acceptance only for window-anchored candidates | FR3, FR6, FR9, FR37, FR38, FR50 | partial — built (5.3, 5.4); missing checks see §5; `snake_chain` checks 9.2, 9.3, 9.5, 6.6 |
 | 6 | Durably lock the configuration (storage first), promote the candidate Stored → Active, clean up mismatching or oversized blocks, enter Ready | FR4, FR8, FR9 | built (5.4, 5.9); `S_tail` built (9.1); `branch_value` seeding 6.1 |
 
 **On failure:** an FR6 violation runs FR5 (T4); the code retries once, plus one adopt retry. A local failure (storage read, missing vote parameter) deletes nothing: the node stays in Collecting and retries later (FR5; the code still deletes the head until Story 6.0). A durable-commit failure resets the projections and leaves the node in Collecting with its blocks intact. **Writes:** only the lock and deletions; everything else is RAM.

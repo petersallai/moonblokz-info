@@ -38,7 +38,7 @@ It helps answer:
 9. [ADR-013: Bounded UTXO Retention Requires an Explicit Preservation Strategy](./ADR-013-bounded-utxo-retention-requires-an-explicit-preservation-strategy.md)
 10. [ADR-014: Mode Transitions May Require Representation-Aware Design](./ADR-014-mode-transitions-may-require-representation-aware-design.md)
 11. [ADR-015: Approval Subgroup Selection](./ADR-015-approval-subgroup-selection.md)
-12. [ADR-016: Sequence-Indexed UTXO Input Model with Per-Block Spent-Bit Vector](./ADR-016-sequence-indexed-utxo-input-model.md)
+12. [ADR-016: Sequence-Indexed UTXO Input Model with Per-Block Available-UTXO Bitfield](./ADR-016-sequence-indexed-utxo-input-model.md)
 
 Note: The original ADR numbering (ADR-001 … ADR-016) is preserved; ADR-004, ADR-007, ADR-011, and ADR-012 were deleted in the 2026-06-20 slimdown — their content is fully covered by PRD FR-s and architecture sections (see "Deleted ADRs" below).
 
@@ -105,7 +105,7 @@ These define:
 - **ADR-013** — Bounded UTXO handling requires an explicit preservation strategy.
 - **ADR-014** — Lifecycle mode transitions may require representation-aware design.
 - **ADR-015** — Approval subgroup is selected by rendezvous-hash ordering over active-chain-derived active nodes, seeded by the snake-chain tail hash, the proposer node identity, and the proposed sequence; subgroup size is tied to `required_support`, capped by the active set, with no in-subgroup expansion fallback.
-- **ADR-016** — UTXO inputs reference `(block_sequence, output_index)` rather than transaction hashes, for processing performance at the accepted cost of spends not surviving a chain switch that re-includes their source (DEC-130); spent state is tracked as a per-block spent-bit vector co-located with each block, eliminating the need for an in-memory live UTXO set.
+- **ADR-016** — UTXO inputs reference `(block_sequence, output_index)` rather than transaction hashes, for processing performance at the accepted cost of spends not surviving a chain switch that re-includes their source (DEC-130); spent state is tracked as a per-block available-UTXO bitfield co-located with each block (1 = output exists and is unspent, DEC-132), eliminating the need for an in-memory live UTXO set.
 
 ---
 
@@ -127,7 +127,7 @@ These ADRs settle the main architectural direction. Their downstream design work
 1. **Chain Knowledge Core internal representation** — addressed in architecture §4 (15 + 1 internal modules) and §6 (sized data-structure catalog with `BlockEntry`, `ChainHeadsTable`, `NodeInfo` SoA, `SchedulerState`, etc.).
 2. **Detailed chain-switch reconciliation invariants** — addressed in architecture §4.2 (`reconciliation.rs` module) covering the backward-walk + forward-walk workflow; the FR-anchor is PRD FR23 / FR39.
 3. **Verification-horizon sizing and retained-information policy** — addressed in architecture §5 (`H` node-level, default `⌊W / 10⌋`, not a const generic) and the snake_chain bounded-retention model (chain-configured `W`, default 500, bounded by the `SNAKE_CHAIN_LENGTH_MAX` capacity); the FR-anchor is PRD FR58.
-4. **Bounded UTXO carry-forward policy and saturation handling** — addressed in architecture §6.2 (co-located spent-bit vector per `BlockEntry`) and §4.2 (`spent_bits.rs`); ADR-013 + ADR-016 remain the conceptual anchors. FR52 ("no UTXO saturation detection") remains an explicit MVP-skip.
+4. **Bounded UTXO carry-forward policy and saturation handling** — addressed in architecture §6.2 (co-located available-UTXO bitfield per `BlockEntry`) and §4.2 (`available_utxo.rs`); ADR-013 + ADR-016 remain the conceptual anchors. FR52 ("no UTXO saturation detection") remains an explicit MVP-skip.
 5. **Query payload definitions and depth semantics** — addressed in architecture §3.1 (12 read-only public methods on `Blockchain<...>`) and §4.2 (`queries.rs` module).
 6. **Vote-target input contract from the scoring module** — partly open. The scoring-module ↔ blockchain-vote-module boundary is settled in PRD FR55, but the exact `scoring_module` API surface remains a separate design artifact yet to be authored.
 7. **Mode-specific shared versus distinct data structures** — addressed in architecture §3.2 (three-type Owned + View + Builder model) and §6.6 (`EmitScratch` outcome view source).
@@ -140,7 +140,7 @@ Based on the accepted ADR set:
 
 1. **Chain Knowledge Core architecture note** — **DONE.** Superseded by [`../moonblokz-blockchain-architecture.md`](../moonblokz-blockchain-architecture.md).
 2. **Chain-switch reconciliation design note** — **DONE.** Covered by architecture §4.2 (`reconciliation.rs` module) and PRD FR23 / FR39.
-3. **Bounded UTXO preservation design note** — **DONE.** Covered by architecture §6.2 (co-located spent-bit vector) and ADR-016.
+3. **Bounded UTXO preservation design note** — **DONE.** Covered by architecture §6.2 (co-located available-UTXO bitfield) and ADR-016.
 4. **Local query contract note** — **DONE.** Covered by architecture §3.1 (read-only API surface) and §4.2 (`queries.rs`).
 5. **Scoring module vote-target selection input contract** — still open. The scoring-module is explicitly outside the `moonblokz-blockchain` boundary (ADR-002 + PRD FR55), and its concrete API contract belongs to a separate design artifact yet to be authored.
 

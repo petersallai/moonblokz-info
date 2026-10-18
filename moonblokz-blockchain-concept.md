@@ -301,7 +301,7 @@ The concept here is intentionally pre-design: it captures the operating idea and
 
 The proposed mechanism exposes one new chain-info value (configuration specification §4.6) for the custodian-fee program to read: the **count of currently-unspent UTXOs on the active chain**.
 
-This input is cheap to derive from existing data. Under the per-block UTXO spent-bit-vector model (ADR-016), every active-chain block already carries a bit vector whose unset bits identify still-unspent outputs. The active-chain-wide unspent UTXO count is therefore the sum of unset bits across the active-window blocks — an `O(W)` popcount-based computation against state the module already maintains.
+This input is cheap to derive from existing data. Under the per-block available-UTXO bitfield model (ADR-016), every active-chain block already carries a bitfield whose set bits identify its still-unspent outputs. The active-chain-wide unspent UTXO count is therefore the sum of set bits across the active-window blocks — an `O(W)` popcount-based computation against state the module already maintains.
 
 With this value available, the configuration content can specify a fee curve rather than a fixed value. The `configuration_module`’s mini-VM already evaluates bytecode that reads chain-info through `GETCHAININFO`, as a size-dependent **registration price** does with the registered-node count (chain-info 1). The custodian fee would follow the same pattern: no accessor change, the same VM semantics, the same fall-back-to-default behavior when a chain-config payload omits the parameter.
 
@@ -311,7 +311,7 @@ The concept aligns with several decisions that are already part of the MVP model
 
 - The `configuration_module` boundary remains the canonical source for custodian-fee resolution; the accessor is unchanged and only a chain-info identifier is added.
 - The pattern matches a size-dependent `registration price`, whose program reads the registered-node count as chain-info — there is no new architectural shape, only a new chain-info value.
-- Per-block UTXO spent-bit vectors (ADR-016) already expose the information needed for cheap unspent counting; no new persistent state is introduced.
+- Per-block available-UTXO bitfields (ADR-016) already expose the information needed for cheap unspent counting; no new persistent state is introduced.
 - Active-chain-centered query semantics (ADR-008) are preserved: the count is derived strictly from the current active chain, not from incidental block-tree contents.
 - Replay determinism is preserved as long as the count is sampled at a deterministic moment in the carry-forward flow (open question 1 below).
 

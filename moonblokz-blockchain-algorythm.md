@@ -384,7 +384,7 @@ The article states:
 - there may be zero or more inputs,
 - there must be one or more outputs,
 - maximum counts are nominally `255` each,
-- in practice the block size limit applies, and UTXO outputs per block are additionally capped by the chain-config `max_block_utxo_output` (ID 4, ≤ the build's spent-bit width; [Configuration Module Specification](./moonblokz-configuration-specification.md) §4.1).
+- in practice the block size limit applies, and UTXO outputs per block are additionally capped by the chain-config `max_block_utxo_output` (ID 4, ≤ the build's available-UTXO bitfield width; [Configuration Module Specification](./moonblokz-configuration-specification.md) §4.1), counted over all of a block's complex transactions and enforced at intake (PRD FR9 Tier 1; the bitfield width before the durable lock) and in the FR6 pass (PRD FR6).
 
 A transaction with **zero inputs** is a special `snake_chain` maintenance case used to re-add surviving UTXO outputs.
 
@@ -396,7 +396,7 @@ Fields:
    Sequence number of the block containing the complex transaction whose UTXO is being spent. The reference is resolved against the current active chain only; within the `snake_chain` window the sequence uniquely identifies a stored block.
 
 2. **`output_index: u8`**  
-   Position of the referenced output in the block's UTXO-output stream: UTXO outputs only (balance outputs are not counted), transaction by transaction in block order, output by output within each transaction. This is the output's bit in the block's per-block spent-bit vector (PRD FR34).
+   Position of the referenced output in the block's UTXO-output stream: UTXO outputs only (balance outputs are not counted), transaction by transaction in block order, output by output within each transaction. This is the output's bit in the block's per-block available-UTXO bitfield (PRD FR34).
 
 3. **`amount: u64`**  
    The referenced output's amount, declared by the spender (DEC-131); it must equal the output's amount. With it every input declares its value, so the transaction's input sum and fee follow from its bytes, and the signature commits to the amount spent.
@@ -406,7 +406,7 @@ Fields:
 
 #### Why sequence numbers instead of transaction hashes?
 
-For processing performance (DEC-130): a sequence reference resolves with a RAM-only ancestor walk and one block read, with no hash-keyed index and no re-hashing, is 28 bytes shorter than a hash (20 bytes net of the declared amount), and is the spent-bit position itself. The cost is accepted: Part V preferred transaction-hash references because they survive branch changes, and they do — a spend whose creating transaction is re-included on the new branch after a chain switch stays valid with a hash reference, but not with a sequence reference, which then names a different output. References below the divergence point, and carry-forward across the window boundary, behave the same in both models. The decision and its consequences are recorded in [ADR-016](./blockchain-adrs/ADR-016-sequence-indexed-utxo-input-model.md).
+For processing performance (DEC-130): a sequence reference resolves with a RAM-only ancestor walk and one block read, with no hash-keyed index and no re-hashing, is 28 bytes shorter than a hash (20 bytes net of the declared amount), and is the available-UTXO bit position itself. The cost is accepted: Part V preferred transaction-hash references because they survive branch changes, and they do — a spend whose creating transaction is re-included on the new branch after a chain switch stays valid with a hash reference, but not with a sequence reference, which then names a different output. References below the divergence point, and carry-forward across the window boundary, behave the same in both models. The decision and its consequences are recorded in [ADR-016](./blockchain-adrs/ADR-016-sequence-indexed-utxo-input-model.md).
 
 ### 6.2 Balance input (`input type = 1`)
 
@@ -655,9 +655,9 @@ Once a sufficiently long candidate chain has been found, the node must reconstru
 2. Before forward replay begins, preload the candidate chain-configuration content from the marked chain and reject the candidate if the in-scope chain-config blocks disagree or if no required chain-config block is present.
 3. Traverse forward through the chosen chain to rebuild operational state.
 4. Collect node information needed for later signature and balance validation, including per-node seed sources inside the retained segment. Each node is seeded from its earliest in-segment balance entry, or — if no such balance entry exists — from its in-segment registration.
-5. Rebuild balances, votes, spent-bit vectors, and other active-chain state progressively.
+5. Rebuild balances, votes, available-UTXO bitfields, and other active-chain state progressively.
 6. When a transaction involves a node before that node's earliest in-segment seed source, apply the pre-seed rule: node-state-dependent checks for that node are temporarily auto-accepted inside the reconstruction pass, while structural, payload-level, chain-config-derived, and UTXO-reference checks that do not depend on that node's pre-state still execute normally.
-7. UTXO input existence and per-block spent-bit tracking continue across the whole pass, including pre-seed zones, because they are resolved from the referenced outputs and the retained segment itself.
+7. UTXO input existence and per-block available-UTXO tracking (a block's output bits set when it is derived, cleared on spend) continue across the whole pass, including pre-seed zones, because they are resolved from the referenced outputs and the retained segment itself.
 8. Validate every other invariant as soon as its prerequisite state is available.
 9. If a contradiction, invalid signature, or irrecoverable missing prerequisite appears, apply the [Blockchain PRD](./moonblokz-blockchain-prd.md) FR5 atomic recovery: discard the forward-traversal working set in full and atomically, and either (a) when the offending block can be precisely identified, delete the offending block from durable storage together with every block whose only retained ancestry path runs through it — this explicitly includes the candidate-chain blocks between the offender and the pre-failure tip — or (b) when the offending block cannot be precisely identified, delete exactly one block from durable storage, the candidate chain's head. Then return the chain to collecting state. There is no configurable fallback depth; the single-block drop is the fixed fallback.
 
@@ -843,7 +843,7 @@ Allow old transaction blocks to disappear without losing live address-state.
 
 1. inspect the dropped block’s transactions,
 2. discard balance outputs that no longer need preservation,
-3. read the dropping block's per-block spent-bit vector (per [ADR-016](./blockchain-adrs/ADR-016-sequence-indexed-utxo-input-model.md)) to classify each UTXO output as spent or unspent on the current active chain,
+3. read the dropping block's per-block available-UTXO bitfield (per [ADR-016](./blockchain-adrs/ADR-016-sequence-indexed-utxo-input-model.md)) to classify each UTXO output as unspent (bit `1`) or not on the current active chain; whether any output must be carried forward is decided from the bitfield alone, without a block read,
 4. create a special **complex transaction with zero inputs** whose outputs correspond to the still-unspent UTXOs identified in step 3,
 5. reduce each re-added UTXO by the custodian fee,
 6. discard any UTXO whose amount becomes smaller than the custodian fee.
@@ -888,7 +888,7 @@ Complex transactions follow two distinct validity regimes depending on whether t
 
 A complex transaction with at least one input is valid only if:
 
-- every referenced UTXO input resolves against the current active chain: the block at `block_sequence` exists within the retained window, the `output_index` is within the bounds of that block's UTXO-output stream, and the corresponding bit in that block's spent-bit vector is `0` (unspent) per [ADR-016](./blockchain-adrs/ADR-016-sequence-indexed-utxo-input-model.md),
+- every referenced UTXO input resolves against the current active chain: the block at `block_sequence` exists within the retained window, and the corresponding bit in that block's available-UTXO bitfield is `1` (the output exists and is unspent; this also covers `output_index` past the block's UTXO-output stream) per [ADR-016](./blockchain-adrs/ADR-016-sequence-indexed-utxo-input-model.md),
 - every balance input is valid against current balance state,
 - every input signature is valid for its scope,
 - total inputs are greater than or equal to total outputs,
