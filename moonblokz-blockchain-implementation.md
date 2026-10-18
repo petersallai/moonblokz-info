@@ -107,11 +107,11 @@ From an implementation perspective, the key consequence is that restart, persist
 
 The concrete in-memory layouts, field-by-field sizes, alignment, sentinels, and module-by-module owner of every authoritative and derived state category are defined in [`moonblokz-blockchain-architecture.md`](./moonblokz-blockchain-architecture.md):
 
-- **Block-tree metadata** → architecture §4.2 (`blocks.rs`) and §6.2 (`BlockEntry` 76 B padded × `MAX_BLOCKS`, co-located ADR-016 spent-bit vector).
+- **Block-tree metadata** → architecture §4.2 (`blocks.rs`) and §6.2 (`BlockEntry` 76 B padded × `MAX_BLOCKS`, co-located ADR-016 available-UTXO bitfield).
 - **Active-chain window state** → architecture §4.2 (`snake_chain.rs`) and §6.4 (two `u32` fields directly on `Blockchain<...>`).
 - **Branch / chain-heads tracking** → architecture §4.2 (`chain_heads.rs`) and §6.3 (`ChainHeadEntry` 72 B padded × `MAX_BRANCH_COUNT`).
 - **Per-node SoA state (public keys, balances, FR50 seed-source projection, max_known_node_id)** → architecture §4.2 (`node_info.rs`) and §6.1.
-- **UTXO spent-bit projection** → architecture §4.2 (`spent_bits.rs`) and §6.2 (co-located in `BlockEntry`).
+- **Available-UTXO projection** → architecture §4.2 (`available_utxo.rs`) and §6.2 (co-located in `BlockEntry`).
 - **Approval evidence accumulation** → architecture §4.2 (`approval.rs`) and §6.5 (`ApprovalAccumulator` ~2 KB crypto-agnostic MAX_BLOCK_SIZE buffer).
 - **Mempool** → architecture §3.3 (sub-crate API) and §6.8 (internals).
 - **Vote engine** → architecture §3.4 (sub-crate API) and §6.9 (internals).
@@ -218,7 +218,7 @@ Part V directly motivates implementation techniques such as in-memory caching an
 
 ### RAM-side expectations
 
-RAM holds full-coverage, fixed-size metadata rather than hot subsets: one `BlockEntry` per storage slot (hash, parent, sequence, co-located UTXO spent bits) and per-node SoA balances, keys and seed sources for `MAX_NODES` ([Blockchain PRD](./moonblokz-blockchain-prd.md) FR34; [architecture](./moonblokz-blockchain-architecture.md) §6.1–§6.2). Block bytes stay in flash and are read on demand. Fragment reassembly state belongs to the radio layer.
+RAM holds full-coverage, fixed-size metadata rather than hot subsets: one `BlockEntry` per storage slot (hash, parent, sequence, co-located available-UTXO bits) and per-node SoA balances, keys and seed sources for `MAX_NODES` ([Blockchain PRD](./moonblokz-blockchain-prd.md) FR34; [architecture](./moonblokz-blockchain-architecture.md) §6.1–§6.2). Block bytes stay in flash and are read on demand. Fragment reassembly state belongs to the radio layer.
 
 ### Flash-side expectations
 
@@ -318,7 +318,7 @@ The bootstrap is realized in [`moonblokz-blockchain-architecture.md`](./moonblok
 
 Active-chain switch is not just a matter of choosing a new tip hash. It is a rare but first-class correction event: the Chain Knowledge Core remains the orchestrating truth source while derived subsystems (per-node accumulated vote and creator-order state, node-derived active balances, branch bookkeeping, mempool eligibility) are reconciled against the newly selected branch. A practical strategy is to walk backward to the common ancestor and then forward along the new active branch while updating derived state incrementally — chain switch is a structured recomputation workflow rather than a side effect attached to tip replacement.
 
-The concrete reconciliation workflow (backward walk → forward walk; spent-bits clear/replay; balance rollback/replay; accumulated-vote rollback/apply; mempool re-eligibility recheck; FR58 deep-zone reconstruction) is defined in [`moonblokz-blockchain-architecture.md`](./moonblokz-blockchain-architecture.md) §4.2 (`reconciliation.rs` module) and in PRD FR23.
+The concrete reconciliation workflow (backward walk → forward walk; available-UTXO bits restore/replay; balance rollback/replay; accumulated-vote rollback/apply; mempool re-eligibility recheck; FR58 deep-zone reconstruction) is defined in [`moonblokz-blockchain-architecture.md`](./moonblokz-blockchain-architecture.md) §4.2 (`reconciliation.rs` module) and in PRD FR23.
 
 ## Scheduling Implications of snake_chain
 

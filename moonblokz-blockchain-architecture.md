@@ -510,7 +510,7 @@ graph TB
 
     subgraph DerivedState["Derived state"]
         NodeInfo["node_info.rs<br/>SoA per-node state"]
-        SpentBits["spent_bits.rs<br/>ADR-016 per-block UTXO"]
+        AvailableUtxo["available_utxo.rs<br/>ADR-016 per-block UTXO"]
     end
 
     subgraph CreationQueries["Creation & queries"]
@@ -531,10 +531,10 @@ graph TB
     Intake --> ChainHeads
     StagedValidation --> Blocks
     StagedValidation --> NodeInfo
-    StagedValidation --> SpentBits
+    StagedValidation --> AvailableUtxo
     Reconciliation --> Blocks
     Reconciliation --> SnakeChain
-    Reconciliation --> SpentBits
+    Reconciliation --> AvailableUtxo
     Reconciliation --> NodeInfo
     Creator --> Blocks
     Creator --> SnakeChain
@@ -543,7 +543,7 @@ graph TB
     Approval --> EmitScratch
     Queries --> Blocks
     Queries --> NodeInfo
-    Queries --> SpentBits
+    Queries --> AvailableUtxo
 ```
 
 ### 4.2 Module-by-module summary
@@ -562,7 +562,7 @@ The full per-module breakdown (processes / data structures / relationships / API
 | `staged_validation.rs` | FR9 | (stateless tier 1/2/3 checks) |
 | `reconciliation.rs` | FR23, FR58 | (stateless backward/forward walk) |
 | `node_info.rs` | FR6, FR50, FR67/FR69 | 4 parallel arrays SoA (~44 KB Schnorr / ~108 KB BLS) |
-| `spent_bits.rs` | ADR-016, FR3, FR51 | (operates on `BlockEntry.spent_bits` co-located) |
+| `available_utxo.rs` | ADR-016, FR3, FR51 | (operates on `BlockEntry.available_utxo` co-located) |
 | `creator.rs` | FR44/FR45/FR47 | (stateless; uses `bc.crypto.sign`) |
 | `approval.rs` | FR12/FR15/FR27 | `ApprovalAccumulator` (~2 KB, crypto-agnostic — MAX_BLOCK_SIZE buffer) |
 | `queries.rs` | FR40-FR43 | (stateless) |
@@ -582,7 +582,7 @@ The full per-module breakdown (processes / data structures / relationships / API
 | `MEMPOOL_COMPACT_BYTES` | 20160 | ~10 × MAX_BLOCK_SIZE |
 | `MEMPOOL_MAX_ENTRIES` | 128 | conservative |
 | `MAX_TX_PER_BLOCK` | ~64 | derived; FR45 included_keys gathering |
-| `MAX_BLOCK_UTXO_OUTPUT` | 256 | FR56 chain-config-derived; per-block spent-bit vector size |
+| `MAX_BLOCK_UTXO_OUTPUT` | 256 | FR56 chain-config-derived; per-block available-UTXO bitfield width, also the Tier 1 UTXO-output cap before the durable lock (FR9) |
 | `MAX_AGGREGATED_SIGNATURES` | 50 | ADR-015; approval subgroup sizing |
 | `PUBLIC_KEY_SIZE` | 32 (Schnorr) / 96 (BLS) | crypto feature flag |
 | `SIGNATURE_SIZE` | derived from crypto feature | varies |
@@ -613,7 +613,7 @@ pub(crate) struct BlockEntry {
     hash: [u8; 32],                                // 32 B   FR11 duplicate-detection key
     parent_ref: u32,                               //  4 B   index into blocks (u32::MAX = no parent)
     sequence: u32,                                 //  4 B   FR21/FR19 tie-break (u32::MAX = empty slot)
-    spent_bits: [u8; SPENT_BITS_BYTES],            // 32 B   ADR-016 co-located (see revision note)
+    available_utxo: [u8; AVAILABLE_UTXO_BYTES],    // 32 B   ADR-016 co-located (see revision note)
     head_ref_count: u8,                            //  1 B   FR19 eviction
     flags: u8,                                     //  1 B   is_on_active_chain (bit 0) + status (bits 1-2, Stored/Connected/Active) + payload_type (bits 3-4)
     len: u16,                                      //  2 B   exact serialized length (FR6 byte-exact checks; fills the former tail padding)
@@ -623,14 +623,14 @@ pub(crate) struct BlockEntry {
 
 **Key decisions** (Step 6):
 - No `storage_index` field — `blocks[i] ⟷ storage_index = i` 1:1 mapping
-- Spent-bits **co-located** in BlockEntry per ADR-016 (no separate `SpentBitTable`)
+- Available-UTXO bits **co-located** in BlockEntry per ADR-016 (no separate table). Bit *i* = 1 exactly when the block's *i*-th UTXO output exists and is unspent on the derived chain: set when the FR6 per-block step derives the block, cleared on spend (DEC-132). The resolver and the FR51 tail-drop classification therefore reject or decide from RAM; the one block read per resolved input remains only for the declared amount (DEC-131) and the address.
 - `flags` bits 3-4 cache the block's `payload_type` as `payload_type - 1`, so the FR3 backward mark can locate the candidate segment's earliest balance block — the `max_known_node_id` existence-floor seed source of FR6's referenced-node-existence check — without one storage read per marked block (free: previously-unused flag bits)
 - `len` records the exact serialized length at intake because durable backends read blocks back zero-padded to a fixed slot; the FR6 byte-exact checks trim to it first (not recoverable across restart — see the Story-5.7 length-recovery decision)
 - Empty slot sentinel: `sequence == u32::MAX` (FR53 rejects u32::MAX-based chain extension in MVP)
-- Side-branch blocks have spent_bits = all zeros (~3 KB harmless waste, absorbed by Schnorr margin)
+- Blocks off the derived chain (side branch, never derived) have `available_utxo` = all zeros, which reads as "nothing available" (~3 KB harmless waste, absorbed by Schnorr margin)
 
 **Story 4.1 revision (2026-07-04).** Three clarifications from implementation, none changing the 76 B / 45 600 B budget above:
-- `spent_bits` is a fixed `SPENT_BITS_BYTES = 32` constant, not the generic expression `MAX_BLOCK_UTXO_OUTPUT / 8` shown in earlier drafts — sizing an array from a divided const-generic parameter requires the unstable `generic_const_exprs` feature, which this workspace does not enable (the same constraint already documented for `moonblokz-crypto-lib`'s fixed-size array API). The byte count is unchanged (256 / 8 = 32 at the architecture §5 default); Epic 7 resolves the generic-sizing question if `MAX_BLOCK_UTXO_OUTPUT` ever needs to vary per deployment.
+- `available_utxo` is a fixed `AVAILABLE_UTXO_BYTES = 32` constant (named `spent_bits` / `SPENT_BITS_BYTES` until Story 6.11), not the generic expression `MAX_BLOCK_UTXO_OUTPUT / 8` shown in earlier drafts — sizing an array from a divided const-generic parameter requires the unstable `generic_const_exprs` feature, which this workspace does not enable (the same constraint already documented for `moonblokz-crypto-lib`'s fixed-size array API). The byte count is unchanged (256 / 8 = 32 at the architecture §5 default); Epic 7 resolves the generic-sizing question if `MAX_BLOCK_UTXO_OUTPUT` ever needs to vary per deployment.
 - `flags` bit assignment is now specified: bit 0 = `is_on_active_chain` (live in Story 4.1); bits 1-2 are reserved for Story 4.2's FR9 status value (`Stored`/`Connected`/`Active`) — Story 4.1 reserves the bits but does not define the enum or its transition map; bits 3-7 are unused.
 - The FR18 chain-head arrival timestamp is **not** a `BlockEntry` field. FR18's actual requirement is "at least for every chain head block," and `BlockEntry`'s table has 600 entries at the default profile — adding a `u64` there would widen every entry to 88 B padded (+7.2 KB total), which is immaterial against the Schnorr backend's ~67-77 KB SRAM margin (§7.3) but eats meaningfully into the BLS backend's already-tight ~7-17 KB margin. `chain_heads.rs`'s `ChainHeadEntry` (§6.3, Story 4.4) has only 40 entries — the same field there costs ~320 B. Story 4.4 adds the arrival timestamp to `ChainHeadEntry` instead.
 
@@ -846,7 +846,7 @@ The full FR1-FR69 coverage matrix (per-FR row with primary + support modules) is
 
 ### 9.3 FR52 — explicit MVP-skip rationale
 
-FR52 ("no explicit UTXO saturation detection") is itself a "doing nothing" requirement: MVP has no admission control / backpressure on the UTXO space. The snake_chain bounded retention (FR48) + spent-bit vector (ADR-016) + `MAX_BLOCK_UTXO_OUTPUT = 256` per-block limit already cap memory growth. Direct admission control is post-MVP.
+FR52 ("no explicit UTXO saturation detection") is itself a "doing nothing" requirement: MVP has no admission control / backpressure on the UTXO space. The snake_chain bounded retention (FR48) + available-UTXO bitfield (ADR-016) + `MAX_BLOCK_UTXO_OUTPUT = 256` per-block limit already cap memory growth. Direct admission control is post-MVP.
 
 ---
 
@@ -918,7 +918,7 @@ impl ActiveConfig<'_> {
     pub fn inter_block_interval_ms(&self) -> u32;                  // FR45 (b), ms
     pub fn grace_period_window_ms(&self) -> u32;                   // FR47, ms
     pub fn block_size_limit(&self) -> u16;
-    pub fn max_utxo_outputs(&self) -> u16;   // u16: the ceiling is the build's spent-bit width (256), which a byte cannot express
+    pub fn max_utxo_outputs(&self) -> u16;   // u16: the ceiling is the build's available-UTXO bitfield width (256), which a byte cannot express
     pub fn mining_reward(&self) -> u32;                            // FR36 (a); FR6 `mined_amount` must equal it
     pub fn with_chain_info(self, source: &'a dyn ChainInfoSource) -> Self;  // spec §4.6
     pub fn registration_price(&self) -> u64;               // no argument; a program may read chain-info
@@ -949,7 +949,7 @@ When a deployment selects the BLS crypto backend, the default const-generic valu
 |---|---|---:|---|
 | `MAX_NODES` | 1000 → 500 | −56 KB | Halves node-roster capacity. Network size cap. |
 | `MAX_NODES` | 1000 → 250 | −84 KB | Quarter capacity. Suitable for small deployments. |
-| `SNAKE_CHAIN_LENGTH_MAX` | 500 → 300 | −6.4 KB (spent-bits) | Caps the chain `W` this build can join; deeper-zone events more frequent. |
+| `SNAKE_CHAIN_LENGTH_MAX` | 500 → 300 | −6.4 KB (available-UTXO bits) | Caps the chain `W` this build can join; deeper-zone events more frequent. |
 | `MAX_BRANCH_COUNT` | 40 → 20 | −640 B | Less branch headroom; collecting-state may need quicker convergence. |
 | `MAX_AGGREGATED_SIGNATURES` | 50 → 30 | **Schnorr: −0.7 KB** in ApprovalAccumulator. **BLS: ~0 KB** (signature is single aggregated slot, only `supporter_node_ids` shrinks). Per ADR-015, must verify subgroup robustness. |
 | `MEMPOOL_COMPACT_BYTES` | 20160 → 12000 | −8 KB | Smaller mempool capacity; more frequent replenishment. |
@@ -1001,7 +1001,7 @@ Selected high-impact decisions from the Step 5 + Step 6 + Step 7 iterations:
 | 4 | Mempool + vote extracted into separate sub-crates | FR30 + FR55 (`scoring_module` boundary); clean concern separation |
 | 5 | Const-generic Blockchain\<C, S, X, MAX_NODES, ...\> | Compile-time configuration without alloc |
 | 6 | Crypto handle stored on Blockchain, sign happens inside blockchain | FR68 — blockchain holds trait handle, never raw key bytes |
-| 7 | BlockEntry array of structs (AoS) with co-located spent_bits | ADR-016 alignment; lifecycle coupling; ~3 KB harmless side-branch waste |
+| 7 | BlockEntry array of structs (AoS) with co-located available-UTXO bits | ADR-016 alignment; lifecycle coupling; ~3 KB harmless side-branch waste |
 | 8 | No `storage_index` field in BlockEntry | `blocks[i] ⟷ storage_index = i` 1:1 |
 | 9 | `head_idx == u32::MAX` / `sequence == u32::MAX` as empty-slot sentinels | Saves count field; FR53 already rejects u32::MAX-based chain extension |
 | 10 | `tail_or_connection_idx` overlaid in ChainHeadEntry | State-dependent semantics; saves 480 B / 40 entries |

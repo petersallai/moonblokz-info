@@ -49,7 +49,7 @@ Authoritative source: [`moonblokz-blockchain-architecture.md`](./moonblokz-block
 | `MEMPOOL_COMPACT_BYTES` | 20160 | Mempool compact buffer (~10 × `MAX_BLOCK_SIZE`). |
 | `MEMPOOL_MAX_ENTRIES` | 128 | Mempool index capacity. |
 | `MAX_TX_PER_BLOCK` | ~64 | Derived; [BC-FR45](./moonblokz-blockchain-prd.md) included-keys gathering. |
-| `MAX_BLOCK_UTXO_OUTPUT` | 256 | Per-block spent-bit vector size (ADR-016). |
+| `MAX_BLOCK_UTXO_OUTPUT` | 256 | Per-block available-UTXO bitfield width (ADR-016); also the Tier 1 UTXO-output cap before the durable lock ([BC-FR9](./moonblokz-blockchain-prd.md)). |
 | `MAX_AGGREGATED_SIGNATURES` | 50 | Approval subgroup cap (ADR-015). Matches Schnorr per-block supporter capacity (§2). |
 | `PUBLIC_KEY_SIZE` | 32 (Schnorr) / 96 (BLS) | Crypto-feature-dependent; see §2. |
 
