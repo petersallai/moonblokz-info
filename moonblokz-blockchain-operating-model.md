@@ -253,7 +253,7 @@ Each flow lists its trigger, its steps, and what happens on failure. Step tables
 | # | Step | FRs | Built |
 |---|---|---|---|
 | 1 | Set `S_tail` at genesis and at every Ready promotion; on Ready entry release active blocks below it | FR48 | built (9.1) |
-| 2 | Classify the dropping tail block: nothing, chain-config, seed source, or unspent UTXOs (at most one) | FR48–FR51 | built (9.1); inputs kept current after Ready by 7.2 |
+| 2 | Classify the dropping tail block: nothing, chain-config, seed source, or unspent UTXOs (at most one) | FR48–FR51 | built (9.1); inputs kept current on head extension built (6.0); on chain switch 6.3 / 7.2 |
 | 3 | The head extension must be (or carry) the matching replay; otherwise it is invalid | FR16, FR48 | partial — decision built (9.1); enforced on inbound head extensions built (6.0); creator side 8.3 |
 | 4 | Replay content: configuration identical to the lock; balance entries at `seq − 1` plus bonus pack; carry-forward 1:1 with fee reduction | FR9, FR49, FR50, FR51 | not built (9.2, 9.3, 9.5) |
 | 5 | Spacing trigger: at length `W` with nothing pending, emit a bonus-pack balance block when spacing exceeds `⌈W / ⌈N_active / K_max⌉⌉` | FR50 | not built (9.4) |
