@@ -108,16 +108,16 @@ Raising `MAX_NODES` costs ~48 B/node (Schnorr) or ~112 B/node (BLS) across the n
 | radio-lib (memory-config-medium) | ~60 KB | ~60 KB |
 | crypto-lib scratch | ~4 KB | ~4 KB |
 | storage page buffer | ~4 KB | ~4 KB |
-| Embassy task stacks (5-6 × 4-6 KB) | ~24 KB | ~24 KB |
+| Stacks: Core 1 (blockchain task) 24 KB + other tasks ~18 KB | ~42 KB | ~42 KB |
 | Embassy executor + statics | ~4 KB | ~4 KB |
-| **Subtotal allocated** | **~218 KB** | **~282 KB** |
-| **Margin (264 KB − allocated)** | **~46 KB (~17%)** ✅ | **~−18 KB (exceeds 264 KB)** ❌ |
+| **Subtotal allocated** | **~236 KB** | **~300 KB** |
+| **Margin (264 KB − allocated)** | **~28 KB (~11%)** ✅ | **~−36 KB (exceeds 264 KB)** ❌ |
 
 The radio figure is the **source-confirmed** `memory-config-medium = ~60 KB` (radio module `README.md` + `lib.rs` profile consts; see §6 and §7/D1), additive to the separately-counted Embassy task stacks. **Consequence:** at the default 1000-node profile the BLS backend **exceeds the 264 KB ceiling by ~18 KB** — const-generic tuning (e.g. `MAX_NODES 1000 → 500`, §3.4) is therefore **mandatory** for BLS, not optional. Schnorr keeps a comfortable ~46 KB (~17%) margin. The authoritative architecture §7.3/§7.4/§12 and the index have been updated to match this source-confirmed figure (radio = 60 KB).
 
 ### 3.3 Stack frames
 
-- Chain-lib hosting Embassy task: **6 KB** stack (block-creation `BlockBuilder` is the hot spot).
+- Chain-lib hosting task: runs on Core 1, whose stack is **24 KB** — measured peak 19.2 KB plus ~25% (architecture §8, DEC-137).
 - Other Embassy tasks (radio, USB console): **4 KB**.
 
 ### 3.4 Deployment tuning (BLS headroom)
@@ -126,9 +126,9 @@ Per-lever savings: [`moonblokz-blockchain-architecture.md`](./moonblokz-blockcha
 
 | Profile | `MAX_NODES` | `SNAKE_CHAIN_LENGTH_MAX` | BLS margin (radio = 60 KB) |
 |---|---:|---:|---:|
-| BLS-large (default) | 1000 | 500 | **~−18 KB (does not fit)** ❌ |
-| BLS-medium | 500 | 500 | ~39 KB ✅ |
-| BLS-small | 250 | 300 | ~73 KB ✅ |
+| BLS-large (default) | 1000 | 500 | **~−36 KB (does not fit)** ❌ |
+| BLS-medium | 500 | 500 | ~21 KB ✅ |
+| BLS-small | 250 | 300 | ~55 KB ✅ |
 
 Most impactful lever: `MAX_NODES 1000 → 500` saves ~56 KB (BLS) but halves the network-size cap — and is the minimum tuning needed to make BLS fit at all once the radio medium profile is counted at its real ~60 KB.
 
