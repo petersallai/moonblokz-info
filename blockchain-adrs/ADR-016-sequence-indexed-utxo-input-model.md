@@ -13,20 +13,24 @@ Spent-state tracking, which is the other half of the UTXO model, can then be rep
 ### Decision
 MoonBlokz shall reference UTXOs by `(block_sequence, output_index)` rather than by `(transaction_hash, output_index)`. The complex-transaction UTXO input field shall carry `block_sequence: u32` and `output_index: u8` (replacing the previous `tr_hash: [u8;32]`).
 
+*Amendment (2026-10-18, DEC-131):* the input also declares the referenced output's `amount: u64`, which must equal the output's amount. Every complex transaction's input sum and fee are then decidable from its bytes (Tier 1), including on a window-anchored candidate whose reference lies below its anchor (DEC-129); the resolver checks the declared amount against the output.
+
 Spent-state for UTXO outputs shall be represented as a **per-block spent-bit vector** co-located with the block in storage. Each block carries one bit per UTXO output produced by its transactions; the bit is `0` while the output is unspent on the current active chain and `1` once spent.
 
 *Note (2026-10-12):* "co-located with the block" means kept with the block's in-memory cache entry, not written to flash: the vector is derived, not durable, and is rebuilt by forward replay ([PRD](../moonblokz-blockchain-prd.md) FR34; [architecture](../moonblokz-blockchain-architecture.md) §6.2).
 
 The spent-bit vector is a **derived projection** of the current active chain, not durable blockchain truth. The authoritative record of spend events remains the transactions contained in accepted blocks. On chain switch, spent-bit vectors covering blocks inside the rollback scope shall be recomputed by forward-replaying the new active chain from the common ancestor, consistent with the chain-switch reconciliation workflow defined in PRD FR23 and realized in `moonblokz-blockchain-architecture.md` §4.2 (`reconciliation.rs`).
 
-This decision supersedes the Part V rationale that hash-based references are preferred because they "survive branch changes". Under `snake_chain` bounds, the sequence reference is equally stable within its valid scope (the active chain inside the retained window), and carry-forward already invalidates key references in both models, so the hash-based stability argument does not provide a net advantage.
+**Decision driver (Project Lead, 2026-10-18; DEC-130):** processing performance. A sequence reference resolves with a RAM-only ancestor walk and exactly one block read; a hash reference has to be found by re-reading and re-hashing candidate blocks (or through a hash-keyed index the embedded target cannot afford).
+
+**Accepted cost — a more fragile chain.** The Part V argument that hash references "survive branch changes" holds, and this decision accepts losing it. When a chain switch rolls back the block that created an output and the creating transaction is re-included on the new branch, a hash-referenced spend stays valid; a sequence-referenced spend does not, because its `(block_sequence, output_index)` now names whatever the new branch holds at that position (it survives only if the output happens to land at the same position, which nothing guarantees), and the spender must re-create it. References to outputs below the divergence point are unaffected in both models, and carry-forward across the window boundary invalidates references in both.
 
 ### Consequences
 #### Positive
 - Removes the ongoing live UTXO set from the derived-state projection; frees working-memory budget on the embedded target.
 - UTXO input lookup becomes O(1) against the sequence-indexed block storage, without a hash-keyed auxiliary index.
 - Carry-forward at tail-drop time is simplified: the unspent output set of the dropping block is read directly from its spent-bit vector, with no separate "find unspent" scan or auxiliary data structure.
-- Shorter wire representation for UTXO inputs (roughly 32 bytes saved per input, since `u32` sequence replaces a 32-byte hash).
+- Shorter wire representation for UTXO inputs: a `u32` sequence replaces the 32-byte hash (28 bytes saved), of which 8 go back to the declared amount (DEC-131), so 20 bytes net per input.
 - Spent-bit vectors are compact (1 bit per output) and co-located with the block, matching flash-storage-friendly access patterns.
 
 #### Trade-offs
@@ -38,7 +42,7 @@ This decision supersedes the Part V rationale that hash-based references are pre
 
 ### Follow-up implications
 This decision implies that later design work and dependent artifacts must define or update:
-- the binary serialization of the UTXO input field (Algorithm 25 and Section 6.1 of the algorithm document),
+- the binary serialization of the UTXO input field (Sections 6.1 and 10 of the algorithm document),
 - the complex-transaction validity rules so that input existence and unspent status are resolved against the sequence-indexed block storage and the per-block spent-bit vector (Algorithm 13),
 - the carry-forward algorithm so that the unspent output set is read from the spent-bit vector of the dropping block (Algorithm 12),
 - the chain-switch reconciliation workflow so that spent-bit vectors within the rollback scope are recomputed as part of the forward-replay step (PRD FR23 and the derived-state projection definitions; realized in architecture §4.2 `reconciliation.rs`),

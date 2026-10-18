@@ -105,7 +105,7 @@ These define:
 - **ADR-013** — Bounded UTXO handling requires an explicit preservation strategy.
 - **ADR-014** — Lifecycle mode transitions may require representation-aware design.
 - **ADR-015** — Approval subgroup is selected by rendezvous-hash ordering over active-chain-derived active nodes, seeded by the snake-chain tail hash, the proposer node identity, and the proposed sequence; subgroup size is tied to `required_support`, capped by the active set, with no in-subgroup expansion fallback.
-- **ADR-016** — UTXO inputs reference `(block_sequence, output_index)` rather than transaction hashes; spent state is tracked as a per-block spent-bit vector co-located with each block, eliminating the need for an in-memory live UTXO set.
+- **ADR-016** — UTXO inputs reference `(block_sequence, output_index)` rather than transaction hashes, for processing performance at the accepted cost of spends not surviving a chain switch that re-includes their source (DEC-130); spent state is tracked as a per-block spent-bit vector co-located with each block, eliminating the need for an in-memory live UTXO set.
 
 ---
 

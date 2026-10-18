@@ -102,7 +102,7 @@ What a valid chain must satisfy, grouped by scope. **Checked** names where the r
 | I-04 | No block has `sequence == u32::MAX`; creation stops at `u32::MAX − 1` | FR53 | T1; creator side | partial — intake built; creation ceiling 8.1 |
 | I-05 | Creator signature valid against the chain-derived key (node #0: the trust anchor) | FR6, FR9, FR16, FR54 | T1 for a ready direct head extension; T3; pass | partial — pass built (5.4); ready paths 6.0 |
 | I-06 | A transaction block never holds both a registration and a complex transaction (carry-forward included) | FR6, FR9, FR51 | T1 | built (4.2) |
-| I-07 | A block's UTXO-output count ≤ `max_block_utxo_output` | FR9, FR34, FR56 | T1 (locked) | not built (7.1) |
+| I-07 | A block's UTXO-output count ≤ `max_block_utxo_output` | FR9, FR34, FR56 | T1 (locked; bitfield width before the lock) | not built (6.11, DEC-132) |
 
 ### 5.2 Creator, Votes, and Approval
 
@@ -124,7 +124,7 @@ What a valid chain must satisfy, grouped by scope. **Checked** names where the r
 | I-16 | The creator is credited `mined_amount` + fees + `replay_block_reward` (if the block carries replay) once per block, and the resulting balance is consistent; #0 / #1 exempt | FR6, FR36, FR54 | T3; pass | partial — `mined_amount` + fees credit built (5.3); replay reward and the consistency check 7.2, Epic 9 |
 | I-17 | No negative balance: initializers cover amount / price plus fee and every balance input | FR6, FR9 | T3; pass | partial — seeded nodes built (5.4); saturating arithmetic 6.0 |
 | I-18 | `registration_price` is absorbed by the network; the fee goes to the creator | FR6, FR36 | T3; pass | partial — debit and credit built (5.4); price check against configuration 7.3 (I-36) |
-| I-19 | A complex transaction with inputs has Σ inputs ≥ Σ outputs (zero-input carry-forward exempt) | FR6, FR9 | T1 when all inputs resolve, else T2 | partial — balance inputs built (4.2, 5.4); UTXO values 6.8, 7.1 |
+| I-19 | A complex transaction with inputs has Σ inputs ≥ Σ outputs (zero-input carry-forward exempt) | FR6, FR9 | T1 (declared amounts, DEC-131); T2 / pass (declared UTXO amount = referenced output) | partial — balance inputs built (4.2, 5.4), UTXO values built (6.8), both in the FR3 pass; Ready path 6.0 |
 
 ### 5.4 Transactions by Type
 
@@ -142,7 +142,7 @@ What a valid chain must satisfy, grouped by scope. **Checked** names where the r
 
 | # | Invariant | FRs | Checked | Built |
 |---|---|---|---|---|
-| I-27 | A UTXO input references `(block_sequence, output_index)` of a retained ancestor at or above `S_tail`, index within its output stream | ADR-016, FR6, FR9, FR14 | T2; pass | partial — code still resolves by transaction hash (6.8) |
+| I-27 | A UTXO input references `(block_sequence, output_index)` of a retained ancestor at or above `S_tail`, index within its output stream | ADR-016, FR3, FR6, FR9, FR14 | T1 (causality); T2; pass | partial — Tier-1 causality, the `W` distance bound, the window-anchored pre-anchor trust (DEC-129) and the FR3-pass resolver (ancestor walk plus one read) built (6.8); Ready path 6.0 |
 | I-28 | The referenced output is unspent at inclusion and spent once | ADR-016, FR6, FR9 | T3; pass | partial — pass built (5.4); ready 6.0 |
 
 ### 5.6 `snake_chain` Preservation
@@ -186,7 +186,7 @@ Durable truth is only the node id, the private key (never handed to this module)
 | Public-key map | Registrations; slot 0 = trust anchor | Set per registration / clear on rollback | `NodeInfo.public_keys` (32 KB Schnorr, 96 KB BLS) | FR34, FR35 | partial — pass built (5.3); ready 6.0 |
 | `max_known_node_id` | Earliest balance block's `max_node_id` (0 at genesis), +1 per registration | Increment / decrement | `NodeInfo.max_known_node_id` | FR3, FR34, FR54 | built (5.3, 5.4) |
 | `seed_source_sequence` | Latest balance entry or registration per node | Set to the applied block / bounded backward scan (≤ `W`) | `NodeInfo.seed_source_idx` (block index today) | FR34, FR50, FR23 | partial — pass sets it; sequence form and scan 9.3, 6.3 |
-| Block navigation and UTXO spent bits | Durable block-tree; consumed UTXO inputs | Set on consumption / un-set for leaving blocks; re-zeroed on FR5 | `BlockEntry` table (600 × 76 B) | FR34, FR35, ADR-016 | partial — built (4.1, 5.3–5.5); ADR-016 form 6.8; walk 6.3 |
+| Block navigation and UTXO spent bits | Durable block-tree; consumed UTXO inputs | Set on consumption / un-set for leaving blocks; re-zeroed on FR5 | `BlockEntry` table (600 × 76 B) | FR34, FR35, ADR-016 | partial — built (4.1, 5.3–5.5, 6.8); walk 6.3 |
 | Creator order | Accumulated vote, descending, ties by lower id | Recomputed on demand | not stored | FR38 | built (3.3) |
 | Mempool contents and eligibility | FR14 classification, Deferred marker, expiry sequence | Remove confirmed and expired / re-add on the backward walk, remove on the forward walk; FR15 re-evaluation | `Mempool` crate (~23–25 KB) | FR14, FR15, FR30, FR32 | partial — crate primitives built (2.1, 2.2); wiring 7.3–7.5 |
 | Head `branch_value` | Per-block values above `S_tail` | Add on extension, subtract on tail advance / unchanged by a switch | `ChainHeadEntry.branch_value` | FR19, FR21 | not built (6.1) |

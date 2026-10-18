@@ -396,14 +396,17 @@ Fields:
    Sequence number of the block containing the complex transaction whose UTXO is being spent. The reference is resolved against the current active chain only; within the `snake_chain` window the sequence uniquely identifies a stored block.
 
 2. **`output_index: u8`**  
-   Index of the referenced UTXO output within the block at that sequence. The index addresses the UTXO output position in the block's flattened transaction-output stream, consistent with the block's per-block spent-bit vector layout.
+   Position of the referenced output in the block's UTXO-output stream: UTXO outputs only (balance outputs are not counted), transaction by transaction in block order, output by output within each transaction. This is the output's bit in the block's per-block spent-bit vector (PRD FR34).
 
-3. **`signature: [u8;64]`**  
+3. **`amount: u64`**  
+   The referenced output's amount, declared by the spender (DEC-131); it must equal the output's amount. With it every input declares its value, so the transaction's input sum and fee follow from its bytes, and the signature commits to the amount spent.
+
+4. **`signature: [u8;64]`**  
    Signature over this input and all outputs, using the private key corresponding to the referenced UTXO address.
 
 #### Why sequence numbers instead of transaction hashes?
 
-The earlier Part V rationale preferred transaction-hash references on the grounds that they survive branch changes more gracefully. Under `snake_chain` bounded retention this argument does not yield a net benefit: carry-forward across the window boundary invalidates references in both models, and the sequence-indexed block storage used on the embedded target already provides O(1) lookup. Sequence references are therefore shorter, avoid the need for a hash-keyed auxiliary index, and pair naturally with a per-block spent-bit vector for unspent-state tracking. The decision and its consequences are recorded in [ADR-016](./blockchain-adrs/ADR-016-sequence-indexed-utxo-input-model.md).
+For processing performance (DEC-130): a sequence reference resolves with a RAM-only ancestor walk and one block read, with no hash-keyed index and no re-hashing, is 28 bytes shorter than a hash (20 bytes net of the declared amount), and is the spent-bit position itself. The cost is accepted: Part V preferred transaction-hash references because they survive branch changes, and they do — a spend whose creating transaction is re-included on the new branch after a chain switch stays valid with a hash reference, but not with a sequence reference, which then names a different output. References below the divergence point, and carry-forward across the window boundary, behave the same in both models. The decision and its consequences are recorded in [ADR-016](./blockchain-adrs/ADR-016-sequence-indexed-utxo-input-model.md).
 
 ### 6.2 Balance input (`input type = 1`)
 
