@@ -623,7 +623,7 @@ pub(crate) struct BlockEntry {
 
 **Key decisions** (Step 6):
 - No `storage_index` field — `blocks[i] ⟷ storage_index = i` 1:1 mapping
-- Available-UTXO bits **co-located** in BlockEntry per ADR-016 (no separate table). Bit *i* = 1 exactly when the block's *i*-th UTXO output exists and is unspent on the derived chain: set when the FR6 per-block step derives the block, cleared on spend (DEC-132). The resolver and the FR51 tail-drop classification therefore reject or decide from RAM; the one block read per resolved input remains only for the declared amount (DEC-131) and the address
+- Available-UTXO bits **co-located** in BlockEntry per ADR-016 (no separate table). Bit *i* = 1 exactly when the block's *i*-th UTXO output exists and is unspent on the derived chain: set when the FR6 per-block step derives the block, cleared on spend (DEC-132). The resolver and the FR51 tail-drop classification therefore reject or decide from RAM; the one block read per resolved input remains only for the declared amount (DEC-131) and the address.
 - `flags` bits 3-4 cache the block's `payload_type` as `payload_type - 1`, so the FR3 backward mark can locate the candidate segment's earliest balance block — the `max_known_node_id` existence-floor seed source of FR6's referenced-node-existence check — without one storage read per marked block (free: previously-unused flag bits)
 - `len` records the exact serialized length at intake because durable backends read blocks back zero-padded to a fixed slot; the FR6 byte-exact checks trim to it first (not recoverable across restart — see the Story-5.7 length-recovery decision)
 - Empty slot sentinel: `sequence == u32::MAX` (FR53 rejects u32::MAX-based chain extension in MVP)
