@@ -19,7 +19,9 @@ Spent-state for UTXO outputs shall be represented as a **per-block spent-bit vec
 
 The spent-bit vector is a **derived projection** of the current active chain, not durable blockchain truth. The authoritative record of spend events remains the transactions contained in accepted blocks. On chain switch, spent-bit vectors covering blocks inside the rollback scope shall be recomputed by forward-replaying the new active chain from the common ancestor, consistent with the chain-switch reconciliation workflow defined in PRD FR23 and realized in `moonblokz-blockchain-architecture.md` §4.2 (`reconciliation.rs`).
 
-This decision supersedes the Part V rationale that hash-based references are preferred because they "survive branch changes". Under `snake_chain` bounds, the sequence reference is equally stable within its valid scope (the active chain inside the retained window), and carry-forward already invalidates key references in both models, so the hash-based stability argument does not provide a net advantage.
+**Decision driver (Project Lead, 2026-10-18; DEC-130):** processing performance. A sequence reference resolves with a RAM-only ancestor walk and exactly one block read; a hash reference has to be found by re-reading and re-hashing candidate blocks (or through a hash-keyed index the embedded target cannot afford).
+
+**Accepted cost — a more fragile chain.** The Part V argument that hash references "survive branch changes" holds, and this decision accepts losing it. When a chain switch rolls back the block that created an output and the creating transaction is re-included on the new branch, a hash-referenced spend stays valid; a sequence-referenced spend does not, because its `(block_sequence, output_index)` now names whatever the new branch holds at that position (it survives only if the output happens to land at the same position, which nothing guarantees), and the spender must re-create it. References to outputs below the divergence point are unaffected in both models, and carry-forward across the window boundary invalidates references in both.
 
 ### Consequences
 #### Positive
