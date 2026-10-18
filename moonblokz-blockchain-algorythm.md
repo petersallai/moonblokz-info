@@ -398,12 +398,15 @@ Fields:
 2. **`output_index: u8`**  
    Position of the referenced output in the block's UTXO-output stream: UTXO outputs only (balance outputs are not counted), transaction by transaction in block order, output by output within each transaction. This is the output's bit in the block's per-block spent-bit vector (PRD FR34).
 
-3. **`signature: [u8;64]`**  
+3. **`amount: u64`**  
+   The referenced output's amount, declared by the spender (DEC-131); it must equal the output's amount. With it every input declares its value, so the transaction's input sum and fee follow from its bytes, and the signature commits to the amount spent.
+
+4. **`signature: [u8;64]`**  
    Signature over this input and all outputs, using the private key corresponding to the referenced UTXO address.
 
 #### Why sequence numbers instead of transaction hashes?
 
-For processing performance (DEC-130): a sequence reference resolves with a RAM-only ancestor walk and one block read, with no hash-keyed index and no re-hashing, is 28 bytes shorter, and is the spent-bit position itself. The cost is accepted: Part V preferred transaction-hash references because they survive branch changes, and they do — a spend whose creating transaction is re-included on the new branch after a chain switch stays valid with a hash reference, but not with a sequence reference, which then names a different output. References below the divergence point, and carry-forward across the window boundary, behave the same in both models. The decision and its consequences are recorded in [ADR-016](./blockchain-adrs/ADR-016-sequence-indexed-utxo-input-model.md).
+For processing performance (DEC-130): a sequence reference resolves with a RAM-only ancestor walk and one block read, with no hash-keyed index and no re-hashing, is 28 bytes shorter than a hash (20 bytes net of the declared amount), and is the spent-bit position itself. The cost is accepted: Part V preferred transaction-hash references because they survive branch changes, and they do — a spend whose creating transaction is re-included on the new branch after a chain switch stays valid with a hash reference, but not with a sequence reference, which then names a different output. References below the divergence point, and carry-forward across the window boundary, behave the same in both models. The decision and its consequences are recorded in [ADR-016](./blockchain-adrs/ADR-016-sequence-indexed-utxo-input-model.md).
 
 ### 6.2 Balance input (`input type = 1`)
 

@@ -124,7 +124,7 @@ What a valid chain must satisfy, grouped by scope. **Checked** names where the r
 | I-16 | The creator is credited `mined_amount` + fees + `replay_block_reward` (if the block carries replay) once per block, and the resulting balance is consistent; #0 / #1 exempt | FR6, FR36, FR54 | T3; pass | partial — `mined_amount` + fees credit built (5.3); replay reward and the consistency check 7.2, Epic 9 |
 | I-17 | No negative balance: initializers cover amount / price plus fee and every balance input | FR6, FR9 | T3; pass | partial — seeded nodes built (5.4); saturating arithmetic 6.0 |
 | I-18 | `registration_price` is absorbed by the network; the fee goes to the creator | FR6, FR36 | T3; pass | partial — debit and credit built (5.4); price check against configuration 7.3 (I-36) |
-| I-19 | A complex transaction with inputs has Σ inputs ≥ Σ outputs (zero-input carry-forward exempt) | FR6, FR9 | T1 when all inputs resolve, else T2 | partial — balance inputs built (4.2, 5.4), UTXO values built (6.8), both in the FR3 pass; Ready path 6.0 |
+| I-19 | A complex transaction with inputs has Σ inputs ≥ Σ outputs (zero-input carry-forward exempt) | FR6, FR9 | T1 (declared amounts, DEC-131); T2 / pass (declared UTXO amount = referenced output) | partial — balance inputs built (4.2, 5.4), UTXO values built (6.8), both in the FR3 pass; Ready path 6.0 |
 
 ### 5.4 Transactions by Type
 
