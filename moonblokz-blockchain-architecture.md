@@ -432,7 +432,7 @@ Construction is a single infallible in-place constructor, `init`, used by **ever
 - **Block #0** — transaction block: node #0's own registration + an initial self-transfer of `initial_total_network_currency`.
 - **Block #1** — chain-config block: encodes `initial_chain_config_bytes`; its `previous_hash` chains to Block #0 and it is signed over its full canonical content. It is **not** emitted from a later `on_tick` — that split (former decision row 19) is superseded.
 
-Besides persisting both blocks, `process_genesis` mirrors them into the in-memory block-tree as node #0's active chain (both `on_active_chain`, Block #1 the active head, one `chain_heads` entry) so the tree stays consistent with storage, and sets the lifecycle phase directly to **`Ready`**. Genesis blocks are valid by construction and bypass the tier1 intake gate. Walking-skeleton scope: the full `Stored`→`Active` status promotion (Epic 6) and the FR3 derived projections — roster, balances, etc. (Epic 7) — still land later, so `Ready` here is at the chain-structure level.
+Besides persisting both blocks, `process_genesis` mirrors them into the in-memory block-tree as node #0's active chain (both `on_active_chain`, Block #1 the active head, one `chain_heads` entry) so the tree stays consistent with storage, and sets the lifecycle phase directly to **`Ready`**. Genesis blocks are valid by construction and bypass the tier1 intake gate. Before any write, `process_genesis` runs the shared per-block step (§4.2) over #0 and #1 in the complete context, so node #0 enters `Ready` with the derived projections and both blocks `Active`; a refusal by the step returns `GenesisRejectReason::InitialChainConfigRejected` (as built, Story 6.0).
 
 ```rust
 // Plain product of the two success blocks — NOT a single-outcome enum:
@@ -567,6 +567,8 @@ The full per-module breakdown (processes / data structures / relationships / API
 | `approval.rs` | FR12/FR15/FR27 | `ApprovalAccumulator` (~2 KB, crypto-agnostic — MAX_BLOCK_SIZE buffer) |
 | `queries.rs` | FR40-FR43 | (stateless) |
 | `emit_scratch.rs` | (FR45/FR27 emit source) | `EmitScratch { block_buffer: [u8; MAX_BLOCK_SIZE] }` (~2 KB) |
+
+As built (Story 6.0), the Tier 2 + Tier 3 per-block step and the Ready forward-extension driver are `api.rs` methods over private fields, like the FR3 spine (§8 scenario 6). One step, `validate_and_derive_block` = `derive_block` (the fallible half, which inverts its own applied effects on `Err`) + `commit_block` (the atomic vote-engine `apply_block`, then the infallible commit tail), serves the FR3 pass, Ready intake and `process_genesis`. A `Projection` context (`complete`, `roster_bounded`, `saw_balance_block`) carries the FR3 pass-local flags; Ready and genesis pass the complete context, and nothing is persisted. `staged_validation.rs` keeps the Tier 1 checks. `node_info.rs` carries the per-effect inverses (credit and debit as exact inverses, `clear_node` for a registration, `move_seed_source`), and `chain_heads.rs` the single-entry `refresh_head`.
 
 ---
 
@@ -810,7 +812,7 @@ pub struct VoteEngine<const MAX_NODES: usize> {
 | Scenario | Call depth | Peak | Note |
 |---|---|---:|---|
 | (1) `receive_block` hash-already-known | api → intake → blocks.find_by_hash | ~250 B | Tier 1 fast-path |
-| (2) `receive_block` Tier 3 validation | api → intake → staged_validation → reconciliation | ~1.5 KB | local view refs |
+| (2) `receive_block` Tier 3 validation | api → intake → `tier1_admit` → `judge_head_extension` → `derive_block` → UTXO resolver (`storage.read_block`) | ~1.5 KB | local view refs. As built (Story 6.0) the step lives in `api.rs` (§4.2). The UTXO resolver holds one read copy of the referenced block (~2 KB) while it runs, and in the continuation driver the child's own read copy (~2 KB) is live at the same time; the child copy is dropped before any deletion or tail advance, so it never shares the stack with the 2.4 KB delete-set buffer. The peak has not been re-measured for these copies. |
 | (3) **FR45 block creation** | on_tick → creator.try_create_block → BlockBuilder (~2 KB) → bc.crypto.sign → emit_scratch | **~4 KB** | BlockBuilder is the hot spot |
 | (4) FR23 chain-switch backward walk | reconciliation loop { storage.read_block (~2 KB) → undo } | ~2.2 KB | one Block on stack per iter |
 | (5) FR23 forward walk peak | reconciliation forward → mempool.recheck_eligibility | ~3 KB | accumulated locals |

@@ -28,13 +28,13 @@ Not repeated here: architecture decisions logged in [architecture §14](./moonbl
 | DEC-016 | 2026-09-20 | Every chain-config block's content is checked at intake, not only the one that loads. | FR8, FR16 | story 5.9; retro-5 | in force |
 | DEC-017 | 2026-09-20 | FR54 genesis waivers stay keyed on sequence alone at Tier 1. | FR54 | DW (4.2) | superseded by DEC-040 |
 | DEC-018 | 2026-10-08 | FR2 selects only segments that carry a chain-config block (no head loss). | FR2, FR5, FR8 | PRD FR2; story 5.13 | in force |
-| DEC-019 | 2026-10-10 | Validate where the verdict is final: a direct head extension runs Tier 2 + 3 before storing and is not stored on failure; a failing stored child of the head is deleted with descendants; no FR5 in Ready. | FR5, FR9, FR16 | PRD; story 6.0 D2 | in force · 6.0 |
-| DEC-020 | 2026-10-10 | A Ready projection is always complete (FR50 coverage): no trust zone, no persisted pass flags; an unseeded actor is Invalid in Ready. | FR3, FR50 | story 6.0 D3; DW | in force · 6.0; coverage check 9.3 |
-| DEC-021 | 2026-10-10 | Interim sibling order for stored children of a new head: lowest block hash. | FR22 | story 6.0 D5 | in force (interim) · 6.1 replaces |
-| DEC-022 | 2026-10-10 | Node #0 runs the ordinary per-block step over its own blocks #0 / #1; no node-#0 trust zone. | FR54 | story 6.0 D6 | in force · 6.0 |
-| DEC-023 | 2026-10-10 | Blocks validated at the head go Stored → Active directly, with no Connected interim. | FR9 | PRD FR9; story 6.0 D7 | in force · 6.0 |
-| DEC-024 | 2026-10-10 | Forward-extension outcomes: `InvalidEvidence`, `Unstorable`, or `AcceptedSilently`; no new variant. | FR10 | story 6.0 D8 | in force (`Unstorable` per DEC-034) |
-| DEC-025 | 2026-10-10 | A balance block's payload must equal the derived pre-state, else it is Invalid; its seed-source pointer moves to that block. | FR9, FR35, FR50 | story 6.0 D9 | in force · 6.0 |
+| DEC-019 | 2026-10-10 | Validate where the verdict is final: a direct head extension runs Tier 2 + 3 before storing and is not stored on failure; a failing stored child of the head is deleted with descendants; no FR5 in Ready. | FR5, FR9, FR16 | PRD; story 6.0 D2 | done (6.0) |
+| DEC-020 | 2026-10-10 | A Ready projection is always complete (FR50 coverage): no trust zone, no persisted pass flags; an unseeded actor is Invalid in Ready. | FR3, FR50 | story 6.0 D3; DW | done (6.0) · coverage check 9.3 |
+| DEC-021 | 2026-10-10 | Interim sibling order for stored children of a new head: lowest block hash. | FR22 | story 6.0 D5 | in force (interim, built in 6.0) · 6.1 replaces |
+| DEC-022 | 2026-10-10 | Node #0 runs the ordinary per-block step over its own blocks #0 / #1; no node-#0 trust zone. | FR54 | story 6.0 D6 | done (6.0) |
+| DEC-023 | 2026-10-10 | Blocks validated at the head go Stored → Active directly, with no Connected interim. | FR9 | PRD FR9; story 6.0 D7 | done (6.0) |
+| DEC-024 | 2026-10-10 | Forward-extension outcomes: `InvalidEvidence`, `Unstorable`, or `AcceptedSilently`; no new variant. | FR10 | story 6.0 D8 | done (6.0; `Unstorable` until 11.2, DEC-034) |
+| DEC-025 | 2026-10-10 | A balance block's payload must equal the derived pre-state, else it is Invalid; its seed-source pointer moves to that block. | FR9, FR35, FR50 | story 6.0 D9 | done (6.0) |
 | DEC-026 | 2026-10-12 | FR57 eviction never removes active-chain blocks. | FR9, FR57 | PRD FR9 | in force · 9.6 |
 | DEC-027 | 2026-10-12 | A Tier 2 failure deletes a block from Stored (Tier 2 is the gate into Connected). | FR9 | PRD FR9 | in force |
 | DEC-028 | 2026-10-12 | The closed deletion lists include the FR48 tail-drop release and FR58 reclamation. | FR9, FR19, FR20 | PRD | in force |
@@ -46,7 +46,7 @@ Not repeated here: architecture decisions logged in [architecture §14](./moonbl
 | DEC-034 | 2026-10-12 | A valid block that storage fails to persist is reported to the radio as `Already-known`. | FR10 | PRD FR10 | in force · 11.2 (6.0 keeps `Unstorable` meanwhile) |
 | DEC-035 | 2026-10-12 | Each call returns at most one FR10 response component; the rest come through `NextCall`. | FR10 | PRD FR10 | in force |
 | DEC-036 | 2026-10-12 | The pacing soft-fail (`Deferred` with `remaining_wait_time`) keeps its wait time: it is data, not a cause. | FR9, FR10 | PRD FR10 | in force · 8.3 |
-| DEC-037 | 2026-10-12 | A local failure in the FR3 pass (storage read error, absent vote parameter) deletes nothing; the node stays in Collecting and retries. | FR3, FR5 | PRD FR5; story 6.0 Task 10 | in force · 6.0 |
+| DEC-037 | 2026-10-12 | A local failure in the FR3 pass (storage read error, absent vote parameter) deletes nothing; the node stays in Collecting and retries. | FR3, FR5 | PRD FR5; story 6.0 Task 10 | done (6.0; mark overflow and missing block: O-021) |
 | DEC-038 | 2026-10-12 | Ready-state Tier 2 evaluation of side blocks (Stored → Connected) belongs to Story 6.1. | FR9, FR19, FR21 | epics 6.1; DW | in force · 6.1 |
 | DEC-039 | 2026-10-12 | The inbound Tier 3 pacing rule belongs to Story 8.3. | FR9, FR10 | epics 8.3 | in force · 8.3 |
 | DEC-040 | 2026-10-12 | Received genesis blocks get bootstrap exceptions only on a sequence **and** content match (all-zero `previous_hash` for #0): new Story 6.10. | FR54, FR69 | epics 6.10 | in force · 6.10 |
@@ -67,13 +67,13 @@ Not repeated here: architecture decisions logged in [architecture §14](./moonbl
 | DEC-050 | 2026-08-14 | The const generic is a capacity, `SNAKE_CHAIN_LENGTH_MAX`; the window `W` is chain configuration with `W ≤` capacity at acceptance. | FR2, FR48, FR56 | CFG §6; ARCH §14 row 23 | done (5.11) |
 | DEC-051 | 2026-10-08 | FR2 uses the held configuration's `W`; a larger stray `W` only delays acquisition. | FR2, FR8 | story 5.11 | in force |
 | DEC-052 | 2026-10-08 | No `VERIFICATION_HORIZON` const generic: `H` is node-level, derived from `W`. | FR58 | ARCH §14 row 24; story 5.11 | in force · 9.7 |
-| DEC-053 | 2026-10-09 | R1 — a Ready-state forward-extension driver opens Epic 6 as Story 6.0; order 9.1 → 6.8 → 6.0 → 6.1. | FR9, FR48 | epics (Epic 6 reconciliation); story 9.1 | in force · 6.0 |
+| DEC-053 | 2026-10-09 | R1 — a Ready-state forward-extension driver opens Epic 6 as Story 6.0; order 9.1 → 6.8 → 6.0 → 6.1. | FR9, FR48 | epics (Epic 6 reconciliation); story 9.1 | done (6.0) |
 | DEC-054 | 2026-10-09 | Story 9.1 runs before Epic 6. | plan | retro-5; epics | done |
 | DEC-055 | 2026-10-09 | R2 — the tail drop releases the block (retention 0 until 9.7), unlinks a surviving child, and can demote a side head to Stored. | FR19, FR48, FR58 | PRD FR19 (v); epics; story 9.1 | in force; demotion part superseded by DEC-125 |
 | DEC-056 | 2026-10-09 | R3 — blocks deleted before a restart may come back; no tombstones, no eager erase. | FR48, FR59 | ARCH §3.6; epics; story 9.1 | in force |
 | DEC-057 | 2026-10-09 | Epic 6 builds the cheap-zone walk only; zone dispatch and the deep zone go to 9.7. | FR23, FR58 | epics (Epic 6) | in force · 9.7 |
 | DEC-058 | 2026-10-09 | The chain-switch walk gets its mempool calls from Story 7.4, not a pre-built slot. | FR23, FR32 | epics (Epic 6) | in force · 7.4 |
-| DEC-059 | 2026-10-09 | Accepted interim: between 9.1 and 6.0 the FR60 window is live while the head is frozen. | FR48, FR60 | story 9.1 | in force (interim) |
+| DEC-059 | 2026-10-09 | Accepted interim: between 9.1 and 6.0 the FR60 window is live while the head is frozen. | FR48, FR60 | story 9.1 | done (interim ended by 6.0) |
 | DEC-060 | 2026-10-10 | At Ready entry, blocks below the new `S_tail` are released even if obligated; FR48's binding governs extensions, not adoption. | FR2, FR48 | story 9.1 | in force |
 | DEC-122 | 2026-10-13 | Ready entry recomputes every `chain_heads` entry, so the adopted chain's head never stays Stored asking for a parent below `S_tail` (resolves O-024). | FR19, FR48, FR60 | story 9.1 (review) | in force |
 | DEC-123 | 2026-10-13 | DEC-060 also covers a block whose Ready-entry classification read fails: at adoption it is released; the classification only feeds the AR16 log. | FR48 | story 9.1 (review) | in force |
@@ -81,7 +81,7 @@ Not repeated here: architecture decisions logged in [architecture §14](./moonbl
 | DEC-125 | 2026-10-17 | The tail drop deletes every branch forked at the dropped block, whole, before releasing it (FR58 reclamation pulled forward from 9.7); no head is demoted to Stored. | FR19, FR48, FR58 | PRD FR19 (v); story 9.1 | in force |
 | DEC-126 | 2026-10-17 | A Stored fragment whose lowest block's missing parent is at or below `S_tail` can never connect and is deleted whole by the tail advance that makes it so, or, if admitted later, by the next one (FR58 pulled forward from 9.7). | FR19, FR58, FR60 | PRD FR58; story 9.1 | in force |
 | DEC-127 | 2026-10-17 | Ready entry unmarks every block outside the adopted chain and reclaims tail-out-of-range Stored fragments at once (after the `chain_heads` recompute), so a stale Collecting genesis anchor is removed rather than left Connected. | FR4, FR19, FR58 | PRD FR58; story 9.1 (review r2) | in force |
-| DEC-061 | 2026-10-10 | Per-block atomicity comes from invertible operations shared by 6.0 and 6.3 (checked arithmetic); no journal or copy. | FR23, FR35 | story 6.0 D1; epics E6-10 | in force · 6.0, 6.3 |
+| DEC-061 | 2026-10-10 | Per-block atomicity comes from invertible operations shared by 6.0 and 6.3 (checked arithmetic); no journal or copy. | FR23, FR35 | story 6.0 D1; epics E6-10 | done (6.0) · committed-block undo 6.3 |
 | DEC-062 | 2026-10-10 | UTXO resolution is a bounded ancestor walk plus one storage read; the code moves to ADR-016 `(block_sequence, output_index)` inputs (Story 6.8). | FR6, FR14, FR39 | story 6.0 D4; epics 6.8 | done (6.8) |
 | DEC-063 | 2026-07-30 | On an FR8 mismatch the candidate's configuration is adopted and the pass re-run in the same call; at most 3 passes. | FR5, FR8 | story 5.9 #1 | in force |
 | DEC-064 | 2026-10-12 | A chain switch never disconnects a head (FR23 no longer demotes). | FR19, FR23 | PRD FR23 | in force |
