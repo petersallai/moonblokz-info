@@ -325,7 +325,7 @@ For `read_block_into(storage_index, out)`:
 
 ## E5. Practical meaning of memory-backend parseability
 
-Because the memory backend passes the full fixed slot buffer into `Block::from_bytes`, successful parseability depends on current chain-types rules:
+Because the memory backend checks the full fixed slot buffer with `BlockView::from_bytes` (the same framing rules `Block::from_bytes` applies), successful parseability depends on current chain-types rules:
 
 - full slot length is acceptable because `MAX_BLOCK_SIZE = slot size`,
 - version byte must be non-zero,
