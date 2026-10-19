@@ -173,7 +173,7 @@ The current public contract exposes exactly these methods:
 
 1. `init(private_key, own_node_id, init_params)`
 2. `save_block(storage_index, block)`
-3. `read_block(storage_index)`
+3. `read_block_into(storage_index, out)` — the read each backend implements: it fills the caller's `MAX_BLOCK_SIZE` buffer, so a read costs the caller exactly one block-sized buffer; `read_block(storage_index)` is a provided method over it that returns an owned `Block`
 4. `capacity()`
 5. `set_chain_configuration(block)`
 6. `load_control_data()`
@@ -314,18 +314,18 @@ For `save_block(storage_index, block)`:
 
 ## E4. Read algorithm
 
-For `read_block(storage_index)`:
+For `read_block_into(storage_index, out)`:
 
 1. validate `storage_index < capacity`, else return `InvalidIndex`,
 2. compute slot byte range,
 3. if `slot[0] == 0`, return `BlockAbsent`,
-4. attempt `Block::from_bytes(slot)`,
-5. if parsing fails, return `BackendIo { code: 2 }`,
-6. otherwise return the block.
+4. check that the slot frames a block,
+5. if it does not, return `BackendIo { code: 2 }`,
+6. otherwise copy the slot into `out`.
 
 ## E5. Practical meaning of memory-backend parseability
 
-Because the memory backend passes the full fixed slot buffer into `Block::from_bytes`, successful parseability depends on current chain-types rules:
+Because the memory backend checks the full fixed slot buffer with `BlockView::from_bytes` (the same framing rules `Block::from_bytes` applies), successful parseability depends on current chain-types rules:
 
 - full slot length is acceptable because `MAX_BLOCK_SIZE = slot size`,
 - version byte must be non-zero,
@@ -408,7 +408,7 @@ For `save_block(storage_index, block)`:
 
 ## F7. RP2040 read algorithm
 
-For `read_block(storage_index)`:
+For `read_block_into(storage_index, out)`:
 
 1. validate `storage_index < capacity`, else return `InvalidIndex`,
 2. map index to page and slot coordinates,
@@ -416,11 +416,11 @@ For `read_block(storage_index)`:
 4. extract the target slot bytes,
 5. if all slot bytes are `0xFF`, return `BlockAbsent`,
 6. read stored hash from the slot hash area,
-7. recompute hash over the fixed `MAX_BLOCK_SIZE` block area,
+7. recompute hash over the fixed `MAX_BLOCK_SIZE` block area, in place in the page buffer,
 8. if hashes differ, return `IntegrityFailure`,
-9. parse the fixed block area as `Block`,
-10. if parsing fails, return `IntegrityFailure`,
-11. otherwise return the block.
+9. check that the block area frames a block,
+10. if it does not, return `IntegrityFailure`,
+11. otherwise copy the block area into `out`.
 
 ## F8. Practical meaning of RP2040 hash verification
 
