@@ -16,6 +16,7 @@ Use it after a story's code is committed (typically on its branch or merged), wh
 - The story specification file (BMAD story `.md`) for its Acceptance Criteria, Dev Notes, and any review findings.
 - The changed source files, read in full for surrounding context.
 - The owning subsystem's PRD/architecture docs for FR/section citations.
+- The node footprint before and after the change, from `tools/footprint/footprint.py` in the workspace root (Step 1).
 
 ## Step 1 — Gather accurate diff data
 
@@ -27,18 +28,27 @@ Drive everything from the real diff; never paraphrase code from memory.
 - Classify each change unit: **added** (new method/enum/module — whole thing is `+`), **modified** (existing method — mixed context/`+`/`-`), or **moved** (removed from one file, added in another).
 - Read the final source around each unit so the shown method body is exact and the explanation is grounded.
 
+**Measure the node footprint.** Run `python3 -I tools/footprint/footprint.py --base <repo>=<BASE ref>,...` from the workspace root, naming every repository the change touches with its pre-change ref; the live workspace is the "after" side. It builds both sides and prints, before / after / change, in KiB:
+
+- **binary size** — flash of the `moonblokz-node` release firmware;
+- **RAM without stack** — the node's static RAM (`.data` + `.bss`) minus the Core 1 stack reservation;
+- **stack** — the Core 1 stack reservation (`CORE1_STACK`, which hosts the blockchain task) and the blockchain's measured worst-case stack peak, overall and per API entry point.
+
+While the node does not instantiate the blockchain, the tool adds the blockchain's flash and static RAM, measured on its probe binary at the architecture §5 defaults, to the node build, so these are labelled *estimated*. A repository with no commit (e.g. a not-yet-published `moonblokz-node`) is copied as is to the "before" side, so a change confined to its uncommitted work shows no delta there — state that on the page rather than reporting `0` as measured. The probe's storage stub follows the trait of the measured version; adapt `tools/footprint/probe` when a change alters the APIs it calls.
+
 ## Step 2 — Page structure
 
 Left sticky sidebar (file-grouped navigation with a scrollspy active-state) + a scrolling main column. Order the main column so the reviewer builds a model before hitting raw diffs:
 
 1. **Header + stat chips** — story title, `BASE`/`HEAD`, and chips: files, +/− lines, test count (before → after), clippy (new warnings), new `unsafe`, gated/API count. A short "reading order that works" callout.
-2. **Orientation diagrams** — a state machine and/or a control-flow diagram that captures the story's spine (see Step 5). Only include diagrams that encode something true about the change.
-3. **API surface table** — new/changed public methods: signature, return type, kind, what this story built vs deferred, owning epic.
-4. **AC ↔ code ↔ test table** — one row per Acceptance Criterion: what it requires, where it lives, which test covers it. This is the traceability spine of the review.
-5. **Code-review findings panel** — if an adversarial/code review ran: severity, finding, resolution (fixed / accepted / deferred).
-6. **Per-file sections** — each file gets a heading with its +/- badge and a one-line role, then one **change card** per unit (Step 3).
-7. **Tests table** — every added test: name, what it asserts, which AC.
-8. **Reviewer checklist** — the specific things this story needs a human to confirm (with tickable, strike-through checkboxes).
+2. **Node footprint panel — mandatory on every page.** A table from the footprint measurement (Step 1) with a *before*, an *after* and a *change* column for every row: estimated binary size (flash); estimated RAM without stack; stack — the Core 1 reservation and the blockchain's worst-case peak, plus one row per entry point. Show the change signed, tint growth with the warn colour and shrinkage with the ok colour, and say in one line what the estimate is made of and which build it measured. Present even when every change is `0`: an unchanged footprint is a result the reviewer should see.
+3. **Orientation diagrams** — a state machine and/or a control-flow diagram that captures the story's spine (see Step 5). Only include diagrams that encode something true about the change.
+4. **API surface table** — new/changed public methods: signature, return type, kind, what this story built vs deferred, owning epic.
+5. **AC ↔ code ↔ test table** — one row per Acceptance Criterion: what it requires, where it lives, which test covers it. This is the traceability spine of the review.
+6. **Code-review findings panel** — if an adversarial/code review ran: severity, finding, resolution (fixed / accepted / deferred).
+7. **Per-file sections** — each file gets a heading with its +/- badge and a one-line role, then one **change card** per unit (Step 3).
+8. **Tests table** — every added test: name, what it asserts, which AC.
+9. **Reviewer checklist** — the specific things this story needs a human to confirm (with tickable, strike-through checkboxes).
 
 **Reconcile the raw line count.** The +/- stat chip is the raw `git diff` count, but the page shows only a fraction of it as code (doc-comments elided, tests tabulated, repetitive patterns shown once) — a gap that confuses reviewers if left implicit. Next to the stat, add a small breakdown (a segmented bar + legend) that splits the added total into **production logic / doc-comments / test code / comments+blank+attributes**, and state that only the production-logic slice is rendered as diffs. Doc-heavy crates (like `moonblokz-blockchain`, where rustdoc + tests routinely dominate a diff) make this the difference between a confusing "+658 but I only see ~100 lines" and an understood one. Compute the split with an `awk` pass over the diff:
 
@@ -160,6 +170,7 @@ Finish by opening the file — screenshot it headless in both themes and look at
 - **One external dependency, deliberately** — the mermaid CDN import, and nothing else: no webfonts, no images, no other scripts. Everything else is inlined, and both themes stay legible (Step 5).
 - **Look at the diagrams** — screenshot both themes and view the images before handing the page over. Every other defect here shows up in text; a diagram fails silently, as blank space or as raw source.
 - **Never upload the page** — it is internal working material and the deliverable is the file path (Purpose, Step 6).
+- **Always carry the footprint panel** — binary size, RAM without stack, and stack, each with before, after and change, measured by the tool rather than estimated by hand (Step 1, Step 2 item 2).
 - **Pure-ASCII output** — every non-ASCII glyph as an entity, plus `<meta charset="utf-8">` (Step 6). Check it mechanically; a single raw em-dash decoded as cp1252 corrupts every prose line that uses one.
 
 ## Related Documents
