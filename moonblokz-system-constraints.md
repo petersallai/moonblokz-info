@@ -36,6 +36,16 @@ Project-wide rules:
 
 This rule is intentionally stricter than desktop/server Rust style. It applies across blockchain, mempool, vote, storage, radio, telemetry, and future runtime work unless a subsystem-specific PRD/architecture explicitly overrides it.
 
+### 0.1 Design-Decision Discipline
+
+An implementation design choice — a story decision, a review option, a refactor — is checked against three rules before it is recommended, and the proposal names what it checked:
+
+- **Ratified principles win over local simplicity.** Find the decision-register principles the option touches and follow them. Example: validate where the verdict is final, then write; a block that fails is never stored (DEC-019). "The outcome is the same" or "the code is simpler" does not override a ratified principle.
+- **Keep a specified incremental mechanism.** When the PRD or the architecture specifies incremental maintenance (for example FR21 (i), `branch_value += value` in `chain_heads`), do not replace it with a recomputation to save code. The minimalism of §0 also counts runtime cost: a storage read per event is not free. An option argued as simpler needs a bounded or measured cost on the other side, and "rare" is no argument without a bounded worst case.
+- **Event-time information before new state.** If an option seems to need a persisted flag or field to tell cases apart, first check whether the mutating function already knows the case when the event happens and can hand it to its caller in the same call. Prefer that to new stored state, and do not reduce the choice to "new state or drop the mechanism".
+
+Recorded as DEC-139 (Story 6.1 create-story).
+
 ## 1. Blockchain Capacity Caps (Const-Generics)
 
 Authoritative source: [`moonblokz-blockchain-architecture.md`](./moonblokz-blockchain-architecture.md) §5 (Const generic catalog). Tuning levers: §12.
