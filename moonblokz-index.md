@@ -114,7 +114,7 @@ The [`skills/`](./skills/) directory holds reusable, English process playbooks f
 
 ### [Story Review HTML Companion](./skills/story-review-html-companion.md)
 
-A recipe for building a single self-contained, navigable HTML page that makes the deep review of one implemented story tractable: per-file, per-method whole-method git-diffs, each preceded by a plain-language what/why explanation and carrying hover tooltips on the changed lines, plus orientation diagrams, an API-surface table, an AC-to-code-to-test traceability table, a code-review findings panel, and a reviewer checklist — published as a private Artifact.
+A recipe for building a single self-contained, navigable HTML page that makes the deep review of one implemented story tractable: per-file, per-method whole-method git-diffs, each preceded by a plain-language what/why explanation and carrying hover tooltips on the changed lines, plus orientation diagrams, an API-surface table, an AC-to-code-to-test traceability table, a code-review findings panel, a node footprint panel (binary size, RAM, and stack, each before / after / change), and a reviewer checklist — written as a local file next to the earlier pages, never uploaded.
 
 Use this after a story's implementation is complete, when a reviewer wants a companion that explains the diff before reading the source line by line.
 
