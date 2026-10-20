@@ -645,7 +645,7 @@ pub(crate) struct ChainHeadEntry {
     missing_parent_hash: [u8; 32],  // 32 B   Stored-only: tail-point's previous_hash (Story 4.4)
     last_request_timestamp: u64,    //  8 B   FR19 parent-recovery scheduling
     arrival_timestamp: u64,         //  8 B   FR18 head-scoped arrival time (Story 4.4; Epic 8 consumer)
-    branch_value: u64,              //  8 B   FR21 cumulative (Connected/Active only)
+    branch_value: u64,              //  8 B   FR21 cumulative (Connected side heads; the active value is Blockchain.active_branch_value, §6.4)
     flags: u8,                      //  1 B   state (bit 0 = connected; Active derived globally)
 }
 // effective 65 B, aligned to 8 → padded 72 B; total 40 × 72 B = 2 880 B
@@ -666,9 +666,13 @@ pub(crate) struct ChainHeadEntry {
 // Blockchain struct fields:
 active_chain_head_idx: u32,    // 4 B   index into blocks
 snake_chain_tail_idx:  u32,    // 4 B   index into blocks; NONE_REF = no window (every phase but Ready)
+active_branch_value:   u64,    // 8 B   FR21 value of the active branch over (S_tail, S_head] (Story 6.1 D3)
 ```
 
-No standalone struct — only 2 u32 indices; the FR60 window `(S_tail, S_head)` is their blocks' sequences (Story 9.1). The tail is always the active chain's root (`parent_ref == NONE_REF`). It is established wherever the node enters Ready (genesis, the Processing→Ready promotion): set to the root, then advanced by the release step until the chain is at most `W` long, releasing obligated (and unreadable) blocks too at that point (FR48 binds head extensions, not adoption), with every `chain_heads` entry recomputed against the new marking before the first release (DEC-122). The promotion first clears every stale `is_on_active_chain` flag, and Ready entry then reclaims tail-out-of-range Stored fragments at once (DEC-127) — the recompute must precede that, or the adopted chain's own stale Stored head would be taken for a fragment. Every reset of the active head clears it.
+`active_branch_value` is the active branch's FR21 value, held here rather than in a `chain_heads` entry because the active head is not always a tip: a Stored child makes it interior and event (i) moves its entry to the child (Story 6.1 D3). It is seeded by the FR3 forward walk (or from #1 at genesis) at Ready entry, grows on every head extension, loses the new `S_tail` block's value on every tail advance, and is cleared with the active head.
+
+
+No standalone struct — two u32 indices and the active value; the FR60 window `(S_tail, S_head)` is their blocks' sequences (Story 9.1). The tail is always the active chain's root (`parent_ref == NONE_REF`). It is established wherever the node enters Ready (genesis, the Processing→Ready promotion): set to the root, then advanced by the release step until the chain is at most `W` long, releasing obligated (and unreadable) blocks too at that point (FR48 binds head extensions, not adoption), with every `chain_heads` entry recomputed against the new marking before the first release (DEC-122). The promotion first clears every stale `is_on_active_chain` flag, and Ready entry then reclaims tail-out-of-range Stored fragments at once (DEC-127) — the recompute must precede that, or the adopted chain's own stale Stored head would be taken for a fragment. Every reset of the active head clears it.
 
 The release step, in order: delete every branch forked at the dropped block as a complete subtree through the FR5-style `delete_subtree_with_followup` (FR58 stale reclamation — its divergence point is now below `S_tail`; DEC-125); clear `is_on_active_chain` and free the slot with the lazy `BlockTable::delete` (durable bytes stay until reuse; a restart re-admits them and the next Ready entry releases them again); unlink the one surviving child, the new tail (`parent_ref = NONE_REF`); then delete every Stored fragment whose lowest block's missing parent is at or below the new `S_tail` (FR58, DEC-126 — it can never connect; `chain_heads` caches are recomputed before the Ready-entry trim, so a Stored tail-point is never an active block). No head walks through the freed slot, so `chain_heads` needs no pass of its own and no head demotes. A node seeded from the dropped block stays seeded, but its `seed_source_idx` becomes the `SEED_SOURCE_RELEASED` sentinel, never a reusable slot (until Story 9.3's `seed_source_sequence`). Below-tail retention `R` is a code constant, `0` (Story 9.7 derives it from the horizon `H`). `snake_chain.rs` holds the stateless parts: the FR49/FR50/FR51 classification of the dropping block (fixed order, a storage read failure is an error) and the binding decision on a head extension.
 

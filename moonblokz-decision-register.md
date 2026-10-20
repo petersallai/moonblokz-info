@@ -30,7 +30,7 @@ Not repeated here: architecture decisions logged in [architecture §14](./moonbl
 | DEC-018 | 2026-10-08 | FR2 selects only segments that carry a chain-config block (no head loss). | FR2, FR5, FR8 | PRD FR2; story 5.13 | in force |
 | DEC-019 | 2026-10-10 | Validate where the verdict is final: a direct head extension runs Tier 2 + 3 before storing and is not stored on failure; a failing stored child of the head is deleted with descendants; no FR5 in Ready. | FR5, FR9, FR16 | PRD; story 6.0 D2 | done (6.0) |
 | DEC-020 | 2026-10-10 | A Ready projection is always complete (FR50 coverage): no trust zone, no persisted pass flags; an unseeded actor is Invalid in Ready. | FR3, FR50 | story 6.0 D3; DW | done (6.0) · coverage check 9.3 |
-| DEC-021 | 2026-10-10 | Interim sibling order for stored children of a new head: lowest block hash. | FR22 | story 6.0 D5 | in force (interim, built in 6.0) · 6.1 replaces |
+| DEC-021 | 2026-10-10 | Interim sibling order for stored children of a new head: lowest block hash. | FR22 | story 6.0 D5 | superseded by DEC-150 |
 | DEC-022 | 2026-10-10 | Node #0 runs the ordinary per-block step over its own blocks #0 / #1; no node-#0 trust zone. | FR54 | story 6.0 D6 | done (6.0) |
 | DEC-023 | 2026-10-10 | Blocks validated at the head go Stored → Active directly, with no Connected interim. | FR9 | PRD FR9; story 6.0 D7 | done (6.0) |
 | DEC-024 | 2026-10-10 | Forward-extension outcomes: `InvalidEvidence`, `Unstorable`, or `AcceptedSilently`; no new variant. | FR10 | story 6.0 D8 | done (6.0; `Unstorable` until 11.2, DEC-034) |
@@ -50,6 +50,8 @@ Not repeated here: architecture decisions logged in [architecture §14](./moonbl
 | DEC-038 | 2026-10-12 | Ready-state Tier 2 evaluation of side blocks (Stored → Connected) belongs to Story 6.1. | FR9, FR19, FR21 | epics 6.1; DW | in force · 6.1 |
 | DEC-039 | 2026-10-12 | The inbound Tier 3 pacing rule belongs to Story 8.3. | FR9, FR10 | epics 8.3 | in force · 8.3 |
 | DEC-040 | 2026-10-12 | Received genesis blocks get bootstrap exceptions only on a sequence **and** content match (all-zero `previous_hash` for #0): new Story 6.10. | FR54, FR69 | epics 6.10 | in force · 6.10 |
+| DEC-145 | 2026-10-20 | A ready-state block whose parent is Connected or Active (not the active head) is judged at Tier 2 at intake, before it is stored, and enters Connected directly; a failure is exact evidence and the block is not stored (check first, then write, as DEC-019). Only blocks stored before their Tier 2 could run — orphans connected later, blocks retained while Collecting, local-failure retries — are judged by the side-branch driver after the write. | FR9, FR16 | PRD FR9, FR16; story 6.1 D4 | in force · 6.1 |
+| DEC-147 | 2026-10-20 | Side-block Tier 2 in 6.1 builds the UTXO-input structural completion only (no available-bit check — spentness on a side branch is Tier 3); a reference below `S_tail` within `W` is trusted pre-window history at Tier 2 and in the FR23 replay (DEC-129, DEC-131), which 6.3 applies; registration-key uniqueness is Tier 3 (an active-roster collision is no evidence on a side branch). `mined_amount`, fee and price rules (7.2 / 7.3), the approval threshold (6.7) and the structural `snake_chain` checks (9.2 / 9.3 / 9.5 / 6.6) join one `tier2_check` shared with the head step. | FR9, FR39, ADR-016 | PRD FR9, FR39; story 6.1 D6 | in force · 6.1, 6.3 |
 
 ## 2. Block-Tree, Branches, and Retention
 
@@ -87,6 +89,12 @@ Not repeated here: architecture decisions logged in [architecture §14](./moonbl
 | DEC-064 | 2026-10-12 | A chain switch never disconnects a head (FR23 no longer demotes). | FR19, FR23 | PRD FR23 | in force |
 | DEC-065 | 2026-10-12 | FR34 field forms are logical; the architecture's representations (`NONE_REF`, block-index seed source) are equivalent. | FR34 | PRD FR34 | in force |
 | DEC-140 | 2026-10-20 | `chain_heads_max_capacity` is a per-node build-time capacity (`MAX_BRANCH_COUNT`, 40 on the reference build), not a chain-config parameter. | FR19 | PRD FR19; ARCH const-generic catalog | in force |
+| DEC-142 | 2026-10-19 | Branch value is the sum over `(S_tail, head]` (`S_tail` exclusive); a tail advance subtracts the value of the block that becomes the new `S_tail` (the released block was never in any sum), read in the window gate before any mutation — a failed read is a local failure. | FR19, FR21, FR22 | PRD FR19 (i), FR21 (iii), FR22 (c); story 6.1 D1 | in force · 6.1 |
+| DEC-144 | 2026-10-19 | The active branch's value is one `Blockchain` field, `active_branch_value` (+8 B), because the active head is not always a `chain_heads` tip; a side head's value lives in its entry and is valid iff its head block is Connected; no mirror into the active head's entry. | FR19, FR21 | PRD FR19 (g); ARCH §6.4; story 6.1 D3 | in force · 6.1 |
+| DEC-146 | 2026-10-19 | `active_branch_value` is seeded at Ready entry by the FR3 forward walk, which already reads every block (one window-tail helper shared with the trim); `process_genesis` seeds `consumed_votes(#1)`. No extra read and no new failure mode after the promotion. | FR4, FR21 | story 6.1 D5 | in force · 6.1 |
+| DEC-148 | 2026-10-19 | The side-branch driver runs after every Ready admission (after the continuation) and at every Ready entry, scanning all pending side heads; only a transient local failure leaves a head pending, so no marker state is kept. | FR9, FR19, FR21 | story 6.1 D7 | in force · 6.1 |
+| DEC-149 | 2026-10-20 | FR21 (v): FR5 runs only before any branch value exists; in Ready, an entry that a Tier 2 deletion retargets onto a Connected block is re-valued by the (ii) walk. Side heads are valued by the (ii) walk except a Connected side head's extension, which is incremental (`bv(parent) + v`, no read; DEC-145). | FR19, FR21 | PRD FR21 (v); story 6.1 D4, D8 | in force · 6.1 |
+| DEC-150 | 2026-10-20 | The continuation chooses among stored children of the active head by the FR21 rank at the child level (the child's value, larger block, lowest creator, lowest hash), replacing DEC-021; the comparator is built in 6.1 and reused by 6.2 for heads (creator read only on a value-and-size tie); the admissibility predicate is 6.2's. | FR21, FR22 | ALG Ready phase; story 6.1 D9 | in force · 6.1 |
 
 ## 3. Creator, Votes, and Approval
 
@@ -105,6 +113,7 @@ Not repeated here: architecture decisions logged in [architecture §14](./moonbl
 | DEC-076 | 2026-10-12 | Grace-period firing widens the admitted prefix and never resets votes. | FR44, FR46, FR47 | PRD FR46 | in force · 8.4, 8.5 |
 | DEC-077 | 2026-10-12 | Incoming approval-evidence validation gets its own Story 6.7. | FR6, FR9, FR12, FR27 | epics 6.7 | in force · 6.7 |
 | DEC-141 | 2026-10-20 | The BLS aggregated support signature is 50 B (`AGGREGATED_SIGNATURE_CONSTANT_SIZE`, as in the crypto library), not 96 B; architecture §6.5 is corrected. | FR27 | ARCH §6.5; crypto algorithm model | in force |
+| DEC-143 | 2026-10-19 | Until Story 6.7 validates it, every block's FR21 value is its header `consumed_votes` (an evidence block's is 0 by FR27); the `supporter_vote_sum` accessor and value arm land in 6.7 with its validation, the payload format in 6.6. Until E6-8 and 6.7 every value is an unvalidated header field (recorded risk). | FR21, FR27 | story 6.1 D2; epics 6.7 | in force (interim) · 6.6, 6.7 |
 
 ## 4. Transactions, Value, and Mempool
 
@@ -185,14 +194,14 @@ Not repeated here: architecture decisions logged in [architecture §14](./moonbl
 
 | ID | Since | Question — recommendation | Affects | Recorded in | Decide at |
 |---|---|---|---|---|---|
-| O-001 | 2026-10-09 | Approval-evidence payload layout — rec.: LE `supporter_vote_sum u64 ‖ deviation_sequence u32 ‖ n u8 ‖ ascending ids ‖ aggregated signature`. | FR21, FR27 | epics E6-1 | 6.1 / 6.6 |
+| O-001 | 2026-10-09 | Approval-evidence payload layout — rec.: LE `supporter_vote_sum u64 ‖ deviation_sequence u32 ‖ n u8 ‖ ascending ids ‖ aggregated signature`. | FR21, FR27 | epics E6-1; DEC-143 | 6.6 (format) / 6.7 (value accessor) |
 | O-002 | 2026-10-09 | What a support message signs — rec.: `"MBSUP" ‖ proposer ‖ deviation_seq ‖ hash`; radio `Support` 113 B. | FR12, FR26 | epics E6-2 | 6.4 |
 | O-003 | 2026-10-09 | Where `required_support` and the replay delay are bound — rec.: at `proposed_sequence − 1`. | FR12, FR27 | epics E6-3 | 6.4 / 6.6 |
 | O-004 | 2026-10-09 | Accumulator memory — rec.: accept ≈3.4 KB for Schnorr and correct architecture §6.5. | FR27, NFR1 | epics E6-4 | 6.6 |
 | O-005 | 2026-10-09 | Non-conflict record — rec.: fixed ring of 8 entries, not durable. | FR12 | epics E6-5 | 6.4 |
 | O-006 | 2026-10-09 | Support relay de-duplication — rec.: LRU of 32 × 12 B. | FR26 | epics E6-6 | 6.5 |
 | O-007 | 2026-10-09 | Enforce "deviation `consumed_votes` strictly lower" as a Tier 3 invariant — rec.: yes, with O-001. | FR28 | epics E6-8 | 6.2 |
-| O-008 | 2026-10-09 | Branch tie-break source — rec.: keep FR21 (size → creator → hash), size from the block entry. | FR21 | epics E6-9 | 6.1 |
+| O-008 | 2026-10-09 | Branch tie-break source — rec.: keep FR21 (size → creator → hash), size from the block entry. | FR21 | epics E6-9 | decided → DEC-150 |
 | O-009 | 2026-10-09 | Balance-block seeding inverse — rec.: identity, by validating snapshot = pre-state (see DEC-025). | FR23, FR50 | epics E6-11 | 6.3 |
 | O-010 | 2026-10-09 | Forward-walk failure during a switch — rec.: reverse in place to the original chain, then a Ready-safe deletion. | FR23, FR24 | epics E6-12 | 6.3 |
 | O-011 | 2026-10-09 | Deep-zone candidates before 9.7 — rec.: no switch (interim). | FR23, FR58 | epics E6-13 | 6.3 |
