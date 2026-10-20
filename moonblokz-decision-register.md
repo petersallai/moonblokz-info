@@ -189,6 +189,7 @@ Not repeated here: architecture decisions logged in [architecture §14](./moonbl
 | DEC-119 | 2026-10-09 | Every epic starts with a reconciliation pass; every open deferred item gets an owner, a chore, or an explicit won't-do. | process | retro-5; DW | in force |
 | DEC-120 | 2026-10-12 | The operating model and FR digest are kept current with every behavior change and every completed story. | KB, BMAD workflows | [AGENTS.md](./AGENTS.md) | in force |
 | DEC-121 | 2026-10-12 | Every Project Lead decision is recorded in this register in the same change that applies it. | KB, BMAD workflows | [AGENTS.md](./AGENTS.md) | in force |
+| DEC-139 | 2026-10-19 | Design-decision discipline: a proposed implementation choice is checked against the ratified principles, keeps any specified incremental mechanism, and prefers event-time information to new stored state; the proposal names what it checked. | All repos, BMAD workflows | [System Constraints](./moonblokz-system-constraints.md) §0.1 | in force |
 
 ## 8. Open Decisions
 
