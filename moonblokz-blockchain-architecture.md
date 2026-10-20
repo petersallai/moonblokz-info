@@ -690,7 +690,7 @@ pub(crate) struct ApprovalAccumulator {
 
 **Crypto-aware per-supporter cost within the 2 KB buffer:**
 - **Schnorr**: each new supporter adds `node_id` (4 B) + signature (~32 B) ≈ **36 B / supporter** → 50 supporters ≈ 1.8 KB (near the 2 KB limit).
-- **BLS**: each new supporter adds only `node_id` (4 B); the signature lives in a single 96 B aggregated-signature slot, which does not grow with supporter count. ≈ **4 B / supporter** → 50 supporters ≈ 296 B (ample room).
+- **BLS**: each new supporter adds only `node_id` (4 B); the signature lives in a single 50 B aggregated-signature slot (`AGGREGATED_SIGNATURE_CONSTANT_SIZE`), which does not grow with supporter count. ≈ **4 B / supporter** → 50 supporters ≈ 250 B (ample room).
 
 Here BLS is significantly **more efficient** than Schnorr: the same 2 KB buffer can hold 5–10× more supporters. The allocated memory remains unchanged at ~2 KB for both variants.
 
@@ -958,7 +958,7 @@ When a deployment selects the BLS crypto backend, the default const-generic valu
 | `MAX_AGGREGATED_SIGNATURES` | 50 → 30 | **Schnorr: −0.7 KB** in ApprovalAccumulator. **BLS: ~0 KB** (signature is single aggregated slot, only `supporter_node_ids` shrinks). Per ADR-015, must verify subgroup robustness. |
 | `MEMPOOL_COMPACT_BYTES` | 20160 → 12000 | −8 KB | Smaller mempool capacity; more frequent replenishment. |
 
-**Note:** `MAX_AGGREGATED_SIGNATURES` tuning saves more on Schnorr than on BLS, because Schnorr accumulates per-supporter signatures (~32 B each) while BLS aggregates them into a single 96 B slot. BLS deployments should prefer `MAX_NODES` or `MEMPOOL_COMPACT_BYTES` tuning instead.
+**Note:** `MAX_AGGREGATED_SIGNATURES` tuning saves more on Schnorr than on BLS, because Schnorr accumulates per-supporter signatures (~32 B each) while BLS aggregates them into a single 50 B slot. BLS deployments should prefer `MAX_NODES` or `MEMPOOL_COMPACT_BYTES` tuning instead.
 
 ### 12.2 Recommended BLS deployment profiles
 

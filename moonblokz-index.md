@@ -18,6 +18,7 @@ If you already know your topic, use this table to jump straight to the relevant 
 | Blockchain runtime logic at a glance — lifecycle phases × events, block statuses and check tiers, invariants, derived projections, main flows, what is built | [Blockchain Operating Model](./moonblokz-blockchain-operating-model.md) (first stop; consolidation, the PRD wins) |
 | Blockchain behavior — block-tree, branching, `snake_chain`, phases, queries | [Blockchain Operating Model](./moonblokz-blockchain-operating-model.md), [Blockchain Concept](./moonblokz-blockchain-concept.md), [Blockchain Algorithm](./moonblokz-blockchain-algorythm.md), [Blockchain Implementation](./moonblokz-blockchain-implementation.md) |
 | Blockchain Algorithm Summary — compact, implementation-free statement of the consensus and ledger rules with math notation, for attack and weakness analysis | [Blockchain Algorithm Summary](./moonblokz-blockchain-algorithm-summary.md) (consolidation, the PRD wins) |
+| Algorithmic risks — ranked consensus and ledger weaknesses, candidate treatments, sprint backlog source | [Algorithmic Risk Register](./moonblokz-algorithmic-risk-register.md) (assessment; the PRD wins) |
 | Cryptography — signatures, aggregation, Schnorr/BLS backends | [Crypto Concept](./moonblokz-crypto-concept.md), [Crypto Algorithm](./moonblokz-crypto-algorythm.md), [Crypto Implementation](./moonblokz-crypto-implementation.md) |
 | Radio mesh — connection matrix, echo mapping, relaying, packetization | [Radio Concept](./moonblokz-radio-concept.md), [Radio Algorithm](./moonblokz-radio-algorythm.md), [Radio Implementation](./moonblokz-radio-implementation.md) |
 | Simulation, historical replay, desktop validation | [Simulator Concept](./moonblokz-simulator-concept.md), [Simulator Algorithm](./moonblokz-simulator-algorythm.md), [Simulator Implementation](./moonblokz-simulator-implementation.md) |
@@ -73,6 +74,19 @@ This document explains:
 - and the open specification gaps and security-relevant facts, stated without evaluation.
 
 It is explicitly **not authoritative**: the [Blockchain PRD](./moonblokz-blockchain-prd.md) wins on any divergence, and every rule carries its source tag. Use it as the single context file for security, attack-surface or weakness analysis of the algorithm; use the [Blockchain Algorithm Model](./moonblokz-blockchain-algorythm.md) for full detail.
+
+### [MoonBlokz Algorithmic Risk Register](./moonblokz-algorithmic-risk-register.md)
+
+A living, ranked register of weaknesses in the blockchain consensus and ledger algorithm, evaluated against the [Blockchain Algorithm Summary](./moonblokz-blockchain-algorithm-summary.md), with candidate treatments for sprint planning.
+
+This document explains:
+
+- the threat-model boundary, the severity scale and the status lifecycle from *Open* to *Mitigated*,
+- each risk with its severity, treatment options, linked open decision or owner story, and sources,
+- the evidence behind the ratings (vote-concentration, reorg-depth, subgroup-majority and approval-liveness models) and their assumptions,
+- and the security-relevant facts not yet assessed.
+
+It is explicitly **not authoritative**: ratings and treatments are assessments, and a treatment binds only through a [Decision Register](./moonblokz-decision-register.md) entry. Use it to pick risk-reduction work for a sprint and to check whether a weakness is already known.
 
 ### [MoonBlokz Decision Register](./moonblokz-decision-register.md)
 
@@ -596,6 +610,8 @@ Use this file when you need a quick orientation to the current public web presen
 > **Cross-cutting reference (not part of the linear flow):** Consult [MoonBlokz Blockchain Algorithm Summary](./moonblokz-blockchain-algorithm-summary.md) when you need the whole blockchain algorithm in one compact file, for example as context for a security or weakness analysis.
 
 > **Cross-cutting reference (not part of the linear flow):** Consult [MoonBlokz Open Gaps Register](./moonblokz-open-gaps-register.md) when planning around unresolved deployment constraints, telemetry docs-vs-code drift, UTXO saturation behavior, or post-MVP recovery questions.
+
+> **Cross-cutting reference (not part of the linear flow):** Consult [MoonBlokz Algorithmic Risk Register](./moonblokz-algorithmic-risk-register.md) when planning security or robustness work on the blockchain algorithm, or before changing a rule or default that a listed risk depends on.
 
 > **Cross-cutting reference (not part of the linear flow):** Consult the [MoonBlokz Glossary](./moonblokz-glossary.md) when a term such as `score` or `verification horizon` reads ambiguously across documents; it disambiguates the senses and links to each authoritative definition site.
 

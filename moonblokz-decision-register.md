@@ -86,6 +86,7 @@ Not repeated here: architecture decisions logged in [architecture §14](./moonbl
 | DEC-063 | 2026-07-30 | On an FR8 mismatch the candidate's configuration is adopted and the pass re-run in the same call; at most 3 passes. | FR5, FR8 | story 5.9 #1 | in force |
 | DEC-064 | 2026-10-12 | A chain switch never disconnects a head (FR23 no longer demotes). | FR19, FR23 | PRD FR23 | in force |
 | DEC-065 | 2026-10-12 | FR34 field forms are logical; the architecture's representations (`NONE_REF`, block-index seed source) are equivalent. | FR34 | PRD FR34 | in force |
+| DEC-140 | 2026-10-20 | `chain_heads_max_capacity` is a per-node build-time capacity (`MAX_BRANCH_COUNT`, 40 on the reference build), not a chain-config parameter. | FR19 | PRD FR19; ARCH const-generic catalog | in force |
 
 ## 3. Creator, Votes, and Approval
 
@@ -103,6 +104,7 @@ Not repeated here: architecture decisions logged in [architecture §14](./moonbl
 | DEC-075 | 2026-10-12 | `required_support` is literal-only and refused at acceptance above the backend `MAX_AGGREGATED_SIGNATURES`; `max_aggregated_signatures` is retired. | FR56, ADR-015 | CFG §6 check 3; PRD FR56 | in force · 6.4 |
 | DEC-076 | 2026-10-12 | Grace-period firing widens the admitted prefix and never resets votes. | FR44, FR46, FR47 | PRD FR46 | in force · 8.4, 8.5 |
 | DEC-077 | 2026-10-12 | Incoming approval-evidence validation gets its own Story 6.7. | FR6, FR9, FR12, FR27 | epics 6.7 | in force · 6.7 |
+| DEC-141 | 2026-10-20 | The BLS aggregated support signature is 50 B (`AGGREGATED_SIGNATURE_CONSTANT_SIZE`, as in the crypto library), not 96 B; architecture §6.5 is corrected. | FR27 | ARCH §6.5; crypto algorithm model | in force |
 
 ## 4. Transactions, Value, and Mempool
 
@@ -205,6 +207,7 @@ Not repeated here: architecture decisions logged in [architecture §14](./moonbl
 | O-020 | 2026-10-09 | Firmware has no `init` call site — rec.: a node-integration story once the node repository is ready (see DEC-118). | moonblokz-node | DW triage D11 | — |
 | O-021 | 2026-10-12 | Does DEC-037 (no deletion on local failure) also cover mark-overflow and missing-block failures in the pass? | FR5 | DEC-013, DEC-037 | decided → DEC-134 |
 | O-022 | 2026-10-09 | BLS Miri script never run — rec.: won't-do while BLS is not an embedded target. | crypto | DW triage D12 | — |
+| O-023 | 2026-10-20 | `required_support` default (3, so `m = 5`) is too low: set it per backend — Schnorr by evidence-block capacity, BLS by security and practicality — rec.: none yet; measure support-message radio cost in the radio simulator. | FR12, FR27; CFG §4.1 ID 10 | [Algorithmic Risk Register](./moonblokz-algorithmic-risk-register.md) AR-007 | — |
 | O-023 | 2026-10-09 | Up to 4 boot sweeps, O(`MAX_BLOCKS`²) tip discovery — rec.: won't-do until boot latency is measured. | FR59 | DW triage D51 | — |
 | O-025 | 2026-10-18 | The measured blockchain-task stack (11.5–19.2 KB, DEC-136) exceeds architecture §8's 6 KB task-stack decision: raise the task stack to the measured peak, or cut further (verify the creator signature in place in the owned read buffer instead of a 2 KB preimage; slimmer genesis assembly; the by-value `ControlPlaneData` at restart)? | architecture §8 | DEC-136 | decided → DEC-137 |
 
