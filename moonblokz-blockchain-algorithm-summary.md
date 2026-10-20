@@ -75,7 +75,8 @@ Outcome ∈ {Accepted-new, Already-known, Invalid-evidence, Out-of-window, Defer
 
 - **Out-of-window** (ready only): `S_new ≥ S_head + W` or `S_new < S_tail` ⇒ discarded, not stored; the forward case is logged as long-disconnect [FR60].
 - **Tier 1** (block bytes + locked configuration; failure ⇒ not stored; the list is exhaustive) [FR9, FR16]: version; payload schema; `|b| ≤ L`; chain-config content equals the lock; ready-window membership; `s > anchor` for T1 and every balance input; no-self-vote; T3 with inputs: `Σ declared in ≥ Σ out` without u64 overflow; T2/T3 exclusion; `new_key_sig` valid; anchor checks (`new_node_id = 0 ⇒ new_pk = pk0`; balance entry `owner = 0 ⇒ pk = pk0`; `content_sig` valid against `pk0`); `sequence ≠ u32::MAX`; UTXO-output cap; UTXO `q < s` (code-level only, [OG-011]).
-  - The creator signature is exact evidence **only** for a ready-state direct extension of the active head with a derivable key; otherwise signature checks are opportunistic (a failure does not invalidate) and the decision waits for Tier 3.
+  - The creator signature is exact evidence in ready state for a direct extension of the active head with a derivable key, and for any block whose creator's key is branch-independent (node 0, or seeded at or below `S_tail`). Otherwise signature checks are opportunistic (a failure does not invalidate) and the decision waits for Tier 3. A verified block is marked and not verified again [FR9, DEC-157].
+  - Header vote form: `first_voted_node = c` ⇒ `consumed_votes_from_first_voted_node = 0`; otherwise `consumed_votes ≤ consumed_votes_from_first_voted_node` [FR9].
   - For a ready direct head extension, also exact evidence: a non-proposer block above a deviation block; a carry-forward failing §10.3 (i)–(v).
 - **Tier 2** (Connected: ancestry reaches the active chain; lookups only): locked configuration at the block's sequence (fee policy, price, custodian fee, approval threshold); `mined_amount = mining_reward`; UTXO input `q` retained, `i` in range, declared `a` equals the output amount; `new_pk` unique; structural `snake_chain` checks when the `D − W` reference is retained (otherwise deferred to Tier 3 / deep zone).
 - **Tier 3** (Active: replay of derived state, via the processing pass, chain-switch replay or a ready head extension): `consumed_votes`, `first_voted_node`, `consumed_votes_from_first_voted_node` match the projected vote state; creator credit; NodeInfo equals the state at `s − 1` and `max_node_id = M`; every rule of §6; `U_q[i] = 1`; carry-forward state; replay presence and order; evidence (subgroup membership, count ≥ `r`, aggregate verifies, ≤ `MAX_AGG`, recomputed `supporter_vote_sum`); creator entitled — top, admitted fallback or proposer [I-10].
@@ -97,8 +98,10 @@ Common: every referenced id (initializer, receiver, balance-input initializer, b
 For every accepted block `b` with creator `c`, in order [FR37]:
 1. `∀ n: av(n) += min(⌊av(n)·vi / vs⌋, vs)` — anti-capture interest, `c` included.
 2. `∀ tx ∈ b` except carry-forward: `av(tx.vote) += vs`.
-3. `consumed_votes(b) := av(c)` (after 1–2, before reset); `av(c) := 0`. A deviation block additionally sets `av(first_voted_node) := 0` and records that node's pre-reset value in `consumed_votes_from_first_voted_node` (audit only).
+3. `av(c) := 0`. A deviation block additionally sets `av(first_voted_node) := 0`.
 4. Overflow of any `av` ⇒ the block is invalid.
+
+Header snapshots: `consumed_votes(b)` is `av(c)` after step 1 and before step 2. A deviation block's `consumed_votes_from_first_voted_node` is that node's value at the same point; it is verified at Tier 3 and used to undo the penalty, but it adds no branch value. So a block's own credits never enter its value, while step 3 still wipes the credits `b` gave `c` [FR37, DEC-156].
 
 The expected creator after block `s` is the top of the creator order; zero-vote nodes are included, so node 0 leads in the all-zero state [FR38, FR44]. The vote target is chosen outside the chain by the transaction creator (radio scoring module) and is validated only for existence and no-self-vote [FR55].
 
@@ -110,9 +113,9 @@ The expected creator after block `s` is the top of the creator order; zero-vote 
 
 ## 9. Fallback and approval
 
-**Grace expansion** [Algorithm 5, FR44, FR47]: with `g = grace_period_window_ms`, after `k` local expiries the admitted set is the top `k + 1` of the creator order. Expiry changes no vote and does not shift the order; the original top may still produce at any time, and its block beats an approval-less deviation branch. The window's time origin is open [OG-015].
+**Grace expansion** [Algorithm 5, FR44, FR47]: with `g = grace_period_window_ms`, after `k` local expiries the admitted set is the top `k + 1` of the creator order. Expiry changes no vote and does not shift the order; the original top may still produce at any time, and its block is never lower in value than an approval-less deviation branch (equal votes tie). The window's time origin is open [OG-015].
 
-**Deviation block** `d` at sequence `p` by an admitted `x ≠ u` (`u` = top at `p − 1`): `first_voted_node = u`, `consumed_votes = av(x)`; on acceptance `av(x) := 0` and `av(u) := 0` [FR28, FR37]. It is accepted immediately as an active extension; `v(d) = av(x)`, and the PRD asserts `av(x) < av(u)`, so an approval-less deviation branch cannot overtake the normal branch [FR21, FR28] (cf. §16.2).
+**Deviation block** `d` at sequence `p` by an admitted `x ≠ u` (`u` = top at `p − 1`): `first_voted_node = u`, `consumed_votes` = `x`'s value after step 1 of §7; on acceptance `av(x) := 0` and `av(u) := 0` [FR28, FR37]. It is accepted immediately as an active extension. `u` is the top, so `av(x) ≤ av(u)`, and `v(d)` never exceeds the normal block `n` that `u` could create at `p`. An approval-less deviation branch therefore cannot overtake the normal branch, and equal votes tie [FR21, FR28, DEC-156].
 
 **Subgroup** [ADR-015, FR12], evaluated on the evaluator's local active chain:
 - `A` = nodes that created at least one block or transaction within the active window.
@@ -155,9 +158,9 @@ For a dropping transaction block `t` with unspent set `O = {o : U_t[o] = 1}`: on
 
 - Per-block value: `v(b) = consumed_votes(b)` for a normal block; `v(e) = supporter_vote_sum` for evidence; `0` for replay blocks between `d` and `e` [FR21].
 - `BV(h) = Σ_{b ∈ (S_tail, h]} v(b)`, relative to the shared `S_tail` and maintained incrementally (a tail slide subtracts `v(tail)` from every head).
-- Admissible head: Connected/Active with a continuous tip-ending segment of ≥ `W` blocks (before maturity: the whole genesis-anchored chain).
-- Active head = `argmax BV` over admissible heads; ties: larger tip `|b|`, then lower tip creator id, then lower tip hash.
-- Re-evaluation only when a non-active head is extended (including a new fork) or goes Stored → Connected, and only that head is compared with the active head [FR22].
+- Admissible head: Connected/Active with a continuous tip-ending segment of ≥ `W` blocks, i.e. `tip.sequence ≥ S_tail + W − 1` once matured (`S_head − S_tail + 1 ≥ W`); before maturity: the whole genesis-anchored chain [FR21, DEC-154].
+- Active head = `argmax BV` over admissible heads; ties: larger tip `|b|`, then lower tip hash [DEC-155].
+- Re-evaluation only when a non-active head is extended (including a new fork) or goes Stored → Connected. Only the affected heads are compared with the active head, once per admission: the highest-ranked admissible one [FR22, DEC-152].
 - Switch at divergence point `D` [FR23, FR58]:
   - Cheap zone `D ≥ S_tail + W − Hv`: atomic undo to `D` and forward redo with Tier 3; the mempool is reconciled per block; a failure applies FR5 to the candidate.
   - Deep zone `S_tail ≤ D < S_tail + W − Hv`: only if `tip ≥ S_tail + W − 1` ∧ higher `BV`, a full processing pass runs on the candidate; on failure it re-runs on the original chain; a second failure ⇒ collecting.
@@ -210,7 +213,7 @@ Each entry is defined in the [Open Gaps Register](./moonblokz-open-gaps-register
 ## 16. Security-relevant facts (stated, not evaluated)
 
 1. Every time-dependent rule (grace admission, pacing soft-fail, support eligibility) uses the node's local clock and local arrival times; no time is chain-verifiable [FR46, FR9, FR12].
-2. `consumed_votes(b)` includes the vote credits of transactions inside `b` itself (§7 order), and `BV` sums these values (derived from FR37).
+2. `consumed_votes(b)` excludes the vote credits of transactions inside `b` itself: it is `av(c)` after interest and before credits (§7, DEC-156). The credits `b` gives its creator are wiped by the reset, and those it gives anyone else count from then on.
 3. No-self-vote forbids only `vote = initializer`; a vote for any other existing id is unrestricted. Each transaction adds `vs` regardless of value; `tx_fee_per_byte_min` defaults to 0.
 4. Interest adds at most `vs` per node per block; with defaults it is `⌊av/200⌋`, i.e. ~0.5 % per block until `av ≥ 200·vs` (derived).
 5. Support non-conflict is scoped to `(proposer, sequence)`, so one node may support deviations by different proposers at the same sequence. `A` and the seed are evaluated per branch on the supporter's local chain.
@@ -220,10 +223,10 @@ Each entry is defined in the [Open Gaps Register](./moonblokz-open-gaps-register
 9. `hash(b)` covers the signature; the block signature covers the bytes with the signature field zeroed.
 10. Block-level rules for T1 and balance inputs are `s > anchor` plus no duplicate within the retained candidate chain; `anchor ≥ S_tail` is enforced only at mempool intake and mempool reconciliation [FR14, FR32, OG-017].
 11. UTXO references `(q, i)` are branch-relative: after a reorg the same pair may name a different output, and spends of outputs re-included at another position become invalid [ADR-016].
-12. Outside direct head extensions, blocks are stored before signature and state validation (opportunistic signatures, Tier 3 deferred); bounded storage is reclaimed by lowest-`BV` side-branch eviction [FR16, FR57].
+12. Outside direct head extensions and blocks whose creator key is branch-independent (DEC-157), blocks are stored before signature and state validation (opportunistic signatures, Tier 3 deferred); bounded storage is reclaimed by lowest-`BV` side-branch eviction [FR16, FR57].
 13. Bootstrap acquisition picks the highest tip sequence, not value, among qualifying segments; the processing pass auto-accepts pre-seed state-dependent checks and trusts obligations and UTXO references preceding a window-anchored segment [FR2, FR3, FR6].
 14. Ready nodes discard blocks with `S_new ≥ S_head + W`, and forks with `D < S_tail` are deleted, so a partition lasting more than `W` blocks becomes a permanent fork with operator-only recovery [FR58, FR60].
-15. No equivocation detection or penalty is specified; same-creator, same-sequence conflicts are resolved only by the FR21 tie-break (size, creator id, hash).
+15. No equivocation detection or penalty is specified; same-creator, same-sequence conflicts are resolved only by the FR21 tie-break (size, hash).
 16. Configuration is immutable and anchored to the compiled-in `pk0`, so any change requires a new chain; unknown configuration ids cause rejection (firmware-capability gating) [FR8, config §3.4].
 17. Branch switching is local and pairwise (triggered head vs active head); `Hv` differs per node and changes only the switch path (cheap vs deep), not the selected chain [FR22, FR58].
 

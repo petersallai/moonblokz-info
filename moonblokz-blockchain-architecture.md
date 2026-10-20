@@ -617,7 +617,7 @@ pub(crate) struct BlockEntry {
     sequence: u32,                                 //  4 B   FR21/FR19 tie-break (u32::MAX = empty slot)
     available_utxo: [u8; AVAILABLE_UTXO_BYTES],    // 32 B   ADR-016 co-located (see revision note)
     head_ref_count: u8,                            //  1 B   FR19 eviction
-    flags: u8,                                     //  1 B   is_on_active_chain (bit 0) + status (bits 1-2, Stored/Connected/Active) + payload_type (bits 3-4)
+    flags: u8,                                     //  1 B   is_on_active_chain (bit 0) + status (bits 1-2, Stored/Connected/Active) + payload_type (bits 3-4) + signature verified (bit 5)
     len: u16,                                      //  2 B   exact serialized length (FR6 byte-exact checks; fills the former tail padding)
 }
 // effective 76 B, aligned to 4 → 76 B; total 600 × 76 B = 45 600 B
@@ -633,7 +633,7 @@ pub(crate) struct BlockEntry {
 
 **Story 4.1 revision (2026-07-04).** Three clarifications from implementation, none changing the 76 B / 45 600 B budget above:
 - `available_utxo` is a fixed `AVAILABLE_UTXO_BYTES = 32` constant (named `spent_bits` / `SPENT_BITS_BYTES` until Story 6.11), not the generic expression `MAX_BLOCK_UTXO_OUTPUT / 8` shown in earlier drafts — sizing an array from a divided const-generic parameter requires the unstable `generic_const_exprs` feature, which this workspace does not enable (the same constraint already documented for `moonblokz-crypto-lib`'s fixed-size array API). The byte count is unchanged (256 / 8 = 32 at the architecture §5 default); Epic 7 resolves the generic-sizing question if `MAX_BLOCK_UTXO_OUTPUT` ever needs to vary per deployment.
-- `flags` bit assignment is now specified: bit 0 = `is_on_active_chain` (live in Story 4.1); bits 1-2 are reserved for Story 4.2's FR9 status value (`Stored`/`Connected`/`Active`) — Story 4.1 reserves the bits but does not define the enum or its transition map; bits 3-7 are unused.
+- `flags` bit assignment is now specified: bit 0 = `is_on_active_chain` (live in Story 4.1); bits 1-2 hold the FR9 status (`Stored`/`Connected`/`Active`, Story 4.2); bits 3-4 cache `payload_type` (below); bit 5 marks a creator signature verified against the block's own ancestry key, so the block is not verified again (RAM-only, cleared on slot reuse, not persisted; Story 6.2 D6, DEC-157); bits 6-7 are unused.
 - The FR18 chain-head arrival timestamp is **not** a `BlockEntry` field. FR18's actual requirement is "at least for every chain head block," and `BlockEntry`'s table has 600 entries at the default profile — adding a `u64` there would widen every entry to 88 B padded (+7.2 KB total), which is immaterial against the Schnorr backend's ~67-77 KB SRAM margin (§7.3) but eats meaningfully into the BLS backend's already-tight ~7-17 KB margin. `chain_heads.rs`'s `ChainHeadEntry` (§6.3, Story 4.4) has only 40 entries — the same field there costs ~320 B. Story 4.4 adds the arrival timestamp to `ChainHeadEntry` instead.
 
 ### 6.3 `ChainHeadEntry` — FR19 chain_heads table
