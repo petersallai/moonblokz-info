@@ -5,13 +5,13 @@ A living, ranked register of weaknesses in the blockchain consensus and ledger a
 ## Threat Model Boundary
 
 - **In scope:** any registered node or colluding set of nodes producing well-formed but adversarial blocks, transactions and support messages; unregistered radio senders injecting parseable messages; naturally lossy radio and partitions.
-- **Out of scope** ([Blockchain Concept](./moonblokz-blockchain-concept.md) §Security Framing): radio flooding by a stronger adversary (the summary reads jamming into this, §0) and physical isolation with controlled misinformation. Risks that need these stay listed as *Outside threat model*, so a scope change can re-rank them.
+- **Out of scope** ([Blockchain Concept](./moonblokz-blockchain-concept.md) §Security Framing): radio flooding by a stronger adversary (the summary reads jamming into this, §0) and physical isolation with controlled misinformation. A risk that needs these is listed as *Outside threat model* only when the Project Lead keeps it for visibility, so a scope change can re-rank it.
 
 ## Rating, Status and Maintenance
 
 - **Severity** (Critical · High · Medium · Low): impact × likelihood inside the threat model, with the §14 default parameters unless a row says otherwise.
 - **Status:** *Open* · *Treatment proposed* (an `O-` row exists) · *Planned* (owner story named) · *Mitigated* (`DEC-` row and story) · *Accepted* (MVP limitation with its record) · *Outside threat model*.
-- New risks take the next `AR-` number; numbers are never reused or renumbered. A mitigated or accepted risk keeps its row. A risk is re-rated when a rule or default it depends on changes, or when a simulation in the radio simulator replaces a model estimate below.
+- New risks take the next `AR-` number; numbers are never reused or renumbered, and a withdrawn risk's number stays retired (AR-015, withdrawn by the Project Lead on 2026-10-20). A mitigated or accepted risk keeps its row. A risk is re-rated when a rule or default it depends on changes, or when a simulation in the radio simulator replaces a model estimate below.
 
 ## Register
 
@@ -32,8 +32,7 @@ Ordered by severity at the time of entry.
 | AR-011 | Mempool-replenishment requests are amplified, and a CRC32 collision suppresses a target transaction. | Low | Rate-limit responses per requester; randomized response suppression. | Open · — | BC-FR43, BC-FR46 |
 | AR-012 | Node #0 may vote for itself for the chain's lifetime. | Low | Limit the exemption to the period before the first non-genesis registration. | Open · — | §6, §13; BC-FR6, BC-FR37, BC-FR54 |
 | AR-013 | The tail-block creator can grind the subgroup seed of its own later proposals. | Low | Accept, or widen the seed with further past block hashes. | Open · — | §9, §16.6; ADR-015 |
-| AR-014 | A collecting or restarting node can be captured by a forged high-sequence segment. | Medium if re-scoped | Reject seedless creator signatures, or add a checkpoint; sequence-plausibility bound in collecting. | Outside threat model | §4, §16.13; BC-FR2, BC-FR3, BC-FR59 |
-| AR-015 | Jamming the predictable creator or subgroup members. | Low if re-scoped | — | Outside threat model | §9; ADR-015 |
+| AR-014 | A collecting or restarting node can be captured by a forged high-sequence segment. | Medium if re-scoped | Reject seedless creator signatures, or add a checkpoint; sequence-plausibility bound in collecting. | Outside threat model (Project Lead, 2026-10-20) | §4, §16.13; BC-FR2, BC-FR3, BC-FR59 |
 | AR-016 | A partition longer than `W` becomes a permanent fork; transactions stay valid on both sides. | Medium | Post-MVP long-disconnect recovery. | Accepted · OG-006 | §16.14; [OG-006](./moonblokz-open-gaps-register.md) |
 
 ## Detail Notes
