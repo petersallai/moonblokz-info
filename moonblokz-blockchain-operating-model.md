@@ -74,7 +74,7 @@ Checks derived from chain configuration can invalidate a block only after the co
 |---|---|---|---|
 | intake → Stored | Tier 1 passes | FR9, FR16 | built (4.2) |
 | intake → not stored | Tier 1 exact evidence (Invalid-evidence); a Ready direct extension of the active head failing Tier 2 / 3 (Invalid-evidence); outside the window in Ready; chain-config content ≠ lock (silent); duplicate (no-op); a valid block storage fails to persist (reported as Already-known, cause logged) | FR10, FR11, FR16, FR17, FR60 | built (4.2, 4.3); window check built (9.1); head-extension rejection built (6.0) |
-| Stored → Connected | Ancestry reaches the active chain and Tier 2 passes; a new block whose parent is Connected or Active (not the head) is judged before storing and a failure is not stored | FR9, FR16 | built (6.1); further Tier 2 checks 6.7, 7.2, 7.3, 9.2, 9.3, 9.5 |
+| Stored → Connected | Ancestry reaches the active chain and Tier 2 passes; a new block whose parent is Connected or Active (not the head) is judged before storing and a failure is not stored | FR9, FR16 | built (6.1); further Tier 2 checks 6.6, 6.7, 7.2, 7.3, 9.2, 9.3, 9.5 |
 | Stored → Active | A direct extension of the active head (checked before storing; a failure is not stored), or an already-stored child of the active head, passes Tier 2 and Tier 3 in one step | FR9, FR16 | built (6.0) |
 | Connected → Active | FR23 reconciliation succeeds | FR9 | not built (6.3) |
 | Stored → Active | FR3 pass succeeds (including the FR58 deep zone) | FR3, FR9 | built (5.4) |
@@ -189,7 +189,7 @@ Durable truth is only the node id, the private key (never handed to this module)
 | Block navigation and available-UTXO bits | Durable block-tree; derived UTXO outputs and consumed UTXO inputs | Set on derivation, cleared on consumption / inverse for leaving blocks; re-zeroed on FR5 | `BlockEntry` table (600 × 76 B) | FR34, FR35, ADR-016 | partial — built (4.1, 5.3–5.5, 6.8, 6.11); head extension and per-block inverse built (6.0); walk 6.3 |
 | Creator order | Accumulated vote, descending, ties by lower id | Recomputed on demand | not stored | FR38 | built (3.3) |
 | Mempool contents and eligibility | FR14 classification, Deferred marker, expiry sequence | Remove confirmed and expired / re-add on the backward walk, remove on the forward walk; FR15 re-evaluation | `Mempool` crate (~23–25 KB) | FR14, FR15, FR30, FR32 | partial — crate primitives built (2.1, 2.2); wiring 7.3–7.5 |
-| Head `branch_value` | Per-block values above `S_tail` (exclusive) | Add on extension, subtract the new `S_tail` block's value on tail advance / unchanged by a switch | `ChainHeadEntry.branch_value` (Connected side heads); `active_branch_value` (the active branch) | FR19, FR21 | built (6.1) |
+| Head `branch_value` | Per-block values above `S_tail` (exclusive) | Add on extension, subtract the new `S_tail` block's value on tail advance / unchanged by a switch | `ChainHeadEntry.branch_value` (Connected side heads); `active_branch_value` (the active branch) | FR19, FR21 | built (6.1); value hand-over on a switch 6.3 |
 | `chain_heads` and block flags | Block-tree graph and the active-chain selection | FR19 events (i)–(v) | `ChainHeadsTable`, `BlockEntry.flags` | FR9, FR19, FR59 | partial — built (4.1, 4.4, 5.10); event (v) built (9.1); head-entry refresh on extension built (6.0); event (iii) 6.3 |
 | `snake_chain` head and tail | Selected active chain | Promotion and head extension / set by the walk | two `u32` indices | FR19, FR48 | partial — head built (5.4); tail and its advance step built (9.1); head extension and tail advance in Ready built (6.0); set by the walk 6.3 |
 | Active-node set `A` | Creators inside the active window | Recomputed when evaluated | not stored | FR12, ADR-015 | not built (6.4) |
@@ -288,7 +288,7 @@ Each flow lists its trigger, its steps, and what happens on failure. Step tables
 | 3 | Emit a signed support message as the intake outcome | FR10, FR12 | not built (6.4; signed content open, E6-2) |
 | 4 | Support intake in every phase: format and de-duplication always; signature, coherence and subgroup checks once the deviation is on the local active chain; Accepted → relay | FR26 | not built (6.5) |
 | 5 | Proposer: collect subgroup supporters; at `required_support` aggregate once and build the evidence block (`supporter_vote_sum`, signature, ids) | FR12, FR27 | not built (6.6) |
-| 6 | The deviation block is Active at once and penalizes the original top creator; its branch stays weaker until the evidence block lands | FR21, FR28, FR37 | partial — admitted Active with its FR37 vote effects by the head-extension step built (6.0); branch value built (6.1); two-stage scoring 6.2 |
+| 6 | The deviation block is Active at once and penalizes the original top creator; its branch stays weaker until the evidence block lands | FR21, FR28, FR37 | partial — admitted Active with its FR37 vote effects by the head-extension step built (6.0); branch value built (6.1); two-stage scoring 6.2; the evidence block's value 6.7 |
 | 7 | Validate incoming evidence blocks (I-15) | FR6, FR9 | not built (6.7) |
 
 **On failure:** an ineligible node sends nothing and gives no reason; eligibility is re-evaluated as the chain advances. The accumulator is not durable.
