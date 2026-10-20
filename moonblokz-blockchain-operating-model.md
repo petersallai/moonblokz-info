@@ -134,7 +134,7 @@ What a valid chain must satisfy, grouped by scope. **Checked** names where the r
 | I-21 | Transaction and input signatures valid (UTXO inputs against the referenced output's address) | FR3, FR6, FR9 | T3 (T1 opportunistic); pass | partial — transfers and registrations built (5.4); balance and UTXO inputs 7.1 |
 | I-22 | No duplicate of a confirmed transaction (transfer key, complex input set) | FR6, FR9, FR14 | T3; pass | not built for balance-side keys (ratified deferral to Epic 7); UTXO side covered by available-UTXO bits |
 | I-23 | Every referenced node id lies within `[0, max_known_node_id]` | FR6 | T3; pass | built (5.4) |
-| I-24 | A registration's `new_public_key` is globally unique, also within a block | FR6, FR9, FR14 | T3; pass | partial — pass built (5.4); head extension built (6.0); side branches at the chain-switch replay 6.3 (not Tier 2: an active-roster collision is no evidence on a side branch, Story 6.1 D6) |
+| I-24 | A registration's `new_public_key` is globally unique, also within a block | FR6, FR9, FR14 | T3; pass | partial — pass built (5.4); head extension built (6.0); side branches at the chain-switch replay 6.3 (not Tier 2: an active-roster collision is no evidence on a side branch, DEC-147) |
 | I-25 | `new_key_signature` proves possession of the new key | FR6, FR9 | T1 | built (4.2) |
 | I-26 | `new_node_id = max_known_node_id + 1`, stride 1 within a block; block #0 registers id 0 without incrementing | FR6, FR9, FR54 | T3; pass | built (5.4) — explicit #0 check missing |
 
