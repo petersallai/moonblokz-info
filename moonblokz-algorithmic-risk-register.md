@@ -23,11 +23,11 @@ Ordered by severity at the time of entry.
 | AR-002 | Creator equivocation is neither detected nor penalized; the creator picks the winning twin. | High | Equivocation proof (two headers, same creator and sequence) with a penalty and disqualification; published confirmation depth. | Open · — | §11, §16.15; BC-FR21 |
 | AR-003 | A colluding pair concentrates accumulated vote and dominates block creation on low-traffic chains. | High (Medium at high traffic) | Credit at most one `vs` per vote target per block; alternatives: vote weight tied to fee, no credit for votes the creator includes for its partner. | Open · — | §7, §12, §16.3, §16.4; BC-FR37, BC-FR55 |
 | AR-004 | Support signatures may not bind to proposer and deviating block. | High | Sign `(proposer, deviation sequence, deviating block hash)`. | Treatment proposed · O-002, story 6.4 | §2, §9; [OG-014](./moonblokz-open-gaps-register.md) |
-| AR-005 | An approval-less deviation block can outweigh the original creator's block through its own vote credits. | Medium | Enforce `consumed_votes(d) < av(u)` as a Tier 3 invariant, or value `d` before its own credits. | Treatment proposed · O-007, story 6.2 | §7, §9, §16.2; BC-FR28 |
+| AR-005 | An approval-less deviation block can outweigh the original creator's block through its own vote credits. | Medium | Adopted: `consumed_votes` is the post-interest, pre-credit snapshot, so `d` is valued before its own credits and is never higher than `u`'s normal block (equal votes tie); verified at Tier 3 (DEC-156). | Mitigated · DEC-156, story 6.2 | §7, §9, §16.2; BC-FR28 |
 | AR-006 | An approved deviation overturns about `r` normal blocks. | Medium | Evidence value independent of `m`; support only for direct head extensions; published confirmation depth `⌊m/2⌋ + 2`. | Open (O-012 partial) · — | §9, §11, §16.7, §16.11; BC-FR12 (a) |
 | AR-007 | The `required_support` default (3, so `m = 5`) is not calibrated. | Medium | Per-backend defaults from evidence capacity, security and radio cost. | Open · O-023 | §1, §9, §14; [crypto concept](./moonblokz-crypto-concept.md) §Bounded aggregation |
 | AR-008 | Approval liveness depends on the reachable share of `A`, which includes intermittent transaction senders. | Medium | Define `A` by liveness evidence (block or support creators); document minority-side halting as intended. | Open · — | §9, §16.6; ADR-015 |
-| AR-009 | Unauthenticated Stored heads evict legitimate side branches from `chain_heads`. | Medium | Evict Stored before Connected heads; bound Stored head sequence against `S_head`; verify the creator signature whenever the key is derivable. | Open · — | §4, §5, §11, §16.12; BC-FR19 |
+| AR-009 | Unauthenticated Stored heads evict legitimate side branches from `chain_heads`. | Medium | Evict Stored before Connected heads; bound Stored head sequence against `S_head`; verify the creator signature whenever the key is derivable. | Open (DEC-157 partial: the creator signature at ready-state intake for branch-independent keys) · 6.2 | §4, §5, §11, §16.12; BC-FR19 |
 | AR-010 | UTXO saturation griefing also inflates supply. | Medium | Post-MVP dynamic custodian fee; consider funding `replay_block_reward` from custodian fees. | Accepted · OG-005 | §10.3, §12; [OG-005](./moonblokz-open-gaps-register.md) |
 | AR-011 | Mempool-replenishment requests are amplified, and a CRC32 collision suppresses a target transaction. | Low | Rate-limit responses per requester; randomized response suppression. | Open · — | BC-FR43, BC-FR46 |
 | AR-012 | Node #0 may vote for itself for the chain's lifetime. | Low | Limit the exemption to the period before the first non-genesis registration. | Open · — | §6, §13; BC-FR6, BC-FR37, BC-FR54 |
@@ -58,7 +58,7 @@ The pair votes only inside its own blocks. If it also buys space in honest block
 
 ### AR-005 — Own-credit deviation value
 
-`consumed_votes(d)` is the creator's vote after step 2 of §7, so it includes the credits of `d`'s own transactions (§16.2). With partner transactions voting for the fallback creator `x`, `v(d)` can grow by about 18 `vs` and exceed `av(u)`. The BC-FR28 premise that an approval-less deviation branch is weaker then fails, and the original creator's late block no longer wins. The same credits also enlarge the margin AR-006 measures.
+Before DEC-156, `consumed_votes(d)` was the creator's vote after step 2 of §7, so it included the credits of `d`'s own transactions. With partner transactions voting for the fallback creator `x`, `v(d)` can grow by about 18 `vs` and exceed `av(u)`. The BC-FR28 premise that an approval-less deviation branch is weaker then fails, and the original creator's late block no longer wins. The same credits also enlarge the margin AR-006 measures. **Treatment (DEC-156):** both header snapshots exclude the block's own credits, while the FR37 step order, and with it the reset of a creator's own-block credits, stays unchanged. So `v(d) = I(av(x)) ≤ I(av(u))` by FR38, and the own-credit part of AR-006's margin is gone. Applying the credits after the reset instead was rejected: it would let a creator keep the credits it selects into its own block, shrinking AR-003 to a single node and worsening AR-012.
 
 ### AR-006 — Approval reorg depth
 
@@ -121,6 +121,8 @@ Outside a ready direct head extension, a block is stored before its signature or
 - **Collecting:** any sequence (§5).
 
 The forged heads also draw parent-recovery requests (BC-FR46).
+
+**Partial treatment (DEC-157, story 6.2):** in ready state the creator signature is verified at intake, before the write, whenever the creator's key is branch-independent: node #0, or a node seeded at or below `S_tail`. Forged blocks claiming such a creator are no longer stored. Still open: forgeries naming a creator seeded inside the window or an unknown id, forgeries by registered nodes, and the collecting case.
 
 ### AR-011 — Replenishment abuse
 
