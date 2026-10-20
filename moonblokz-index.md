@@ -17,6 +17,7 @@ If you already know your topic, use this table to jump straight to the relevant 
 | Chain configuration — wire format, parameter registry, the mini virtual machine, commitment lifecycle | [Configuration Module Specification](./moonblokz-configuration-specification.md) *(authoritative)* |
 | Blockchain runtime logic at a glance — lifecycle phases × events, block statuses and check tiers, invariants, derived projections, main flows, what is built | [Blockchain Operating Model](./moonblokz-blockchain-operating-model.md) (first stop; consolidation, the PRD wins) |
 | Blockchain behavior — block-tree, branching, `snake_chain`, phases, queries | [Blockchain Operating Model](./moonblokz-blockchain-operating-model.md), [Blockchain Concept](./moonblokz-blockchain-concept.md), [Blockchain Algorithm](./moonblokz-blockchain-algorythm.md), [Blockchain Implementation](./moonblokz-blockchain-implementation.md) |
+| Blockchain Algorithm Summary — compact, implementation-free statement of the consensus and ledger rules with math notation, for attack and weakness analysis | [Blockchain Algorithm Summary](./moonblokz-blockchain-algorithm-summary.md) (consolidation, the PRD wins) |
 | Cryptography — signatures, aggregation, Schnorr/BLS backends | [Crypto Concept](./moonblokz-crypto-concept.md), [Crypto Algorithm](./moonblokz-crypto-algorythm.md), [Crypto Implementation](./moonblokz-crypto-implementation.md) |
 | Radio mesh — connection matrix, echo mapping, relaying, packetization | [Radio Concept](./moonblokz-radio-concept.md), [Radio Algorithm](./moonblokz-radio-algorythm.md), [Radio Implementation](./moonblokz-radio-implementation.md) |
 | Simulation, historical replay, desktop validation | [Simulator Concept](./moonblokz-simulator-concept.md), [Simulator Algorithm](./moonblokz-simulator-algorythm.md), [Simulator Implementation](./moonblokz-simulator-implementation.md) |
@@ -58,6 +59,20 @@ This document explains:
 - and, per row, whether it is built yet and which story owns it.
 
 It is explicitly **not authoritative**: the [Blockchain PRD](./moonblokz-blockchain-prd.md) wins on any divergence. Use it as the first stop for any blockchain-logic question, then read the cited FRs.
+
+### [MoonBlokz Blockchain Algorithm Summary](./moonblokz-blockchain-algorithm-summary.md)
+
+A compact, implementation-free restatement of the blockchain consensus and ledger algorithm with math notation, written as self-contained input for adversarial analysis.
+
+This document explains:
+
+- the system model, primitives (hash, signature and aggregation equations) and the wire-level data model with signature scopes,
+- the lifecycle, the Tier 1–3 validity rules and per-type transaction rules,
+- the vote dynamics, creator selection, grace-period fallback and approval (subgroup, support, `supporter_vote_sum`),
+- the fork-choice rule, `snake_chain` replay obligations, supply flows, genesis and the parameter defaults,
+- and the open specification gaps and security-relevant facts, stated without evaluation.
+
+It is explicitly **not authoritative**: the [Blockchain PRD](./moonblokz-blockchain-prd.md) wins on any divergence, and every rule carries its source tag. Use it as the single context file for security, attack-surface or weakness analysis of the algorithm; use the [Blockchain Algorithm Model](./moonblokz-blockchain-algorythm.md) for full detail.
 
 ### [MoonBlokz Decision Register](./moonblokz-decision-register.md)
 
@@ -103,7 +118,7 @@ This document explains:
 - flash and storage-geometry gaps such as unquantified wear-lifetime and the storage slot-count divisor verification item,
 - telemetry deployment-model and docs-vs-code drift across Probe, HUB, Collector, CLI, and Update Server,
 - the accepted MVP no-saturation-handling stance for bounded UTXO retention,
-- the blockchain specification gaps for the approval-evidence byte encoding and the UTXO input (causality, window-bound wording, signing preimage), and the post-MVP sequence wrap-around question,
+- the blockchain specification gaps for the approval-evidence byte encoding, the UTXO input (causality, window-bound wording, signing preimage), the support-message signed content, grace-period timing, the fee-policy predicate, the block-level anchor lower bound and the carry-forward discard wording, and the post-MVP sequence wrap-around question,
 - and the post-MVP open questions around dynamic custodian fees, long-disconnect recovery, and promoting processing to a concurrent-ingestion lifecycle state.
 
 It is explicitly **not authoritative**: each entry links to the source document where the underlying gap, drift, limitation, or open question is defined. Use this file before planning work that depends on unresolved deployment constraints, telemetry interoperability assumptions, UTXO saturation behavior, or long-disconnect recovery.
@@ -577,6 +592,8 @@ Use this file when you need a quick orientation to the current public web presen
 27. Then read [MoonBlokz Website Summary](./website.md) when you need a compact summary of the public website, its location, current public-facing structure, and deployment form.
 
 > **Cross-cutting reference (not part of the linear flow):** Consult [MoonBlokz System Constraints & Limits Reference](./moonblokz-system-constraints.md) whenever you need a numeric cap, memory budget, flash or airtime limit, or a known cross-document constraint discrepancy. It restates each value with a one-line implication and links to the authoritative source.
+
+> **Cross-cutting reference (not part of the linear flow):** Consult [MoonBlokz Blockchain Algorithm Summary](./moonblokz-blockchain-algorithm-summary.md) when you need the whole blockchain algorithm in one compact file, for example as context for a security or weakness analysis.
 
 > **Cross-cutting reference (not part of the linear flow):** Consult [MoonBlokz Open Gaps Register](./moonblokz-open-gaps-register.md) when planning around unresolved deployment constraints, telemetry docs-vs-code drift, UTXO saturation behavior, or post-MVP recovery questions.
 
