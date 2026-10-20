@@ -557,7 +557,7 @@ The full per-module breakdown (processes / data structures / relationships / API
 | `blocks.rs` | FR18 | `BlockTable { blocks: [BlockEntry; 600] }` (45.6 KB) |
 | `chain_heads.rs` | FR19 | `ChainHeadsTable { heads: [ChainHeadEntry; 40] }` (2.88 KB — Story 4.4, §6.3) |
 | `snake_chain.rs` | FR48-FR53 | 2 u32 indices on Blockchain (8 B, §6.4); stateless tail-drop classification and binding |
-| `branch_value.rs` | FR21 | (stateless; operates on `ChainHeadEntry.branch_value`) |
+| `branch_value.rs` | FR21 | (stateless: the per-block value, the FR21 rank — value, tip size, tip hash — and operational admissibility; the values live in `Blockchain.active_branch_value` and the side heads' `ChainHeadEntry.branch_value`, DEC-144, DEC-154, DEC-155) |
 | `intake.rs` | FR10/FR14/FR16/FR26 | (stateless dispatcher) |
 | `staged_validation.rs` | FR9 | (stateless tier 1/2/3 checks) |
 | `reconciliation.rs` | FR23, FR58 | (stateless backward/forward walk) |
