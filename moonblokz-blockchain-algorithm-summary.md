@@ -236,4 +236,5 @@ Each entry is defined in the [Open Gaps Register](./moonblokz-open-gaps-register
 - [`moonblokz-crypto-algorythm.md`](./moonblokz-crypto-algorythm.md) — the signing, verification and aggregation model behind §1.
 - [`moonblokz-configuration-specification.md`](./moonblokz-configuration-specification.md) — parameter registry, acceptance checks and VM behind §2 and §14.
 - [`moonblokz-open-gaps-register.md`](./moonblokz-open-gaps-register.md) — definitions of the gaps listed in §15.
+- [`moonblokz-algorithmic-risk-register.md`](./moonblokz-algorithmic-risk-register.md) — the evaluation of the §16 facts: ranked risks and candidate treatments.
 - [`moonblokz-glossary.md`](./moonblokz-glossary.md) — disambiguates terms used here in more than one sense (`seed`, `replay`, `score`, `head`, `tail`).

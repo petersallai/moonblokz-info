@@ -205,6 +205,7 @@ Not repeated here: architecture decisions logged in [architecture §14](./moonbl
 | O-020 | 2026-10-09 | Firmware has no `init` call site — rec.: a node-integration story once the node repository is ready (see DEC-118). | moonblokz-node | DW triage D11 | — |
 | O-021 | 2026-10-12 | Does DEC-037 (no deletion on local failure) also cover mark-overflow and missing-block failures in the pass? | FR5 | DEC-013, DEC-037 | decided → DEC-134 |
 | O-022 | 2026-10-09 | BLS Miri script never run — rec.: won't-do while BLS is not an embedded target. | crypto | DW triage D12 | — |
+| O-023 | 2026-10-20 | `required_support` default (3, so `m = 5`) is too low: set it per backend — Schnorr by evidence-block capacity, BLS by security and practicality — rec.: none yet; measure support-message radio cost in the radio simulator. | FR12, FR27; CFG §4.1 ID 10 | [Algorithmic Risk Register](./moonblokz-algorithmic-risk-register.md) AR-007 | — |
 | O-023 | 2026-10-09 | Up to 4 boot sweeps, O(`MAX_BLOCKS`²) tip discovery — rec.: won't-do until boot latency is measured. | FR59 | DW triage D51 | — |
 | O-025 | 2026-10-18 | The measured blockchain-task stack (11.5–19.2 KB, DEC-136) exceeds architecture §8's 6 KB task-stack decision: raise the task stack to the measured peak, or cut further (verify the creator signature in place in the owned read buffer instead of a 2 KB preimage; slimmer genesis assembly; the by-value `ControlPlaneData` at restart)? | architecture §8 | DEC-136 | decided → DEC-137 |
 
