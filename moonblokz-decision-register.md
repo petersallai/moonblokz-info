@@ -86,6 +86,7 @@ Not repeated here: architecture decisions logged in [architecture §14](./moonbl
 | DEC-063 | 2026-07-30 | On an FR8 mismatch the candidate's configuration is adopted and the pass re-run in the same call; at most 3 passes. | FR5, FR8 | story 5.9 #1 | in force |
 | DEC-064 | 2026-10-12 | A chain switch never disconnects a head (FR23 no longer demotes). | FR19, FR23 | PRD FR23 | in force |
 | DEC-065 | 2026-10-12 | FR34 field forms are logical; the architecture's representations (`NONE_REF`, block-index seed source) are equivalent. | FR34 | PRD FR34 | in force |
+| DEC-140 | 2026-10-20 | `chain_heads_max_capacity` is a per-node build-time capacity (`MAX_BRANCH_COUNT`, 40 on the reference build), not a chain-config parameter. | FR19 | PRD FR19; ARCH const-generic catalog | in force |
 
 ## 3. Creator, Votes, and Approval
 
@@ -103,6 +104,7 @@ Not repeated here: architecture decisions logged in [architecture §14](./moonbl
 | DEC-075 | 2026-10-12 | `required_support` is literal-only and refused at acceptance above the backend `MAX_AGGREGATED_SIGNATURES`; `max_aggregated_signatures` is retired. | FR56, ADR-015 | CFG §6 check 3; PRD FR56 | in force · 6.4 |
 | DEC-076 | 2026-10-12 | Grace-period firing widens the admitted prefix and never resets votes. | FR44, FR46, FR47 | PRD FR46 | in force · 8.4, 8.5 |
 | DEC-077 | 2026-10-12 | Incoming approval-evidence validation gets its own Story 6.7. | FR6, FR9, FR12, FR27 | epics 6.7 | in force · 6.7 |
+| DEC-141 | 2026-10-20 | The BLS aggregated support signature is 50 B (`AGGREGATED_SIGNATURE_CONSTANT_SIZE`, as in the crypto library), not 96 B; architecture §6.5 is corrected. | FR27 | ARCH §6.5; crypto algorithm model | in force |
 
 ## 4. Transactions, Value, and Mempool
 
