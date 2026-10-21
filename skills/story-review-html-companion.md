@@ -47,8 +47,10 @@ Left sticky sidebar (file-grouped navigation with a scrollspy active-state) + a 
 5. **AC ↔ code ↔ test table** — one row per Acceptance Criterion: what it requires, where it lives, which test covers it. This is the traceability spine of the review.
 6. **Code-review findings panel** — if an adversarial/code review ran: severity, finding, resolution (fixed / accepted / deferred).
 7. **Per-file sections** — each file gets a heading with its +/- badge and a one-line role, then one **change card** per unit (Step 3).
-8. **Tests table** — every added test: name, what it asserts, which AC.
+8. **Tests table** — every added test: name, what it asserts, which acceptance criterion it covers (its short content, the AC number as a reference).
 9. **Reviewer checklist** — the specific things this story needs a human to confirm (with tickable, strike-through checkboxes).
+
+**Say what an identifier means.** An invariant, decision, risk or requirement identifier (`I-09`, `DEC-156`, `D5`, `AR-005`, `E6-8`, `O-013`, `AC6`, `FR37`) says nothing to a reader who does not hold the register in their head. Wherever the page mentions one — prose, table cells, tags, tooltips, the checklist — write its short content in a few words: "the vote-header consistency check", not "the I-09 check"; "pre-credit vote snapshots", not "D5". Keep the identifier only as a secondary reference after the content (in parentheses or a tooltip), where it is needed to find the source.
 
 **Reconcile the raw line count.** The +/- stat chip is the raw `git diff` count, but the page shows only a fraction of it as code (doc-comments elided, tests tabulated, repetitive patterns shown once) — a gap that confuses reviewers if left implicit. Next to the stat, add a small breakdown (a segmented bar + legend) that splits the added total into **production logic / doc-comments / test code / comments+blank+attributes**, and state that only the production-logic slice is rendered as diffs. Doc-heavy crates (like `moonblokz-blockchain`, where rustdoc + tests routinely dominate a diff) make this the difference between a confusing "+658 but I only see ~100 lines" and an understood one. Compute the split with an `awk` pass over the diff:
 
@@ -72,7 +74,7 @@ Scale the section set to the story: a small story may drop the diagrams and find
 Each card = an explanation block, then the code.
 
 - **Kicker + title** — change kind (added / modified / moved) and the method or type name (monospace).
-- **Tags** — `add` / `mod` badges and the FR(s) the change serves.
+- **Tags** — `add` / `mod` badges and what the change serves, written as short content (for example "vote-header check", "branch-independent signatures"); the FR or decision number goes in the tag's tooltip, not as the tag's only text.
 - **Explanation block** (the "what & why"), in short labelled fields: **What** (what changed), **Why it matters / process it participates in** (where this code sits in the runtime flow), and, where useful, a compact bullet list of **implementation notes** (invariants, non-obvious constraints, forward-tags).
 - **Scrutiny callout** on risky units only — a coloured box (warn `▲` / risk `⚠` / info `i`) naming exactly what the reviewer should verify (a subtle invariant, a panic path, a security-relevant assumption). Do not put one on every card; reserve them for the genuinely load-bearing changes.
 - **Code block** — the changed method, git-diff-styled: `+` lines green, `-` lines red, context neutral, with a small file/line caption. Show every changed (`+`/`-`) line **verbatim from the source**; the only thing you may drop is a long doc-comment, replaced by the visible elision-marker line (`⋯`). **Never paraphrase a body into a `/* … */` or `// …` summary comment** — that is an elision disguised as code, and worse than an honest marker. A small added method (a reset, an accessor, a helper) is therefore always shown whole. Only a genuinely large method may collapse *repetitive, non-load-bearing* branches, and then only behind the `⋯` marker (never a fake comment) and never over a load-bearing changed line (a gate/guard, sentinel, return, or arithmetic op). If one card bundles several units, each is still shown whole — otherwise split them into separate cards.
@@ -171,6 +173,7 @@ Finish by opening the file — screenshot it headless in both themes and look at
 - **Look at the diagrams** — screenshot both themes and view the images before handing the page over. Every other defect here shows up in text; a diagram fails silently, as blank space or as raw source.
 - **Never upload the page** — it is internal working material and the deliverable is the file path (Purpose, Step 6).
 - **Always carry the footprint panel** — binary size, RAM without stack, and stack, each with before, after and change, measured by the tool rather than estimated by hand (Step 1, Step 2 item 2).
+- **Content before identifiers** — every invariant, decision, risk or requirement number on the page comes with its short content; a bare `I-09` or `D5` is a defect (Step 2).
 - **Pure-ASCII output** — every non-ASCII glyph as an entity, plus `<meta charset="utf-8">` (Step 6). Check it mechanically; a single raw em-dash decoded as cp1252 corrupts every prose line that uses one.
 
 ## Related Documents
