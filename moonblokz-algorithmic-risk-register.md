@@ -35,6 +35,8 @@ Ordered by severity at the time of entry.
 | AR-014 | A collecting or restarting node can be captured by a forged high-sequence segment. | Medium if re-scoped | Reject seedless creator signatures, or add a checkpoint; sequence-plausibility bound in collecting. | Outside threat model (Project Lead, 2026-10-20) | §4, §16.13; BC-FR2, BC-FR3, BC-FR59 |
 | AR-016 | A partition longer than `W`, or one whose two sides both advance more than `H` blocks past their divergence point, becomes a permanent fork; transactions stay valid on both sides. | Medium | Post-MVP long-disconnect recovery; a larger `H` widens the reconcilable range at storage cost. | Accepted · OG-006, DEC-159 | §16.14; [OG-006](./moonblokz-open-gaps-register.md); BC-FR58 |
 | AR-017 | A ready node's deep-zone chain switch ran the window-anchored FR3 pass, whose pre-seed auto-acceptance let a branch define its own starting balances, votes, keys and carry-forwards. | High | Adopted: no deep zone; every switch is an in-place walk within `H` blocks of the head (DEC-159). | Mitigated · DEC-159, 9.7 | §4, §11; BC-FR3, BC-FR58 |
+| AR-018 | Until Story 9.7 retains the verification horizon, a chain switch inside the bound (and an FR3 adoption) trusts the FR48 binding and the below-tail UTXO references of replayed blocks at positions up to `S_head`. | Low (Medium if a colluding set can outweigh the honest branch at low traffic) | Horizon retention `R = H` (9.7). | Planned · DEC-166, 9.7 | §10, §11; BC-FR23, BC-FR39, BC-FR58 |
+| AR-019 | Registered nodes (valid signature, forged `consumed_votes`) and creators registered above the common ancestor can force failed chain-switch attempts. | Low | DEC-170's pre-pass covers fork-independent creators; rate limiting is not specified. | Open · — | §5, §11; BC-FR9, BC-FR23 |
 
 ## Detail Notes
 
@@ -129,6 +131,8 @@ The forged heads also draw parent-recovery requests (BC-FR46).
 
 **Partial treatment (DEC-157, story 6.2):** in ready state the creator signature is verified at intake, before the write, whenever the creator's key is branch-independent: node #0, or a node seeded at or below `S_tail`. Forged blocks claiming such a creator are no longer stored. Still open: forgeries naming a creator seeded inside the window or an unknown id, forgeries by registered nodes, and the collecting case.
 
+**Further treatment (DEC-170, story 6.3):** before a chain switch mutates anything, it verifies every unmarked new-branch block whose creator is fork-independent at the common ancestor, so a forgery by an unregistered sender naming any creator registered on the shared prefix no longer costs a walk. The residual is AR-019.
+
 ### AR-011 — Replenishment abuse
 
 Every receiver of a replenishment request answers with one transaction, and no response rate limit is specified (BC-FR43, BC-FR46). A single forged request therefore costs many transmissions. A transaction ground (about 2³² hashes) to the `hash_crc32` of a target, once held by nodes, makes them skip the target in every exchange.
@@ -142,6 +146,14 @@ The ingredients are:
 - a restart re-enters collecting (§4).
 
 The attack needs radio-local presence, because ready nodes neither store nor relay out-of-window blocks (BC-FR60), and the forged segment must qualify before the genuine one. The victim then discards the real chain as out-of-window.
+
+### AR-018 — Below-tail trust inside the bound (until 9.7)
+
+A replayed block at position `s ≤ S_head` drops block `s − W`, which lies below `S_tail`; until the horizon is retained, neither a switch nor an FR3 adoption can check that binding, nor the spentness and amount of a UTXO reference in `[s − W, S_tail)`. A winning branch could therefore have dropped essential state, double-spend a below-tail output, or declare an amount for a non-existent output. Honest followers held those blocks in their window and would have deleted such blocks, so only a colluding set whose branch outweighs the honest one can build it (AR-003). DEC-159 bounds the depth by `H`.
+
+### AR-019 — Forced switch attempts
+
+A registered node can sign side blocks with forged `consumed_votes` that win FR22 and fail only at Tier 3 in the replay; so can a creator registered above the common ancestor, whose key the pre-pass cannot check. Each attempt costs the victim about `2·j_old + j_new` reads and undos plus the seed-source scans, and deletes the attacker's blocks, so the cost is linear in the attacker's signed blocks.
 
 ### AR-016 — Permanent forks
 
