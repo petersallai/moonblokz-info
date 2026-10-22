@@ -37,6 +37,8 @@ Ordered by severity at the time of entry.
 | AR-017 | A ready node's deep-zone chain switch ran the window-anchored FR3 pass, whose pre-seed auto-acceptance let a branch define its own starting balances, votes, keys and carry-forwards. | High | Adopted: no deep zone; every switch is an in-place walk within `H` blocks of the head (DEC-159). | Mitigated · DEC-159, 9.7 | §4, §11; BC-FR3, BC-FR58 |
 | AR-018 | Until Story 9.7 retains the verification horizon, a chain switch inside the bound (and an FR3 adoption) trusts the FR48 binding and the below-tail UTXO references of replayed blocks at positions up to `S_head`. | Low (Medium if a colluding set can outweigh the honest branch at low traffic) | Horizon retention `R = H` (9.7). | Planned · DEC-166, 9.7 | §10, §11; BC-FR23, BC-FR39, BC-FR58 |
 | AR-019 | Registered nodes (valid signature, forged `consumed_votes`) and creators registered above the common ancestor can force failed chain-switch attempts. | Low | DEC-170's pre-pass covers fork-independent creators; rate limiting is not specified. | Open · — | §5, §11; BC-FR9, BC-FR23 |
+| AR-020 | A coalition that stays the entitled creator for many consecutive blocks on its own private branch — through self-credited votes or members arranged next to each other in the creator order — builds a fully valid heavier branch and reorganizes the chain up to the FR58 bound. | High at the default `vote_interest` and low traffic; Medium with the treatments | Scale `vote_interest` with network size (about `5·vs / N`) and keep the `vs` cap; per-target credit cap (AR-003); price votes (`tx_fee_per_byte_min > 0`); a published confirmation depth above any feasible adjacent cluster. The FR70 twin hold already defeats the route that starts with a same-parent twin. | Open · — | §7, §9, §11, §16.3, §16.4; BC-FR21, BC-FR37, BC-FR38, BC-FR70 |
+| AR-021 | Coalition members that hold consecutive positions in the creator order and stay silent force a grace expiry for every skipped rank and an approved deviation for every slot, stalling the chain at no cost to themselves; they climb back by voting for each other. | Medium (High at a large `required_support` without the treatments) | Reset every skipped top at a deviation; exclude a node named as `first_voted_node` in the window from creation for `W` blocks; a two-level grace period (short when the admitted proposer issued nothing, long while a deviation is pending). | Open · — | §9, §16.6; BC-FR12, BC-FR37, BC-FR44, BC-FR47 |
 
 ## Detail Notes
 
@@ -147,6 +149,14 @@ The ingredients are:
 
 The attack needs radio-local presence, because ready nodes neither store nor relay out-of-window blocks (BC-FR60), and the forged segment must qualify before the genuine one. The victim then discards the real chain as out-of-window.
 
+### AR-016 — Permanent forks
+
+Under DEC-159 a node switches only to a branch that diverges within `H` blocks of its own head. A partition side that cannot reach the FR12 approval quorum stalls at its first absent creator, so it can still adopt the other side's chain within the FR60 window. The fork becomes permanent before `W` only when both sides keep advancing — both must complete approvals, which needs a near-even split — and both pass `H` blocks beyond the divergence point.
+
+### AR-017 — Deep-zone trust downgrade (mitigated)
+
+Before DEC-159, a ready node switched to a branch diverging more than `H` blocks below its head through the window-anchored FR3 pass (the FR58 deep zone). The pass seeded every node without a seed in the shared prefix from the branch's own balance entries — balance, vote count and public key — and trusted replay obligations and UTXO references below the segment (§4). A branch could therefore define its own starting state: inflated vote counts give `consumed_votes` that win FR21, and zero-input carry-forwards for dropped blocks create money. The pass's justification, attestation by a continuous signed chain of length `≥ W`, is circular, because signatures and votes are checked against keys and seeds the branch itself supplies. **Treatment (DEC-159):** no deep zone; every switch is an in-place FR23 walk within `H` blocks of the head, so every check runs on the node's own verified state.
+
 ### AR-018 — Below-tail trust inside the bound (until 9.7)
 
 A replayed block at position `s ≤ S_head` drops block `s − W`, which lies below `S_tail`; until the horizon is retained, neither a switch nor an FR3 adoption can check that binding, nor the spentness and amount of a UTXO reference in `[s − W, S_tail)`. A winning branch could therefore have dropped essential state, double-spend a below-tail output, or declare an amount for a non-existent output. Honest followers held those blocks in their window and would have deleted such blocks, so only a colluding set whose branch outweighs the honest one can build it (AR-003). DEC-159 bounds the depth by `H`.
@@ -155,13 +165,29 @@ A replayed block at position `s ≤ S_head` drops block `s − W`, which lies be
 
 A registered node can sign side blocks with forged `consumed_votes` that win FR22 and fail only at Tier 3 in the replay; so can a creator registered above the common ancestor, whose key the pre-pass cannot check. Each attempt costs the victim about `2·j_old + j_new` reads and undos plus the seed-source scans, and deletes the attacker's blocks, so the cost is linear in the attacker's signed blocks.
 
-### AR-016 — Permanent forks
+### AR-020 — Private-branch reorg by a vote-dominant coalition
 
-Under DEC-159 a node switches only to a branch that diverges within `H` blocks of its own head. A partition side that cannot reach the FR12 approval quorum stalls at its first absent creator, so it can still adopt the other side's chain within the FR60 window. The fork becomes permanent before `W` only when both sides keep advancing — both must complete approvals, which needs a near-even split — and both pass `H` blocks beyond the divergence point.
+Blocks cost nothing to make (no work, no timestamp, §16.1), so the length a private branch needs is no barrier; the barrier is that every block needs the creator entitled under the branch's own vote state. On a private branch the honest nodes never create, so their accumulated votes are never reset and grow only by interest, while the coalition credits its next creator with up to about 18 `vs` per block.
 
-### AR-017 — Deep-zone trust downgrade (mitigated)
+| Setting (vote model below, 3 honest tx/block) | 51-block private branch |
+|---|---|
+| `vi = 5` (default), pair, `N ≤ 300` | at every fork point, with a higher branch value |
+| `vi ≈ 5·vs/N` (50 at `N = 100`, 17 at `N = 300`), coalition ≤ 10 % of `A`, no approvals | 0 % |
+| same, coalition of 20 % of `A`, approvals with proposer grinding, `r = 3` | about 50 % per attempt at `N = 300` |
+| same, `r = 50` | ≤ 7·10⁻⁹³ per attempt |
+| coalition holding the top `c` creator positions | exactly `c` blocks, whatever `vi` and `r` |
 
-Before DEC-159, a ready node switched to a branch diverging more than `H` blocks below its head through the window-anchored FR3 pass (the FR58 deep zone). The pass seeded every node without a seed in the shared prefix from the branch's own balance entries — balance, vote count and public key — and trusted replay obligations and UTXO references below the segment (§4). A branch could therefore define its own starting state: inflated vote counts give `consumed_votes` that win FR21, and zero-input carry-forwards for dropped blocks create money. The pass's justification, attestation by a continuous signed chain of length `≥ W`, is circular, because signatures and votes are checked against keys and seeds the branch itself supplies. **Treatment (DEC-159):** no deep zone; every switch is an in-place FR23 walk within `H` blocks of the head, so every check runs on the node's own verified state.
+Arranging members next to each other is feasible: members park at zero accumulated vote after creating (no interest on zero), then restart together on their own zero-fee votes. A heuristic strategy reached 50 adjacent members in 0.3–1.6 days at `N = 100` and 10–18 days with 55–60 members at `N = 1000` (none within 40 000 blocks at `N = 300`, which reflects the heuristic, not a bound). Paths to a reorg and what stops them today:
+
+- **Twin at the divergence point** (the creator signs the public and the private block): held by FR70, resolved by FR71.
+- **Withhold the public slots:** honest approved deviations fill them and their evidence outweighs the private branch under the current evidence value (AR-006); lowering that value without the rule that an approved deviation forfeits the absent creator's slot would reopen a late-release double spend.
+- **No twin, no withholding:** the coalition must out-create the honest chain inside the FR58 bound, which the table above bounds.
+
+Removing the `vs` cap from the interest step adds nothing against this and lets an accumulated vote overflow `u32` (a chain halt) once about 250–300 nodes climb at `vi = 50`.
+
+### AR-021 — Silent coalition stall
+
+A grace expiry admits one more rank (§9), and a deviation resets only the skipped top (`first_voted_node`). A cluster of `n` silent members ahead of the first honest node therefore costs about `n` expiries before the first deviation, then one approval per member. With a block propagation median `t₅₀` of 33 s on a 100-node measurement, an approval round is about 1–1.5 minutes and a safe grace period about 4–5·`t₅₀` (about 2.5 minutes, so that a pending evidence reaches a majority before the next rank is admitted). A 50-member cluster then stalls the chain for about 2 hours per cycle, about 40 minutes with a short grace (about 1.5·`t₅₀`) when the admitted proposer issued nothing; an approval also needs a majority of `A` reachable (AR-008). The members lose only their accumulated vote and climb back on each other's votes, so the stall repeats every cycle. Scattered silent members cost one expiry and one approval each.
 
 ## Analysis Models
 
@@ -171,6 +197,9 @@ The figures above come from simplified models, not from the radio simulator:
 - **Reorg depth:** the largest `k` with `Σ v(next k normal blocks) < (⌊m/2⌋ + 2)·av(x)`.
 - **Subgroup majority:** binomial over `m` seats.
 - **Retries:** hypergeometric draws from `A`, one try per reachable proposer per grace step.
+- **Private branch (AR-020):** the vote model with `N` up to 1000, a coalition of `c` members, a fork at every point where a member is top; on the private branch only coalition transactions (18 per block, all crediting the next member), honest nodes gain interest only; an honest top needs an approved deviation, counted with the probability that the coalition holds `r` of the `2r − 1` subgroup seats (hypergeometric, grinding over members' proposals where OG-015 allows it). 300–600 fork points per setting.
+- **Clustering (AR-020):** park → synchronise → maintain, spending the coalition's own block credits and the free slots of honest blocks on zero-fee votes; success when the top 50 creator positions are all coalition; 40 000 blocks per setting.
+- **Stall (AR-021):** expiries and approval rounds counted from the block propagation measurement (`t₅₀` 33 s, `t₉₀` about 60 s, 100 random nodes), not simulated.
 
 ## Not Yet Assessed
 
