@@ -210,7 +210,7 @@ The fragmentation format is defined by the radio layer ([`moonblokz-radio-algory
 
 ## Pruning Cost Is Not Negligible
 
-Pruning is bounded by rule: one lowest-value side branch per capacity-pressure event, walked back to the nearest shared ancestor, with branch bookkeeping refreshed afterwards ([Blockchain PRD](./moonblokz-blockchain-prd.md) FR57). Side branches outside FR58's switch bound (`D ≤ S_head − H`) are also reclaimed as soon as the head moves them out, and tail-out-of-range Stored fragments on tail advance (FR58). The cost is metadata churn (`chain_heads`, `head_ref_count`), not flash I/O: the storage interface has no delete, so deletion releases the in-memory slot and the durable bytes are overwritten on the next `save_block` to that index.
+Pruning is bounded by rule: one lowest-value side branch per capacity-pressure event, walked back to the nearest shared ancestor, with branch bookkeeping refreshed afterwards ([Blockchain PRD](./moonblokz-blockchain-prd.md) FR57). Side branches outside FR58's switch bound (`D ≤ S_head − H`) are also reclaimed as soon as the head moves them out, and so are Stored fragments whose missing parent lies at or below `S_head − H − 1` (FR58, DEC-161). The cost is metadata churn (`chain_heads`, `head_ref_count`), not flash I/O: the storage interface has no delete, so deletion releases the in-memory slot and the durable bytes are overwritten on the next `save_block` to that index.
 
 ## Caching and Flash Considerations
 
