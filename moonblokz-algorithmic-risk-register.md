@@ -20,7 +20,7 @@ Ordered by severity at the time of entry.
 | ID | Risk | Severity | Treatment options | Status · Owner | Sources |
 |---|---|---|---|---|---|
 | AR-001 | A creator can re-include a transfer or balance input whose original block has left the window. | High | Block-level `anchor ≥ S_tail` for node transfers and balance inputs. | Open · — | §6, §16.10; [OG-017](./moonblokz-open-gaps-register.md) |
-| AR-002 | Creator equivocation is neither detected nor penalized; the creator picks the winning twin. | High | Equivocation proof (two headers, same creator and sequence) with a penalty and disqualification; published confirmation depth. | Open · — | §11, §16.15; BC-FR21 |
+| AR-002 | Creator equivocation is neither detected nor penalized; the creator picks the winning twin. | High | Adopted: same-parent twins are held at the first-adopted twin, resolved by a subgroup verdict recorded in a twin evidence block, and the equivocator is excluded from block creation for `W` blocks (DEC-162..165). | Mitigated · DEC-162..165, 6.12, 6.13 | §11, §16.15; BC-FR21, BC-FR70–FR72 |
 | AR-003 | A colluding pair concentrates accumulated vote and dominates block creation on low-traffic chains. | High (Medium at high traffic) | Credit at most one `vs` per vote target per block; alternatives: vote weight tied to fee, no credit for votes the creator includes for its partner. | Open · — | §7, §12, §16.3, §16.4; BC-FR37, BC-FR55 |
 | AR-004 | Support signatures may not bind to proposer and deviating block. | High | Sign `(proposer, deviation sequence, deviating block hash)`. | Treatment proposed · O-002, story 6.4 | §2, §9; [OG-014](./moonblokz-open-gaps-register.md) |
 | AR-005 | An approval-less deviation block can outweigh the original creator's block through its own vote credits. | Medium | Adopted: `consumed_votes` is the post-interest, pre-credit snapshot, so `d` is valued before its own credits and is never higher than `u`'s normal block (equal votes tie); verified at Tier 3 (DEC-156). | Mitigated · DEC-156, story 6.2 | §7, §9, §16.2; BC-FR28 |
@@ -45,6 +45,8 @@ Block-level rules for a node transfer or balance input are `s > anchor` plus no 
 ### AR-002 — Creator equivocation
 
 A creator signs two blocks at the same sequence, one paying a merchant and one spending the same funds elsewhere. With equal value, the larger serialized size wins the FR21 tie-break, so every node that receives both converges on the creator's choice. Depth is one block with an honest next creator, more under AR-003.
+
+**Treatment (DEC-162..165, BC-FR70–FR72).** Only same-parent twins count: the twin at the divergence point is unavoidable for a profitable fork, because the creator entitled there is unique. A ready node never switches to the other twin without a verdict, so a late reveal fails outright. A subgroup chosen at the shared parent votes for its first-adopted twin, and the entitled creator records the proof and, with a quorum, the bitmap verdict in a twin evidence block; the verdict brings stranded nodes back. The equivocator is excluded from block creation and from `A` for `W` blocks. Residuals: without a quorum the hold stays and nodes that adopted the attacker's twin first stay stranded until a restart; only the equivocator is provable, never its accomplices, who sign on one branch only; and each attempt costs about 99 votes of radio time (AR-007, AR-011), which the exclusion limits per identity.
 
 ### AR-003 — Vote concentration by a colluding pair
 

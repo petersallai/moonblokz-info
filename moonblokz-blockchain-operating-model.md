@@ -38,11 +38,12 @@ Node #0 after genesis behaves as Ready. "Not-ready" is the FR1 indication return
 | Inbound transaction | Not-ready; no classification, no mempool admission (FR14) | Not-ready (FR10) | Exactly one FR14 outcome: Accepted-to-mempool, Already-confirmed, Duplicate-in-mempool, Deferred, Rejected | not built (7.3) |
 | Local transaction submit | `Rejected(not-ready)` (FR55) | `Rejected(not-ready)` | Created, Held(reason), or Rejected(reason) (FR55) | not built (10.5) |
 | Inbound support message | Accepted on format validity and LRU de-duplication alone; state-dependent checks deferred (FR26) | Same as Collecting (FR26) | Full FR26 checks; an Accepted message is accumulated by the proposer (FR27) | not built (6.5, 6.6) |
+| Inbound twin vote | Relayed under FR26; conflict noted | Same as Collecting | Relay; note the conflict; a subgroup member votes once for its first-adopted twin, and the entitled creator collects votes for the evidence block (FR71) | not built (6.13) |
 | Tick — parent recovery | At most one request per tick, toward the Stored head whose retry interval elapsed longest ago (FR1, FR19) | Not specified | Same as Collecting (FR19 has no phase limit) | built (4.4) |
 | Tick — mempool replenishment | Not scheduled (FR46) | Not scheduled (FR46) | Runs on every node whose mempool is below the fill threshold, creator or not (FR46) | not built (8.4; responder 10.4) |
 | Tick — block creation | Not-ready (FR1 gates FR44) | Not specified | If the local node is the current creator: create when the fill threshold is reached, or on the timer with at least one includable transaction; replay obligations go out as soon as the node is eligible (FR45, FR46) | not built (8.3, 8.4; replay 9.2–9.5) |
 | Tick — grace period | Not specified | Not specified | Widen the admitted creator set by one; no accumulated-vote reset (FR47) | not built (8.5) |
-| Queries | Not-ready (FR1, FR43) | Not-ready (FR42, FR43); FR40 / FR41 answers are not observable before Ready (FR8) | Transaction state Unknown / In-mempool / Confirmed with depth (FR40); balance and accumulated vote, address UTXOs (FR41); active-chain blocks only, else not-available (FR42); at most one transaction (FR43) | not built (10.1–10.4; not-ready gates built in 5.1) |
+| Queries | Not-ready (FR1, FR43) | Not-ready (FR42, FR43); FR40 / FR41 answers are not observable before Ready (FR8) | Transaction state Unknown / In-mempool / Confirmed with depth and the disputed flag (FR40, FR70); balance and accumulated vote, address UTXOs (FR41); active-chain blocks only, else not-available (FR42); at most one transaction (FR43) | not built (10.1–10.4; not-ready gates built in 5.1) |
 | Creator-role determination | Not-ready (FR1) | Not specified | Whether the local node tops the FR38 creator order (FR44) | not built (8.2) |
 
 ## 4. Block Status Machine
@@ -103,6 +104,7 @@ What a valid chain must satisfy, grouped by scope. **Checked** names where the r
 | I-05 | Creator signature valid against the chain-derived key (node #0: the trust anchor); a block verified once is marked and not re-verified while the node runs (RAM-only mark; DEC-157) | FR6, FR9, FR16, FR54 | T1 in Ready for a direct head extension and for a branch-independent key; T3; pass | partial — pass built (5.4); head extension built (6.0); branch-independent intake check and verified mark built (6.2); chain-switch replay 6.3 |
 | I-06 | A transaction block never holds both a registration and a complex transaction (carry-forward included) | FR6, FR9, FR51 | T1 | built (4.2) |
 | I-07 | A block's UTXO-output count ≤ `max_block_utxo_output` | FR6, FR9, FR34, FR56 | T1 (locked; bitfield width before the lock, DEC-132); pass (held configuration, also before the lock, DEC-133) | built (6.11) |
+| I-42 | The creator signature signs the header with the signature zeroed followed by `H(payload)`, so a header plus payload hash verifies it | FR9, FR70 | T1; T3; pass | not built (6.12) |
 
 ### 5.2 Creator, Votes, and Approval
 
@@ -116,6 +118,8 @@ What a valid chain must satisfy, grouped by scope. **Checked** names where the r
 | I-13 | No self-vote, except node #0 voting 0 | FR6, FR9, FR54 | T1 | built (4.2) |
 | I-14 | Accumulated-vote arithmetic never overflows `u32`; an overflowing step is invalid | FR23, FR37 | vote step (pass, T3) | built (3.1) |
 | I-15 | Approval evidence: subgroup members, valid aggregate signature, count ≥ `required_support`, size ≤ `MAX_AGGREGATED_SIGNATURES`, `supporter_vote_sum` per formula | FR6, FR9, FR12, FR21, ADR-015 | T3; pass | not built — the pass skips evidence blocks; 6.7 |
+| I-43 | Twin evidence: the proof header has the creator `c`, sequence `s`, parent `P` and a valid FR70 signature, differs from the branch's own block at `s` (which has creator `c` and parent `P`); `s ≥ S_tail`; one per `(c, s)` in the window; a verdict has no bit at a position `≥ m`, at least `required_support` bits, and a valid aggregate | FR6, FR9, FR71 | T3; pass | not built (6.13) |
+| I-44 | A node under an FR72 exclusion (a twin evidence block for it in the window) is not an entitled creator and is not in `A`; the evidence block resets its accumulated vote | FR38, FR72 | T3; pass | not built (6.13) |
 
 ### 5.3 Value and Balances
 
@@ -182,12 +186,13 @@ Durable truth is only the node id, the private key (never handed to this module)
 | Projection | Derived from | Forward update / chain-switch revert | Lives in | FRs | Built |
 |---|---|---|---|---|---|
 | Per-node balance | Seeds, transaction effects, creator credit | Apply per block / inverse of the block's effects | `NodeInfo.balances` (8 KB) | FR34, FR36, FR23 | partial — pass built (5.3, 5.4); head extension and per-block inverses built (6.0); chain-switch walk 6.3 |
-| Accumulated vote | Vote credits, anti-capture interest, creator reset, deviation penalty, balance-block seeds | FR37 steps in order / `undo_block` in reverse | `VoteEngine.accumulated_vote` (4 KB) | FR34, FR37 | built (3.1, 3.2); walk 6.3 |
+| Accumulated vote | Vote credits, anti-capture interest, creator reset, deviation penalty, twin-evidence reset (FR72), balance-block seeds | FR37 steps in order / `undo_block` in reverse | `VoteEngine.accumulated_vote` (4 KB) | FR34, FR37 | built (3.1, 3.2); walk 6.3 |
 | Public-key map | Registrations; slot 0 = trust anchor | Set per registration / clear on rollback | `NodeInfo.public_keys` (32 KB Schnorr, 96 KB BLS) | FR34, FR35 | partial — pass built (5.3); head extension and registration inverse built (6.0); chain-switch walk 6.3 |
 | `max_known_node_id` | Earliest balance block's `max_node_id` (0 at genesis), +1 per registration | Increment / decrement | `NodeInfo.max_known_node_id` | FR3, FR34, FR54 | built (5.3, 5.4, 6.0) — pass; head extension and registration inverse (6.0) |
 | `seed_source_sequence` | Latest balance entry or registration per node | Set to the applied block / bounded backward scan (≤ `W`) | `NodeInfo.seed_source_idx` (block index today) | FR34, FR50, FR23 | partial — the pass and the head extension set it; the move to a balance block for every listed entry built (6.0); sequence form 9.3; restore by backward scan 6.3 |
 | Block navigation and available-UTXO bits | Durable block-tree; derived UTXO outputs and consumed UTXO inputs | Set on derivation, cleared on consumption / inverse for leaving blocks; re-zeroed on FR5 | `BlockEntry` table (600 × 76 B) | FR34, FR35, ADR-016 | partial — built (4.1, 5.3–5.5, 6.8, 6.11); head extension and per-block inverse built (6.0); walk 6.3 |
-| Creator order | Accumulated vote, descending, ties by lower id | Recomputed on demand | not stored | FR38 | built (3.3) |
+| Creator order | Accumulated vote, descending, ties by lower id; FR72-excluded nodes left out | Recomputed on demand | not stored | FR38 | built (3.3) |
+| Equivocation exclusions | Twin evidence blocks in the window | Set when an evidence block is applied, cleared when it leaves the window; per-block inverse | window-derived; sized by 6.13 | FR72 | not built (6.13) |
 | Mempool contents and eligibility | FR14 classification, Deferred marker, expiry sequence | Remove confirmed and expired / re-add on the backward walk, remove on the forward walk; FR15 re-evaluation | `Mempool` crate (~23–25 KB) | FR14, FR15, FR30, FR32 | partial — crate primitives built (2.1, 2.2); wiring 7.3–7.5 |
 | Head `branch_value` | Per-block values above `S_tail` (exclusive) | Add on extension, subtract the new `S_tail` block's value on tail advance / unchanged by a switch | `ChainHeadEntry.branch_value` (Connected side heads); `active_branch_value` (the active branch) | FR19, FR21 | built (6.1); value hand-over on a switch 6.3 |
 | `chain_heads` and block flags | Block-tree graph and the active-chain selection | FR19 events (i)–(v) | `ChainHeadsTable`, `BlockEntry.flags` | FR9, FR19, FR59 | partial — built (4.1, 4.4, 5.10); event (v) built (9.1); head-entry refresh on extension built (6.0); event (iii) 6.3 |
@@ -238,7 +243,7 @@ Each flow lists its trigger, its steps, and what happens on failure. Step tables
 |---|---|---|---|
 | 1 | Stored → Connected for side blocks: Tier 2 once ancestry reaches the active chain; failure deletes with descendants | FR9, FR19, FR21 | built (6.1) |
 | 2 | Compare the highest-ranked admissible affected head with the active head: `branch_value`, then larger tip size, then lowest tip hash, in RAM only | FR21, FR22 | built (6.2); the switch it calls 6.3 |
-| 3 | Bound: switch only if the divergence point satisfies `D ≥ S_head − H + 1` against the node's own head; a branch below it is reclaimed (§7.4 step 8), never switched | FR23, FR58 | not built (9.7) |
+| 3 | Bound: switch only if the divergence point satisfies `D ≥ S_head − H + 1` against the node's own head; a branch below it is reclaimed (§7.4 step 8), never switched; never across a same-parent twin without a verdict for the candidate's twin (§7.9) | FR23, FR58 | not built (9.7) |
 | 4 | Backward walk to the common ancestor: invert every projection per block, re-add its transactions to the mempool, Active → Connected | FR9, FR23, FR32, FR35, FR39 | not built (6.3; only `undo_block` exists) |
 | 5 | Forward walk to the new head: Tier 3 plus effects per block (the 7.2 step), remove transactions from the mempool, → Active | FR9, FR23, FR39 | not built (6.3) |
 | 6 | Finish: window expiry, deferred re-evaluation, `chain_heads` event (iii); discard a demoted proposer's accumulator | FR15, FR19, FR27, FR32 | not built (6.3, 6.6, 7.4, 7.5) |
@@ -272,8 +277,8 @@ Each flow lists its trigger, its steps, and what happens on failure. Step tables
 |---|---|---|---|
 | 1 | Is the local node the FR38 top, an admitted fallback, or the proposer? | FR38, FR44 | not built (8.2; vote-crate primitives built in 3.3) |
 | 2 | Trigger: fill threshold reached, or timer elapsed with at least one includable transaction; replay obligations go at once | FR45, FR46 | not built (8.3) |
-| 3 | Assemble: replay first, then mempool by fee per byte (own first on ties), never mixing registrations and complex transactions, within `block_size_limit` | FR45 | not built (8.3) |
-| 4 | Header: next sequence, creator, `mined_amount = mining_reward`, `consumed_votes`, deviation fields, parent hash, signature via the crypto module | FR45, FR53, FR68 | not built (8.1, 8.3) |
+| 3 | Assemble: replay first, then a due FR71 twin evidence block, then mempool by fee per byte (own first on ties), never mixing registrations and complex transactions, within `block_size_limit` | FR45 | not built (8.3) |
+| 4 | Header: next sequence, creator, `mined_amount = mining_reward`, `consumed_votes`, deviation fields, parent hash, signature via the crypto module over the header and `H(payload)`; never a second child of a parent (FR70) | FR45, FR53, FR68 | not built (8.1, 8.3) |
 | 5 | Accept the created block through the 7.2 path, emit it as the outcome, reschedule | FR10, FR45, FR46 | not built (8.3, 8.4); the §7.2 path it reuses is built in 6.0 |
 | 6 | Grace expiry: admit one more creator, no vote reset; a resulting deviation block opens the approval accumulator | FR27, FR37, FR44, FR47 | not built (8.5) |
 
@@ -319,6 +324,22 @@ The mempool is empty after a restart (FR30, FR59). Radio outcomes carry no cause
 | 6 | Return `ResumedReady` or `ResumedCollecting`; release blocks below `S_tail` | FR48, FR59 | built (5.10, 9.1) |
 
 Blocks deleted before the restart can return, because storage has no delete; every deletion driver re-fires, so the node converges ([architecture](./moonblokz-blockchain-architecture.md) §3.6). The control-plane load still returns the private key until Story 6.9.
+
+### 7.9 Twin Conflict
+
+**Trigger:** the intake of a second same-parent block by one creator (FR70), or a twin vote naming a block other than the one held (FR71). **Needs:** both twins share the parent `P`, which every involved node holds.
+
+| # | Step | FRs | Built |
+|---|---|---|---|
+| 1 | Detect the conflict `(c, s, P)` at intake against the stored children of `P` | FR70 | not built (6.12) |
+| 2 | Hold: FR22 never switches across the twin to the other twin without a verdict; the chain keeps extending | FR22, FR70 | not built (6.12) |
+| 3 | FR40 flags confirmations at or above the unresolved twin as disputed | FR40, FR70 | not built (6.12) |
+| 4 | Subgroup from the state at `P` (seed with `"twin"`, `A` without `c`); a member votes once for its first-adopted twin; a restarted node abstains at or below its ready-entry head; votes are relayed | FR26, FR71 | not built (6.13) |
+| 5 | The entitled creator of a branch emits the twin evidence block after due replays: proof, `c`'s vote snapshot, and with a quorum the bitmap verdict | FR45, FR71 | not built (6.13) |
+| 6 | Validate it (I-43) and apply FR72: exclude `c` from the creator order and `A` for `W` blocks, reset its accumulated vote | FR71, FR72 | not built (6.13) |
+| 7 | A node holding the other twin admits the evidence block on its side branch; a verdict for that branch lifts the hold and FR22 switches | FR22, FR71 | not built (6.13) |
+
+**On failure:** without a quorum the evidence carries the proof only (penalty, no decision) and the hold stays; a node that adopted the losing twin first stays on it until a restart, whose FR2 acquisition normally picks the majority chain. One voting round only.
 
 ## Related Documents
 
