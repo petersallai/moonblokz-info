@@ -169,7 +169,7 @@ For a dropping transaction block `t` with unspent set `O = {o : U_t[o] = 1}`: on
 - Twin hold: a ready node never switches to a branch whose first divergent block is a same-parent twin of its own block unless that branch carries a verdict-bearing twin evidence block for its twin [FR70, FR71].
 - Re-evaluation only when a non-active head is extended (including a new fork) or goes Stored → Connected. Only the affected heads are compared with the active head, once per admission: the highest-ranked admissible one [FR22, DEC-152].
 - Switch at divergence point `D` [FR23, FR58, DEC-159]:
-  - `D ≥ S_head − Hv + 1`, measured against the node's own head: atomic undo to `D` and forward redo with Tier 3; the mempool is reconciled per block; a failure applies FR5 to the candidate.
+  - `D ≥ S_head − Hv + 1`, measured against the node's own head: atomic undo to `D` and forward redo with Tier 3; the mempool is reconciled per block. The common ancestor must lie at or above the completeness horizon `C`, a signature pre-pass first checks fork-independent creators, and the replay's tail releases wait for the commit, so a Tier 3 failure restores the original chain in place and deletes the offending block with its descendants (no FR5). Until 9.7 retains the horizon, below-tail references inside the bound are trusted [DEC-166..170].
   - `D ≤ S_head − Hv`: the branch never becomes active and is reclaimed when it leaves the bound; ready state has no full-reconstruction path.
 - Storage pressure evicts exactly one side branch, the lowest `BV` (ties: lowest tip sequence, creator id, hash), back to the shared ancestor; active-chain and horizon blocks are never evicted [FR57]. `chain_heads` overflow evicts the non-active head with the lowest `head_sequence` [FR19].
 
