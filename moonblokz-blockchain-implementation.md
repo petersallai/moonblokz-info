@@ -210,7 +210,7 @@ The fragmentation format is defined by the radio layer ([`moonblokz-radio-algory
 
 ## Pruning Cost Is Not Negligible
 
-Pruning is bounded by rule: one lowest-value side branch per capacity-pressure event, walked back to the nearest shared ancestor, with branch bookkeeping refreshed afterwards ([Blockchain PRD](./moonblokz-blockchain-prd.md) FR57). Tail-out-of-range side branches are also reclaimed on tail advance (FR58). The cost is metadata churn (`chain_heads`, `head_ref_count`), not flash I/O: the storage interface has no delete, so deletion releases the in-memory slot and the durable bytes are overwritten on the next `save_block` to that index.
+Pruning is bounded by rule: one lowest-value side branch per capacity-pressure event, walked back to the nearest shared ancestor, with branch bookkeeping refreshed afterwards ([Blockchain PRD](./moonblokz-blockchain-prd.md) FR57). Side branches outside FR58's switch bound (`D ≤ S_head − H`) are also reclaimed as soon as the head moves them out, and tail-out-of-range Stored fragments on tail advance (FR58). The cost is metadata churn (`chain_heads`, `head_ref_count`), not flash I/O: the storage interface has no delete, so deletion releases the in-memory slot and the durable bytes are overwritten on the next `save_block` to that index.
 
 ## Caching and Flash Considerations
 
@@ -236,12 +236,12 @@ If the node retains only a narrow history window beyond the currently active cha
 
 If the node retains a larger verification horizon, such as roughly an extra chain-length worth of history, future active-chain switches may become cheaper to validate but the storage footprint increases.
 
-[Blockchain PRD](./moonblokz-blockchain-prd.md) FR58 settles it: each node retains a verification horizon `H` (`0 ≤ H ≤ W`, default `⌊W/10⌋`, node-level and not chain configuration) beyond the window. Divergences within the cheap zone reconcile in place via FR23; deeper ones are reached only through a full FR3 reconstruction, gated by tip maturity and higher branch value. The choice of `H` affects:
+[Blockchain PRD](./moonblokz-blockchain-prd.md) FR58 settles it: the chain configures a verification horizon `H` (`verification_horizon`, `1 ≤ H ≤ W`, default 50, identical on every node) retained beyond the window, and a node switches only to a branch that diverges within `H` blocks of its own head, always in place via FR23; ready state has no full FR3 reconstruction (DEC-159, DEC-160). The choice of `H` affects:
 
 - storage sizing,
 - pruning policy,
 - validation latency after branch changes,
-- whether active-chain switching feels like a lightweight update or a heavyweight recovery event.
+- how deep a reorganization the chain accepts, and so how long both sides of a partition may advance before they can no longer be reconciled.
 
 ## Configuration Boundaries Suggested by Parts III, IV, and V
 
@@ -318,7 +318,7 @@ The bootstrap is realized in [`moonblokz-blockchain-architecture.md`](./moonblok
 
 Active-chain switch is not just a matter of choosing a new tip hash. It is a rare but first-class correction event: the Chain Knowledge Core remains the orchestrating truth source while derived subsystems (per-node accumulated vote and creator-order state, node-derived active balances, branch bookkeeping, mempool eligibility) are reconciled against the newly selected branch. A practical strategy is to walk backward to the common ancestor and then forward along the new active branch while updating derived state incrementally — chain switch is a structured recomputation workflow rather than a side effect attached to tip replacement.
 
-The concrete reconciliation workflow (backward walk → forward walk; available-UTXO bits restore/replay; balance rollback/replay; accumulated-vote rollback/apply; mempool re-eligibility recheck; FR58 deep-zone reconstruction) is defined in [`moonblokz-blockchain-architecture.md`](./moonblokz-blockchain-architecture.md) §4.2 (`reconciliation.rs` module) and in PRD FR23.
+The concrete reconciliation workflow (backward walk → forward walk; available-UTXO bits restore/replay; balance rollback/replay; accumulated-vote rollback/apply; mempool re-eligibility recheck; FR58 switch bound) is defined in [`moonblokz-blockchain-architecture.md`](./moonblokz-blockchain-architecture.md) §4.2 (`reconciliation.rs` module) and in PRD FR23.
 
 ## Scheduling Implications of snake_chain
 

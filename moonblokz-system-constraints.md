@@ -54,7 +54,7 @@ Authoritative source: [`moonblokz-blockchain-architecture.md`](./moonblokz-block
 |---|---:|---|
 | `MAX_NODES` | 1000 | **Network-wide registered-node cap.** Sizes all node-id-indexed arrays (`NodeInfo`, `VoteEngine.accumulated_vote`); every node holds an entry for every registered node. Dominant RAM driver — see §3. |
 | `SNAKE_CHAIN_LENGTH_MAX` | 500 | **Capacity** of the active-chain window, not its length. The length in force, `W`, is chain configuration ([BC-FR56](./moonblokz-blockchain-prd.md)) and acceptance requires `W ≤ SNAKE_CHAIN_LENGTH_MAX`; a build whose capacity is below the chain's `W` cannot join. See D2 in §7. |
-| `MAX_BLOCKS` | 600 | In-RAM block-table slots; 1:1 with RP2040 durable flash capacity (see §4). |
+| `MAX_BLOCKS` | 600 | In-RAM block-table slots; 1:1 with RP2040 durable flash capacity (see §4). Chain-config acceptance also requires `W + 2·H ≤ MAX_BLOCKS` ([BC-FR8](./moonblokz-blockchain-prd.md), DEC-160). |
 | `MAX_BRANCH_COUNT` | 40 | Chain-heads table capacity; collecting-state branch headroom. |
 | `MEMPOOL_COMPACT_BYTES` | 20160 | Mempool compact buffer (~10 × `MAX_BLOCK_SIZE`). |
 | `MEMPOOL_MAX_ENTRIES` | 128 | Mempool index capacity. |

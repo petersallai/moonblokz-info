@@ -33,7 +33,8 @@ Ordered by severity at the time of entry.
 | AR-012 | Node #0 may vote for itself for the chain's lifetime. | Low | Limit the exemption to the period before the first non-genesis registration. | Open · — | §6, §13; BC-FR6, BC-FR37, BC-FR54 |
 | AR-013 | The tail-block creator can grind the subgroup seed of its own later proposals. | Low | Accept, or widen the seed with further past block hashes. | Open · — | §9, §16.6; ADR-015 |
 | AR-014 | A collecting or restarting node can be captured by a forged high-sequence segment. | Medium if re-scoped | Reject seedless creator signatures, or add a checkpoint; sequence-plausibility bound in collecting. | Outside threat model (Project Lead, 2026-10-20) | §4, §16.13; BC-FR2, BC-FR3, BC-FR59 |
-| AR-016 | A partition longer than `W` becomes a permanent fork; transactions stay valid on both sides. | Medium | Post-MVP long-disconnect recovery. | Accepted · OG-006 | §16.14; [OG-006](./moonblokz-open-gaps-register.md) |
+| AR-016 | A partition longer than `W`, or one whose two sides both advance more than `H` blocks past their divergence point, becomes a permanent fork; transactions stay valid on both sides. | Medium | Post-MVP long-disconnect recovery; a larger `H` widens the reconcilable range at storage cost. | Accepted · OG-006, DEC-159 | §16.14; [OG-006](./moonblokz-open-gaps-register.md); BC-FR58 |
+| AR-017 | A ready node's deep-zone chain switch ran the window-anchored FR3 pass, whose pre-seed auto-acceptance let a branch define its own starting balances, votes, keys and carry-forwards. | High | Adopted: no deep zone; every switch is an in-place walk within `H` blocks of the head (DEC-159). | Mitigated · DEC-159, 9.7 | §4, §11; BC-FR3, BC-FR58 |
 
 ## Detail Notes
 
@@ -82,6 +83,8 @@ Paths to a successful deviation:
 Spends of outputs re-included at another position become invalid rather than re-includable (§16.11).
 
 Time no longer limits the attack at realistic `r`. Support collection takes minutes, during which the normal branch gains fewer than `r` blocks. The `deviation_replay_insertion_delay_ms` pause (300 s) is short against `r` blocks.
+
+**Bound by DEC-159.** A switch is admitted only within `H` blocks of the switching node's own head, so an approved deviation that overturns more than `H` normal blocks would leave the nodes on the normal branch unable to switch while the deviation's nodes stay, splitting the network. At the default `r = 3` the depth (about 3) is far below the default `H = 50`; a larger `r` needs `H` above the depth this table shows, or the evidence-value treatment above.
 
 ### AR-007 — `required_support` calibration
 
@@ -137,6 +140,14 @@ The ingredients are:
 - a restart re-enters collecting (§4).
 
 The attack needs radio-local presence, because ready nodes neither store nor relay out-of-window blocks (BC-FR60), and the forged segment must qualify before the genuine one. The victim then discards the real chain as out-of-window.
+
+### AR-016 — Permanent forks
+
+Under DEC-159 a node switches only to a branch that diverges within `H` blocks of its own head. A partition side that cannot reach the FR12 approval quorum stalls at its first absent creator, so it can still adopt the other side's chain within the FR60 window. The fork becomes permanent before `W` only when both sides keep advancing — both must complete approvals, which needs a near-even split — and both pass `H` blocks beyond the divergence point.
+
+### AR-017 — Deep-zone trust downgrade (mitigated)
+
+Before DEC-159, a ready node switched to a branch diverging more than `H` blocks below its head through the window-anchored FR3 pass (the FR58 deep zone). The pass seeded every node without a seed in the shared prefix from the branch's own balance entries — balance, vote count and public key — and trusted replay obligations and UTXO references below the segment (§4). A branch could therefore define its own starting state: inflated vote counts give `consumed_votes` that win FR21, and zero-input carry-forwards for dropped blocks create money. The pass's justification, attestation by a continuous signed chain of length `≥ W`, is circular, because signatures and votes are checked against keys and seeds the branch itself supplies. **Treatment (DEC-159):** no deep zone; every switch is an in-place FR23 walk within `H` blocks of the head, so every check runs on the node's own verified state.
 
 ## Analysis Models
 

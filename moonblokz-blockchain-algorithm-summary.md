@@ -7,7 +7,7 @@ A compact, implementation-free restatement of the blockchain consensus and ledge
 - Nodes: constrained devices on lossy, low-bandwidth broadcast radio (LoRa-class); partial, delayed, conflicting knowledge; no global clock — each node has only a local monotonic clock.
 - Identity by sponsorship: a node exists only after an existing node registers its key and pays `registration_price`. Node ids are contiguous, stride-1, never reused.
 - Consensus class: leader-based, vote-weighted, best-effort / eventually consistent; fork choice is a heaviest-branch rule over vote-derived block values. No PoW/PoS, no BFT finality.
-- Bounded history: each node retains a sliding window of `W` active-chain blocks (plus an optional horizon `Hv`); essential state is re-emitted at the head before it drops (`snake_chain`).
+- Bounded history: each node retains a sliding window of `W` active-chain blocks plus a verification horizon of `Hv` blocks below it; essential state is re-emitted at the head before it drops (`snake_chain`).
 - Explicit non-goals: radio flooding/jamming by a stronger adversary; physical isolation with controlled misinformation ([Concept](./moonblokz-blockchain-concept.md) §Security Framing); chain-internal recovery from long disconnection [FR60, OG-006].
 
 ## 1. Notation and primitives
@@ -17,7 +17,7 @@ A compact, implementation-free restatement of the blockchain consensus and ledge
   - Schnorr sign: `k = H_tag("nonce", sk ‖ m ‖ ctr)` (deterministic), `R = kG` normalized to even y, `e = H_tag("challenge", r ‖ pk ‖ m) mod n`, `s = k + e·sk mod n`. Verify: `r < p`, `s < n`, `x(sG − eP) = r`.
   - Schnorr aggregate (one message `m` for all signers): `r_sum = Σ r_i mod p`; `seed = H_tag("aggregate", r_sum ‖ r_sum ‖ m)`; `w_i = H_tag("rand", seed ‖ i) ∈ [1, n−1]`; `s* = Σ w_i s_i mod n`; artifact `(count, s*, r_1..r_k)`, `34 + 32k` B. Verify `x(s*G − Σ w_i e_i P_i) = x(Σ w_i R_i)`; signer order is part of the artifact.
   - BLS aggregate: library multisignature aggregation, constant 50 B.
-- `S_head`, `S_tail` (oldest active block; `0` until the chain reaches length `W`); `W` = window length (chain-config); `Hv ∈ [0, W]` = per-node verification horizon, default `⌊W/10⌋`, not consensus (named `H` in the PRD and [Glossary](./moonblokz-glossary.md)).
+- `S_head`, `S_tail` (oldest active block; `0` until the chain reaches length `W`); `W` = window length (chain-config); `Hv ∈ [1, W]` = verification horizon and maximum switch depth, chain-config `verification_horizon` (default 50), identical on every node (named `H` in the PRD and [Glossary](./moonblokz-glossary.md)) [FR58, DEC-160].
 - `M` = `max_known_node_id` watermark; node `n` exists ⇔ `n ∈ [0, M]`.
 - `av(n)` = accumulated vote (u32, checked arithmetic); `vs` = `vote_scale`, `vi` = `vote_interest`.
 - `pk0` = node #0 public key, compiled into every node (immutable trust anchor) [FR69].
@@ -78,7 +78,7 @@ Outcome ∈ {Accepted-new, Already-known, Invalid-evidence, Out-of-window, Defer
   - The creator signature is exact evidence in ready state for a direct extension of the active head with a derivable key, and for any block whose creator's key is branch-independent (node 0, or seeded at or below `S_tail`). Otherwise signature checks are opportunistic (a failure does not invalidate) and the decision waits for Tier 3. A verified block is marked and not verified again [FR9, DEC-157].
   - Header vote form: `first_voted_node = c` ⇒ `consumed_votes_from_first_voted_node = 0`; otherwise `consumed_votes ≤ consumed_votes_from_first_voted_node` [FR9].
   - For a ready direct head extension, also exact evidence: a non-proposer block above a deviation block; a carry-forward failing §10.3 (i)–(v).
-- **Tier 2** (Connected: ancestry reaches the active chain; lookups only): locked configuration at the block's sequence (fee policy, price, custodian fee, approval threshold); `mined_amount = mining_reward`; UTXO input `q` retained, `i` in range, declared `a` equals the output amount; `new_pk` unique; structural `snake_chain` checks when the `D − W` reference is retained (otherwise deferred to Tier 3 / deep zone).
+- **Tier 2** (Connected: ancestry reaches the active chain; lookups only): locked configuration at the block's sequence (fee policy, price, custodian fee, approval threshold); `mined_amount = mining_reward`; UTXO input `q` retained, `i` in range, declared `a` equals the output amount; `new_pk` unique; structural `snake_chain` checks (the `D − W` reference is retained for every switchable branch, FR58).
 - **Tier 3** (Active: replay of derived state, via the processing pass, chain-switch replay or a ready head extension): `consumed_votes`, `first_voted_node`, `consumed_votes_from_first_voted_node` match the projected vote state; creator credit; NodeInfo equals the state at `s − 1` and `max_node_id = M`; every rule of §6; `U_q[i] = 1`; carry-forward state; replay presence and order; evidence (subgroup membership, count ≥ `r`, aggregate verifies, ≤ `MAX_AGG`, recomputed `supporter_vote_sum`); creator entitled — top, admitted fallback or proposer [I-10].
 - **Pacing soft-fail** (ready intake, ordinary transaction blocks only): `fill(b) < θ·L` ∧ `arrival(b) − arrival(parent) < inter_block_interval` (local arrival times) ⇒ Deferred and re-evaluated after the remainder; not invalid.
 - Ready direct head extension: validated before storing; valid ⇒ Stored → Active and becomes the head; invalid ⇒ not stored. Stored children of the new head are then applied, lowest hash first ([Algorithm Model](./moonblokz-blockchain-algorythm.md) §Ready phase, FR16).
@@ -161,11 +161,10 @@ For a dropping transaction block `t` with unspent set `O = {o : U_t[o] = 1}`: on
 - Admissible head: Connected/Active with a continuous tip-ending segment of ≥ `W` blocks, i.e. `tip.sequence ≥ S_tail + W − 1` once matured (`S_head − S_tail + 1 ≥ W`); before maturity: the whole genesis-anchored chain [FR21, DEC-154].
 - Active head = `argmax BV` over admissible heads; ties: larger tip `|b|`, then lower tip hash [DEC-155].
 - Re-evaluation only when a non-active head is extended (including a new fork) or goes Stored → Connected. Only the affected heads are compared with the active head, once per admission: the highest-ranked admissible one [FR22, DEC-152].
-- Switch at divergence point `D` [FR23, FR58]:
-  - Cheap zone `D ≥ S_tail + W − Hv`: atomic undo to `D` and forward redo with Tier 3; the mempool is reconciled per block; a failure applies FR5 to the candidate.
-  - Deep zone `S_tail ≤ D < S_tail + W − Hv`: only if `tip ≥ S_tail + W − 1` ∧ higher `BV`, a full processing pass runs on the candidate; on failure it re-runs on the original chain; a second failure ⇒ collecting.
-  - `D < S_tail`: the branch is reclaimed and can never become active.
-- Storage pressure evicts exactly one side branch, the lowest `BV` (ties: lowest tip sequence, creator id, hash), back to the shared ancestor; active blocks are never evicted [FR57]. `chain_heads` overflow evicts the non-active head with the lowest `head_sequence` [FR19].
+- Switch at divergence point `D` [FR23, FR58, DEC-159]:
+  - `D ≥ S_head − Hv + 1`, measured against the node's own head: atomic undo to `D` and forward redo with Tier 3; the mempool is reconciled per block; a failure applies FR5 to the candidate.
+  - `D ≤ S_head − Hv`: the branch never becomes active and is reclaimed when it leaves the bound; ready state has no full-reconstruction path.
+- Storage pressure evicts exactly one side branch, the lowest `BV` (ties: lowest tip sequence, creator id, hash), back to the shared ancestor; active-chain and horizon blocks are never evicted [FR57]. `chain_heads` overflow evicts the non-active head with the lowest `head_sequence` [FR19].
 
 ## 12. Economics (supply flows)
 
@@ -192,8 +191,9 @@ Block #0 (by node 0, `previous_hash = 0³²`): registration of node 0 (`new_node
 | 8 | `parent_recovery_per_head_retry_interval_ms` | 120 000 | | 27 | `deviation_replay_insertion_delay_ms` | 300 000 |
 | 9 | `parent_recovery_min_emit_interval_ms` | 10 000 | | 28 | `replay_block_reward` | 100 |
 | 10 | `required_support` (r) | 3 (⇒ m = 5) | | 29 | VM fuel limit | its ceiling |
+| | | | | 30 | `verification_horizon` (Hv) | 50 |
 
-Literal-only and bound-checked at acceptance: 3, 4, 10, 21. The others may be bytecode programs reading other parameters and chain-info (today: the registered-node count). Acceptance also checks `1 ≤ r ≤ MAX_AGG`, `vs ≠ 0`, `W ≤` build capacity, `θ ≤ 100` and `fee_min ≤ fee_max` (literals only).
+Literal-only and bound-checked at acceptance: 3, 4, 10, 21, 30. The others may be bytecode programs reading other parameters and chain-info (today: the registered-node count). Acceptance also checks `1 ≤ r ≤ MAX_AGG`, `vs ≠ 0`, `W ≤` build capacity, `1 ≤ Hv ≤ W`, `W + 2·Hv ≤` block-storage capacity, `θ ≤ 100` and `fee_min ≤ fee_max` (literals only).
 
 ## 15. Open specification gaps
 
@@ -225,10 +225,10 @@ Each entry is defined in the [Open Gaps Register](./moonblokz-open-gaps-register
 11. UTXO references `(q, i)` are branch-relative: after a reorg the same pair may name a different output, and spends of outputs re-included at another position become invalid [ADR-016].
 12. Outside direct head extensions and blocks whose creator key is branch-independent (DEC-157), blocks are stored before signature and state validation (opportunistic signatures, Tier 3 deferred); bounded storage is reclaimed by lowest-`BV` side-branch eviction [FR16, FR57].
 13. Bootstrap acquisition picks the highest tip sequence, not value, among qualifying segments; the processing pass auto-accepts pre-seed state-dependent checks and trusts obligations and UTXO references preceding a window-anchored segment [FR2, FR3, FR6].
-14. Ready nodes discard blocks with `S_new ≥ S_head + W`, and forks with `D < S_tail` are deleted, so a partition lasting more than `W` blocks becomes a permanent fork with operator-only recovery [FR58, FR60].
+14. Ready nodes discard blocks with `S_new ≥ S_head + W`, and forks with `D ≤ S_head − Hv` are deleted, so a partition lasting more than `W` blocks, or one whose two sides both advance more than `Hv` blocks past the divergence, becomes a permanent fork with operator-only recovery [FR58, FR60].
 15. No equivocation detection or penalty is specified; same-creator, same-sequence conflicts are resolved only by the FR21 tie-break (size, hash).
 16. Configuration is immutable and anchored to the compiled-in `pk0`, so any change requires a new chain; unknown configuration ids cause rejection (firmware-capability gating) [FR8, config §3.4].
-17. Branch switching is local and pairwise (triggered head vs active head); `Hv` differs per node and changes only the switch path (cheap vs deep), not the selected chain [FR22, FR58].
+17. Branch switching is local and pairwise (triggered head vs active head); `Hv` is chain configuration and bounds the switch depth identically on every node [FR22, FR58].
 
 ## Related Documents
 
