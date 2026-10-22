@@ -6,7 +6,7 @@ This document is the **authoritative source** for the architecture of the `moonb
 
 When other knowledge-base files (concept, algorithm, implementation, ADR) describe data structures, module boundaries, public API surfaces, RAM/stack budgets, the const-generic catalog, or the crate-split layout, the canonical wording lives in this file. If any other knowledge-base text appears to diverge from the content here, the divergence must be flagged explicitly per the rule in [`AGENTS.md`](./AGENTS.md), and resolution must be left to the user.
 
-The behavioral requirements (FR1–FR69) remain anchored in [`moonblokz-blockchain-prd.md`](./moonblokz-blockchain-prd.md); this architecture document specifies how those requirements are realized in code shape.
+The behavioral requirements (FR1–FR72) remain anchored in [`moonblokz-blockchain-prd.md`](./moonblokz-blockchain-prd.md); this architecture document specifies how those requirements are realized in code shape.
 
 ## Provenance
 
@@ -28,7 +28,7 @@ These HTMLs are the iteration history; this `moonblokz-blockchain-architecture.m
 
 ## Related Knowledge-Base Documents
 
-- [`moonblokz-blockchain-prd.md`](./moonblokz-blockchain-prd.md) — authoritative FR1–FR69 functional requirements and NFR1–NFR26 Non-Functional Requirements that this architecture realizes.
+- [`moonblokz-blockchain-prd.md`](./moonblokz-blockchain-prd.md) — authoritative FR1–FR72 functional requirements and NFR1–NFR26 Non-Functional Requirements that this architecture realizes.
 - [`moonblokz-blockchain-concept.md`](./moonblokz-blockchain-concept.md) — operating-model background and conceptual framing.
 - [`moonblokz-blockchain-algorythm.md`](./moonblokz-blockchain-algorythm.md) — formal algorithm description that this architecture implements.
 - [`moonblokz-blockchain-implementation.md`](./moonblokz-blockchain-implementation.md) — supplementary engineering cautions, source-article bridging notes, and items deferred to later design work. This document defers to `moonblokz-blockchain-architecture.md` for all data-structure, module-boundary, public API, and RAM/stack-budget specifics.
@@ -564,8 +564,10 @@ The full per-module breakdown (processes / data structures / relationships / API
 | `node_info.rs` | FR6, FR50, FR67/FR69 | 4 parallel arrays SoA (~44 KB Schnorr / ~108 KB BLS) |
 | `available_utxo.rs` | ADR-016, FR3, FR51 | (operates on `BlockEntry.available_utxo` co-located) |
 | `creator.rs` | FR44/FR45/FR47 | (stateless; uses `bc.crypto.sign`) |
-| `approval.rs` | FR12/FR15/FR27 | `ApprovalAccumulator` (~2 KB, crypto-agnostic — MAX_BLOCK_SIZE buffer) |
+| `approval.rs` | FR12/FR15/FR27/FR71 | `ApprovalAccumulator` (~2 KB, crypto-agnostic — MAX_BLOCK_SIZE buffer) |
 | `queries.rs` | FR40-FR43 | (stateless) |
+
+Twin handling (FR70–FR72; Stories 6.12, 6.13) adds no module: conflict detection runs at intake against the stored children of the shared parent, the FR70 hold sits in the FR22 comparison before `switch_toward`, the creator's own-child check runs in `creator.rs`, twin votes and the twin evidence block reuse `approval.rs` and its `ApprovalAccumulator`, the FR71 validity rules are a `staged_validation.rs` Tier 3 cluster, the FR72 exclusion is applied where the creator order and the active set are derived, and `queries.rs` adds the FR40 disputed flag.
 | `emit_scratch.rs` | (FR45/FR27 emit source) | `EmitScratch { block_buffer: [u8; MAX_BLOCK_SIZE] }` (~2 KB) |
 
 As built (Story 6.0), the Tier 2 + Tier 3 per-block step and the Ready forward-extension driver are `api.rs` methods over private fields, like the FR3 spine (§8 scenario 6). One step, `validate_and_derive_block` = `derive_block` (the fallible half, which inverts its own applied effects on `Err`) + `commit_block` (the atomic vote-engine `apply_block`, then the infallible commit tail), serves the FR3 pass, Ready intake and `process_genesis`. A `Projection` context (`complete`, `roster_bounded`, `saw_balance_block`) carries the FR3 pass-local flags; Ready and genesis pass the complete context, and nothing is persisted. `staged_validation.rs` keeps the Tier 1 checks. `node_info.rs` carries the per-effect inverses (credit and debit as exact inverses, `clear_node` for a registration, `move_seed_source`), and `chain_heads.rs` the single-entry `refresh_head`.
@@ -617,7 +619,7 @@ pub(crate) struct BlockEntry {
     sequence: u32,                                 //  4 B   FR21/FR19 tie-break (u32::MAX = empty slot)
     available_utxo: [u8; AVAILABLE_UTXO_BYTES],    // 32 B   ADR-016 co-located (see revision note)
     head_ref_count: u8,                            //  1 B   FR19 eviction
-    flags: u8,                                     //  1 B   is_on_active_chain (bit 0) + status (bits 1-2, Stored/Connected/Active) + payload_type (bits 3-4) + signature verified (bit 5)
+    flags: u8,                                     //  1 B   is_on_active_chain (bit 0) + status (bits 1-2, Stored/Connected/Active) + payload_type (bits 3-4; types 1–4 — type 5 needs a third bit, taken from the free bits 6-7 by Story 6.13) + signature verified (bit 5)
     len: u16,                                      //  2 B   exact serialized length (FR6 byte-exact checks; fills the former tail padding)
 }
 // effective 76 B, aligned to 4 → 76 B; total 600 × 76 B = 45 600 B

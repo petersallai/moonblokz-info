@@ -26,7 +26,7 @@ This file should be read after:
 - [`moonblokz-technology.md`](./moonblokz-technology.md), which introduces the technology platform and architectural boundaries,
 - and before the more detailed algorithm and implementation notes.
 
-The authoritative source for the FR-numbered functional requirements (FR1–FR69) and the Non-Functional Requirements referenced from the algorithm, implementation, and ADR documents is [`moonblokz-blockchain-prd.md`](./moonblokz-blockchain-prd.md). This concept document explains the operating model behind those requirements; the canonical wording of any FR lives in the PRD.
+The authoritative source for the FR-numbered functional requirements (FR1–FR72) and the Non-Functional Requirements referenced from the algorithm, implementation, and ADR documents is [`moonblokz-blockchain-prd.md`](./moonblokz-blockchain-prd.md). This concept document explains the operating model behind those requirements; the canonical wording of any FR lives in the PRD.
 
 This document answers the conceptual question: **what kind of blockchain does MoonBlokz become when it must operate over unreliable radio, cannot store unbounded history, and must keep every critical representation compact enough for constrained devices?**
 
