@@ -119,7 +119,7 @@ What a valid chain must satisfy, grouped by scope. **Checked** names where the r
 | I-14 | Accumulated-vote arithmetic never overflows `u32`; an overflowing step is invalid | FR23, FR37 | vote step (pass, T3) | built (3.1) |
 | I-15 | Approval evidence: subgroup members, valid aggregate signature, count ≥ `r_eff` (FR12), size ≤ `MAX_AGGREGATED_SIGNATURES`, `supporter_vote_sum` per formula | FR6, FR9, FR12, FR21, ADR-015 | T3; pass | not built — the pass skips evidence blocks; 6.7 |
 | I-43 | Twin evidence: the proof header has the creator `c`, sequence `s`, parent `P` and a valid FR70 signature, differs from the branch's own block at `s` (which has creator `c` and parent `P`); `s ≥ S_tail`; one per `(c, s)` in the window; a verdict has no bit at a position `≥ m`, at least `r_eff` bits, and a valid aggregate | FR6, FR9, FR71 | T3; pass | not built (6.13) |
-| I-44 | A node under an FR72 exclusion (a twin evidence block for it in the window) is not an entitled creator and is not in `A`; the evidence block resets its accumulated vote | FR38, FR72 | T3; pass | not built (6.13) |
+| I-44 | A node under an FR72 exclusion (a twin evidence block for it in the window) is not an entitled creator and is not in `A`; the evidence block resets its accumulated vote, and it stays 0 through the excluded blocks `e + 1 … e + W` (no credits; DEC-175) | FR38, FR72 | T3; pass | not built (6.13) |
 
 ### 5.3 Value and Balances
 
@@ -187,7 +187,7 @@ Durable truth is only the node id, the private key (never handed to this module)
 | Projection | Derived from | Forward update / chain-switch revert | Lives in | FRs | Built |
 |---|---|---|---|---|---|
 | Per-node balance | Seeds, transaction effects, creator credit | Apply per block / inverse of the block's effects | `NodeInfo.balances` (8 KB) | FR34, FR36, FR23 | partial — pass built (5.3, 5.4); head extension and per-block inverses built (6.0); chain-switch walk 6.3 |
-| Accumulated vote | Vote credits, anti-capture interest, creator reset, deviation penalty, twin-evidence reset (FR72), balance-block seeds | FR37 steps in order / `undo_block` in reverse | `VoteEngine.accumulated_vote` (4 KB) | FR34, FR37 | built (3.1, 3.2); walk 6.3 |
+| Accumulated vote | Vote credits (none to an FR72-excluded node), anti-capture interest, creator reset, deviation penalty, twin-evidence reset (FR72), balance-block seeds | FR37 steps in order / `undo_block` in reverse | `VoteEngine.accumulated_vote` (4 KB) | FR34, FR37 | built (3.1, 3.2); walk 6.3 |
 | Public-key map | Registrations; slot 0 = trust anchor | Set per registration / clear on rollback | `NodeInfo.public_keys` (32 KB Schnorr, 96 KB BLS) | FR34, FR35 | partial — pass built (5.3); head extension and registration inverse built (6.0); chain-switch walk 6.3 |
 | `max_known_node_id` | Earliest balance block's `max_node_id` (0 at genesis), +1 per registration | Increment / decrement | `NodeInfo.max_known_node_id` | FR3, FR34, FR54 | built (5.3, 5.4, 6.0) — pass; head extension and registration inverse (6.0) |
 | `seed_source_sequence` | Latest balance entry or registration per node | Set to the applied block / bounded backward scan (≤ `W`) | `NodeInfo.seed_source_idx` (block index today) | FR34, FR50, FR23 | partial — the pass and the head extension set it; the move to a balance block for every listed entry built (6.0); sequence form 9.3; restore by backward scan 6.3 |
@@ -337,7 +337,7 @@ Blocks deleted before the restart can return, because storage has no delete; eve
 | 3 | FR40 flags confirmations at or above the unresolved twin as disputed | FR40, FR70 | not built (6.12) |
 | 4 | Subgroup from the state at `P` (seed with `"twin"`, `A` without `c`); a member votes once for its first-adopted twin; a restarted node abstains at or below its ready-entry head; votes are relayed | FR26, FR71 | not built (6.13) |
 | 5 | The entitled creator of a branch emits the twin evidence block after due replays: proof, `c`'s vote snapshot, and with a quorum the bitmap verdict | FR45, FR71 | not built (6.13) |
-| 6 | Validate it (I-43) and apply FR72: exclude `c` from the creator order and `A` for `W` blocks, reset its accumulated vote | FR71, FR72 | not built (6.13) |
+| 6 | Validate it (I-43) and apply FR72: exclude `c` from the creator order and `A` for `W` blocks, reset its accumulated vote and credit it nothing while excluded | FR71, FR72 | not built (6.13) |
 | 7 | A node holding the other twin admits the evidence block on its side branch; a verdict for that branch lifts the hold and FR22 switches | FR22, FR71 | not built (6.13) |
 
 **On failure:** without a quorum the evidence carries the proof only (penalty, no decision) and the hold stays; a node that adopted the losing twin first stays on it until a restart, whose FR2 acquisition normally picks the majority chain. One voting round only.

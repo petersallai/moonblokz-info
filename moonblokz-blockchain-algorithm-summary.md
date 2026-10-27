@@ -101,13 +101,13 @@ Common: every referenced id (initializer, receiver, balance-input initializer, b
 
 For every accepted block `b` with creator `c`, in order [FR37]:
 1. `∀ n: av(n) += min(⌊av(n)·vi / vs⌋, vs)` — anti-capture interest, `c` included.
-2. `∀ tx ∈ b` except carry-forward: `av(tx.vote) += vs`.
+2. `∀ tx ∈ b` except carry-forward: `av(tx.vote) += vs`, unless `tx.vote` is under an FR72 exclusion at `b` (DEC-175).
 3. `av(c) := 0`. A deviation block additionally sets `av(first_voted_node) := 0`.
 4. Overflow of any `av` ⇒ the block is invalid.
 
 Header snapshots: `consumed_votes(b)` is `av(c)` after step 1 and before step 2. A deviation block's `consumed_votes_from_first_voted_node` is that node's value at the same point; it is verified at Tier 3 and used to undo the penalty, but it adds no branch value. So a block's own credits never enter its value, while step 3 still wipes the credits `b` gave `c` [FR37, DEC-156].
 
-The expected creator after block `s` is the top of the creator order; zero-vote nodes are included, so node 0 leads in the all-zero state, and nodes under an FR72 exclusion are left out [FR38, FR44]. A twin evidence block also sets `av(c) := 0` for the equivocating creator [FR72]. The vote target is chosen outside the chain by the transaction creator (radio scoring module) and is validated only for existence and no-self-vote [FR55].
+The expected creator after block `s` is the top of the creator order; zero-vote nodes are included, so node 0 leads in the all-zero state, and nodes under an FR72 exclusion are left out [FR38, FR44]. A twin evidence block also sets `av(c) := 0` for the equivocating creator, and `av(c)` stays 0 through the exclusion, the blocks `e + 1 … e + W` after the evidence block at `e`, so `c` returns at 0 [FR72, DEC-175]. The vote target is chosen outside the chain by the transaction creator (radio scoring module) and is validated only for existence and no-self-vote [FR55].
 
 ## 8. Block production
 
@@ -132,7 +132,7 @@ The expected creator after block `s` is the top of the creator order; zero-vote 
 `supporter_vote_sum = (⌊m/2⌋ + 1)·av_{p−1}(x) + av_{p−1}(u)`,
 independent of which `r` members signed. Only `x` may create blocks above `d` on that branch; any other creator is exact evidence. Intervening replay blocks and `e` carry `consumed_votes = 0` and `first_voted_node = x`; replays are spaced by `deviation_replay_insertion_delay_ms`, and `e` is emitted without delay [FR29]. Insufficient support does not widen the subgroup: the next grace expiry admits the next candidate, with a fresh subgroup [ADR-015]. Contribution at `p`: `v(d) + v(e) = (⌊m/2⌋ + 2)·av(x) + av(u) > av(u)` [FR12 (a)].
 
-**Twin conflict** [FR70–FR72]: twins = same creator `c`, sequence `s` and parent `P`, different hash (different parents are legitimate). Honest nodes never sign a second child of a parent. A ready node holds its first-adopted twin. Subgroup from the state at `P`: `seed = H("twin" ‖ hash(tail_P) ‖ c ‖ s)`, `A` without `c` and FR72-excluded nodes, `r_eff` and `m` as for approvals; members vote once for their first-adopted twin (restarted nodes abstain at or below their ready-entry head); one round. The entitled creator of a branch emits the twin evidence block after due replays, with a verdict when it holds `r_eff` votes for its own twin; a verdict lifts the hold for that branch. Penalty: while the evidence block is in the window, `c` is out of the creator order and of `A`. The block carries ordinary `consumed_votes` and no extra value.
+**Twin conflict** [FR70–FR72]: twins = same creator `c`, sequence `s` and parent `P`, different hash (different parents are legitimate). Honest nodes never sign a second child of a parent. A ready node holds its first-adopted twin. Subgroup from the state at `P`: `seed = H("twin" ‖ hash(tail_P) ‖ c ‖ s)`, `A` without `c` and FR72-excluded nodes, `r_eff` and `m` as for approvals; members vote once for their first-adopted twin (restarted nodes abstain at or below their ready-entry head); one round. The entitled creator of a branch emits the twin evidence block after due replays, with a verdict when it holds `r_eff` votes for its own twin; a verdict lifts the hold for that branch. Penalty: while the evidence block is in the window, `c` is out of the creator order and of `A`, and its accumulated vote is held at 0 (no credits). The block carries ordinary `consumed_votes` and no extra value.
 
 ## 10. `snake_chain` (bounded window)
 
