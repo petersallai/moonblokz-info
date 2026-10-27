@@ -324,8 +324,8 @@ A node transfer is the minimal balance-to-balance transaction between nodes. Par
 `anchor_sequence` does several jobs at once:
 
 - it provides a sequence-based time surrogate without requiring clocks,
-- it bars inclusion in any block with `sequence ≤ anchor_sequence` and limits acceptance to `anchor_sequence ≥ S_tail`, with no upper bound ([Blockchain PRD](./moonblokz-blockchain-prd.md) FR9 / FR14),
-- it narrows the duplicate-check search window,
+- it bars inclusion in any block with `sequence ≤ anchor_sequence` or `anchor_sequence < max(0, sequence − W)` (the window tail of the block's parent; DEC-174), and limits mempool acceptance to `anchor_sequence ≥ S_tail`, with no upper bound ([Blockchain PRD](./moonblokz-blockchain-prd.md) FR6 / FR9 / FR14),
+- it bounds the duplicate-check search to the including block's window: an earlier inclusion lies above the anchor, so a duplicate check over the retained window is complete,
 - and together with `comment` it supports uniqueness for repeated balance-style transfers.
 
 ### Transaction uniqueness rule for node transfers
@@ -869,7 +869,7 @@ Common to every structure below: each node identifier a transaction references �
 A node transfer is valid only if:
 
 - the initializer has sufficient balance for amount plus fee,
-- the block sequence is strictly greater than `anchor_sequence`,
+- the block sequence is strictly greater than `anchor_sequence`, and `anchor_sequence ≥ max(0, block sequence − W)`,
 - the signature is valid,
 - and the transaction is not a duplicate of an already accepted identical transaction.
 
@@ -893,7 +893,7 @@ Complex transactions follow two distinct validity regimes depending on whether t
 A complex transaction with at least one input is valid only if:
 
 - every referenced UTXO input resolves against the current active chain: the block at `block_sequence` exists within the retained window, and the corresponding bit in that block's available-UTXO bitfield is `1` (the output exists and is unspent; this also covers `output_index` past the block's UTXO-output stream) per [ADR-016](./blockchain-adrs/ADR-016-sequence-indexed-utxo-input-model.md),
-- every balance input is valid against current balance state,
+- every balance input is valid against current balance state, with `block sequence > anchor_sequence ≥ max(0, block sequence − W)`,
 - every input signature is valid for its scope,
 - total inputs are greater than or equal to total outputs,
 - and no resulting node balance becomes negative.
