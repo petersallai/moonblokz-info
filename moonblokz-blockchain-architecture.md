@@ -961,7 +961,7 @@ When a deployment selects the BLS crypto backend, the default const-generic valu
 | `MAX_NODES` | 1000 → 250 | −84 KB | Quarter capacity. Suitable for small deployments. |
 | `SNAKE_CHAIN_LENGTH_MAX` | 500 → 300 | −6.4 KB (available-UTXO bits) | Caps the chain `W` this build can join. |
 | `MAX_BRANCH_COUNT` | 40 → 20 | −640 B | Less branch headroom; collecting-state may need quicker convergence. |
-| `MAX_AGGREGATED_SIGNATURES` | 50 → 30 | **Schnorr: −0.7 KB** in ApprovalAccumulator. **BLS: ~0 KB** (signature is single aggregated slot, only `supporter_node_ids` shrinks) | Per ADR-015, must verify subgroup robustness. Such a build refuses every chain that leaves `required_support` at its default 50 (DEC-173); a chain it joins must declare 30 or less. |
+| `MAX_AGGREGATED_SIGNATURES` | 50 → 30 | **Schnorr: −0.7 KB** in ApprovalAccumulator. **BLS: ~0 KB** (signature is single aggregated slot, only `supporter_node_ids` shrinks) | Per ADR-015, must verify subgroup robustness. Such a build refuses every chain that leaves `required_support` at its default 40 (DEC-173); a chain it joins must declare 30 or less. |
 | `MEMPOOL_COMPACT_BYTES` | 20160 → 12000 | −8 KB | Smaller mempool capacity; more frequent replenishment. |
 
 **Note:** `MAX_AGGREGATED_SIGNATURES` tuning saves more on Schnorr than on BLS, because Schnorr accumulates per-supporter signatures (~32 B each) while BLS aggregates them into a single 50 B slot. BLS deployments should prefer `MAX_NODES` or `MEMPOOL_COMPACT_BYTES` tuning instead.
