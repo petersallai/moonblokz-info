@@ -997,7 +997,7 @@ When bounded block storage or the bounded `chain_heads` table is exhausted, the 
 
 ### Interpretation
 
-Each block-storage pressure event evicts exactly one side branch, never active-chain blocks (FR57). Overflow of the `chain_heads` table follows its own rule: evict the non-active head with the smallest `head_sequence` and walk back by `head_ref_count` (FR19). Independently, side branches whose divergence point fell below `S_tail` are reclaimed on every tail advance (FR58) ([Blockchain PRD](./moonblokz-blockchain-prd.md)).
+Each block-storage pressure event evicts exactly one side branch, never active-chain or verification-horizon blocks (FR57). Overflow of the `chain_heads` table follows its own rule: evict the non-active head with the smallest `head_sequence` and walk back by `head_ref_count` (FR19). Independently, side branches whose divergence point left FR58's switch bound (`D ≤ S_head − H`) are reclaimed as soon as the head moves them out (FR58) ([Blockchain PRD](./moonblokz-blockchain-prd.md)).
 
 ## Algorithm 21: Block Status Progression
 
@@ -1018,8 +1018,8 @@ When a side branch overtakes the current active branch, the node must move every
 ### Switch rule
 
 1. A switch is triggered only when a non-active head's `branch_value` exceeds the active head's (FR21 tie-break), re-evaluated after a head extension or a Stored → Connected transition (FR22).
-2. In the cheap zone, the switch is one atomic step-wise walk: undo blocks back to the common ancestor, then apply the new branch forward. Every projection — including the mempool — is updated per block, with no separate mempool phase, and the demoted blocks become Connected (FR23; [architecture](./moonblokz-blockchain-architecture.md) §4.2 `reconciliation.rs`).
-3. A divergence below the cheap zone runs a full FR3 reconstruction instead, under FR58's two-part trigger ([Blockchain PRD](./moonblokz-blockchain-prd.md) FR21–FR23, FR58).
+2. The switch is one atomic step-wise walk: undo blocks back to the common ancestor, then apply the new branch forward. Every projection — including the mempool — is updated per block, with no separate mempool phase, and the demoted blocks become Connected (FR23; [architecture](./moonblokz-blockchain-architecture.md) §4.2 `reconciliation.rs`).
+3. Only a branch that diverges within `H` blocks of the node's own head (`D ≥ S_head − H + 1`) may become active; a deeper one is reclaimed, and ready state has no full-reconstruction path ([Blockchain PRD](./moonblokz-blockchain-prd.md) FR21–FR23, FR58).
 
 ### Interpretation
 
@@ -1149,7 +1149,7 @@ That means MoonBlokz may face a tradeoff between:
 
 This tradeoff is algorithmically important because it affects how aggressively the implementation can prune while still keeping future branch changes manageable.
 
-The MoonBlokz blockchain module pins this tradeoff with an explicit verification-horizon parameter `H` of additional retained prior active-chain blocks beyond the active `snake_chain` window of length `W`, with the constraint `0 ≤ H ≤ W` and a default value of `H = ⌊W / 10⌋` when no implementation-specific tuning is applied. `H = W` is a generous choice consistent with the implementation-document recommendation of "roughly an extra chain-length worth of history" for nodes whose storage budget allows it. `H` is implementation-defined per node (not chain-config-derived); replay determinism is unaffected by per-node `H` differences because `H` only changes the local efficiency class of chain-switch reconciliation, not the eventual active-chain selection. Source: the explicit parameter and default are normatively defined by [Blockchain PRD](./moonblokz-blockchain-prd.md) FR58 (verification horizon); the original Part III–V articles describe the tradeoff but do not pin a default.
+The MoonBlokz blockchain module pins this tradeoff with an explicit verification-horizon parameter `H` of additional retained prior active-chain blocks beyond the active `snake_chain` window of length `W`, with the constraint `1 ≤ H ≤ W` and a default of 50. `H` is chain configuration, identical on every node, because it also bounds which chain switches a node accepts: only branches diverging within `H` blocks of the node's own head, always validated in place, so no switch needs a full recomputation. A larger `H` admits deeper reorganizations at the cost of storage. Source: the parameter and its bounds are normatively defined by [Blockchain PRD](./moonblokz-blockchain-prd.md) FR58 and the [Configuration Module Specification](./moonblokz-configuration-specification.md) §4.1 (DEC-159, DEC-160); the original Part III–V articles describe the tradeoff but do not pin a default.
 
 ### Deferred formal details
 
