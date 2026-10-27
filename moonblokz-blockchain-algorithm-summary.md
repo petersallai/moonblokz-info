@@ -197,7 +197,7 @@ Block #0 (by node 0, `previous_hash = 0³²`): registration of node 0 (`new_node
 | 7 | `vote_interest` (vi) | 5 | | 26 | `tx_fee_per_byte_max` | 1000 |
 | 8 | `parent_recovery_per_head_retry_interval_ms` | 120 000 | | 27 | `deviation_replay_insertion_delay_ms` | 300 000 |
 | 9 | `parent_recovery_min_emit_interval_ms` | 10 000 | | 28 | `replay_block_reward` | 100 |
-| 10 | `required_support` (r, cap of `r_eff`) | 3 (⇒ m = 5 once `\|A'\| ≥ 5`) | | 29 | VM fuel limit | its ceiling |
+| 10 | `required_support` (r, cap of `r_eff`) | 50 (⇒ m = 99 once `\|A'\| ≥ 99`) | | 29 | VM fuel limit | its ceiling |
 | | | | | 30 | `verification_horizon` (Hv) | 50 |
 
 Literal-only and bound-checked at acceptance: 3, 4, 10, 21, 30. The others may be bytecode programs reading other parameters and chain-info (today: the registered-node count). Acceptance also checks `1 ≤ r ≤ MAX_AGG`, `vs ≠ 0`, `W ≤` build capacity, `1 ≤ Hv ≤ W`, `W + 2·Hv ≤` block-storage capacity, `θ ≤ 100` and `fee_min ≤ fee_max` (literals only).

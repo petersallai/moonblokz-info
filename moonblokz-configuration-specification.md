@@ -138,7 +138,7 @@ Value-form column: `L` = literal only; `L/B` = literal or bytecode. **Parameters
 | 7 | `vote_interest` | u8 | 1 | 5 | L/B | FR37 |
 | 8 | `parent_recovery_per_head_retry_interval_ms` | u32 | 4 | 120_000 | L/B | FR19 / FR46 |
 | 9 | `parent_recovery_min_emit_interval_ms` | u32 | 4 | 10_000 | L/B | FR46 |
-| 10 | `required_support` | u8 | 1 | 3 | L | Bound-checked, §6 checks 2–3 (`1 ≤ value ≤ MAX_AGGREGATED_SIGNATURES`); the ceiling is per-build, so literal-only (§6 kind 2). The cap of the effective approval threshold `r_eff` (BC-FR12, DEC-172) |
+| 10 | `required_support` | u8 | 1 | 50 | L | Bound-checked, §6 checks 2–3 (`1 ≤ value ≤ MAX_AGGREGATED_SIGNATURES`); the ceiling is per-build, so literal-only (§6 kind 2). The cap of the effective approval threshold `r_eff` (BC-FR12, DEC-172) |
 | 20 | `block_fill_threshold_percent` | u8 | 1 | 80 | L/B | FR45 (a); bound-checked, §6 |
 | 21 | `active_chain_length` | u16 | 2 | 500 | L | `W`; bound-checked against the compile-time capacity, §6 |
 | 22 | `mempool_replenishment_interval_ms` | u32 | 4 | 500_000 | L/B | FR56 |
