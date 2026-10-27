@@ -106,7 +106,7 @@ The binding cost is radio. All `m = 2r − 1` subgroup members send a support me
 | Message volume | 4 KB | 11 KB | 22 KB | 44 KB |
 | Whole-channel time | 1.5–2.5 min | 4–6 min | 7–12 min | 15–25 min |
 
-A realistic range is therefore about 10–25 for Schnorr and 25–50 for BLS, to be confirmed in the radio simulator. Raising `r` lowers AR-006 likelihood but raises its depth, unless AR-006's decoupling is adopted.
+A realistic range is therefore about 10–25 for Schnorr and 25–50 for BLS, to be confirmed in the radio simulator. Since DEC-172 the value is a cap: a voting set smaller than `2r − 1` approves by simple majority, so a large `r` no longer halts a small network. Raising `r` lowers AR-006 likelihood but raises its depth, unless AR-006's decoupling is adopted.
 
 ### AR-008 — Approval liveness
 
@@ -120,7 +120,7 @@ Model: `|A| = 400`, success probability over all reachable proposers, with the e
 | `r = 25` | 9%, ~99 min | 100%, ~19 min | 100%, ~5 min | 100%, ~2 min |
 | `r = 50` | ~0% | 80%, ~75 min | 100%, ~9 min | 100%, ~2 min |
 
-A side holding less than about 40% of `A` halts until the partition heals. This protects safety, because no competing history is built. Because `A` counts every transaction sender in the window, intermittently awake devices can push the whole network below the threshold whenever the top creator is absent. With `|A| < r`, no evidence can form at all (§16.6).
+A side holding less than about 40% of `A` halts until the partition heals. This protects safety, because no competing history is built. Because `A` counts every transaction sender in the window, intermittently awake devices can push the whole network below the threshold whenever the top creator is absent. Before DEC-172 no evidence could form at all with `|A| < r`; since then a small voting set approves by simple majority, so a side still halts only when less than a majority of `A'` is reachable.
 
 ### AR-009 — `chain_heads` eviction
 

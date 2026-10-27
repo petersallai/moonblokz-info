@@ -117,8 +117,8 @@ What a valid chain must satisfy, grouped by scope. **Checked** names where the r
 | I-12 | Every `vote` names an existing node; `vote == 0` is always valid; at transaction intake an unknown target is Deferred, not invalid | FR6, FR14, FR37, FR54 | T3; pass | partial — pass built (5.4); head extension built (6.0); chain-switch replay 6.3 |
 | I-13 | No self-vote, except node #0 voting 0 | FR6, FR9, FR54 | T1 | built (4.2) |
 | I-14 | Accumulated-vote arithmetic never overflows `u32`; an overflowing step is invalid | FR23, FR37 | vote step (pass, T3) | built (3.1) |
-| I-15 | Approval evidence: subgroup members, valid aggregate signature, count ≥ `required_support`, size ≤ `MAX_AGGREGATED_SIGNATURES`, `supporter_vote_sum` per formula | FR6, FR9, FR12, FR21, ADR-015 | T3; pass | not built — the pass skips evidence blocks; 6.7 |
-| I-43 | Twin evidence: the proof header has the creator `c`, sequence `s`, parent `P` and a valid FR70 signature, differs from the branch's own block at `s` (which has creator `c` and parent `P`); `s ≥ S_tail`; one per `(c, s)` in the window; a verdict has no bit at a position `≥ m`, at least `required_support` bits, and a valid aggregate | FR6, FR9, FR71 | T3; pass | not built (6.13) |
+| I-15 | Approval evidence: subgroup members, valid aggregate signature, count ≥ `r_eff` (FR12), size ≤ `MAX_AGGREGATED_SIGNATURES`, `supporter_vote_sum` per formula | FR6, FR9, FR12, FR21, ADR-015 | T3; pass | not built — the pass skips evidence blocks; 6.7 |
+| I-43 | Twin evidence: the proof header has the creator `c`, sequence `s`, parent `P` and a valid FR70 signature, differs from the branch's own block at `s` (which has creator `c` and parent `P`); `s ≥ S_tail`; one per `(c, s)` in the window; a verdict has no bit at a position `≥ m`, at least `r_eff` bits, and a valid aggregate | FR6, FR9, FR71 | T3; pass | not built (6.13) |
 | I-44 | A node under an FR72 exclusion (a twin evidence block for it in the window) is not an entitled creator and is not in `A`; the evidence block resets its accumulated vote | FR38, FR72 | T3; pass | not built (6.13) |
 
 ### 5.3 Value and Balances
@@ -289,10 +289,10 @@ Each flow lists its trigger, its steps, and what happens on failure. Step tables
 | # | Step | FRs | Built |
 |---|---|---|---|
 | 1 | A direct head extension by a creator other than the FR38 top, with a valid signature, starts support evaluation | FR12, FR16 | not built (6.4) |
-| 2 | Eligibility: creator inside the grace window; local node in `A` and among the `m` lowest `node_value`; no conflict; no pending tail replay | FR12, ADR-015 | not built (6.4) |
+| 2 | Eligibility: creator inside the grace window; local node in `A'` (`A` without proposer and originally-top node) and among the `m` lowest `node_value`, `r_eff = min(required_support, ⌊\|A'\|/2⌋ + 1)`; no conflict; no pending tail replay | FR12, ADR-015 | not built (6.4) |
 | 3 | Emit a signed support message as the intake outcome | FR10, FR12 | not built (6.4; signed content open, E6-2) |
 | 4 | Support intake in every phase: format and de-duplication always; signature, coherence and subgroup checks once the deviation is on the local active chain; Accepted → relay | FR26 | not built (6.5) |
-| 5 | Proposer: collect subgroup supporters; at `required_support` aggregate once and build the evidence block (`supporter_vote_sum`, signature, ids) | FR12, FR27 | not built (6.6) |
+| 5 | Proposer: collect subgroup supporters; at `r_eff` aggregate once and build the evidence block (`supporter_vote_sum`, signature, ids) | FR12, FR27 | not built (6.6) |
 | 6 | The deviation block is Active at once and penalizes the original top creator; its branch is never higher in value than the normal branch (equal votes tie; FR21 tie-break) until the evidence block lands | FR21, FR28, FR37 | partial — admitted Active with its FR37 vote effects by the head-extension step built (6.0); branch value built (6.1); two-stage scoring built (6.2); the evidence block's value 6.7 |
 | 7 | Validate incoming evidence blocks (I-15) | FR6, FR9 | not built (6.7) |
 

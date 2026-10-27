@@ -302,7 +302,7 @@ Only the registration price is configurable (`registration_price`, ID 24). Regis
 
 Approval depends on a predetermined number of support messages or majority conditions. These thresholds must be explicit rather than hidden inside ad hoc logic.
 
-Per [ADR-015](./blockchain-adrs/ADR-015-approval-subgroup-selection.md), chain-config validation must reject `required_support` values that exceed the active crypto backend's `MAX_AGGREGATED_SIGNATURES`, because only the actually signing supporters enter the evidence block. The subgroup size `m` is then derived as `min(2 · required_support − 1, |A|)` and does not carry a direct crypto cap of its own.
+Per [ADR-015](./blockchain-adrs/ADR-015-approval-subgroup-selection.md), chain-config validation must reject `required_support` values that exceed the active crypto backend's `MAX_AGGREGATED_SIGNATURES`, because only the actually signing supporters enter the evidence block. The effective threshold is `r_eff = min(required_support, ⌊|A'|/2⌋ + 1)` and the subgroup size `m = min(2·r_eff − 1, |A'|)` (ADR-015, DEC-172); `m` carries no direct crypto cap of its own.
 
 ### Anti-capture parameter
 

@@ -25,6 +25,8 @@ The active set `A` is therefore derivable from active-chain state per ADR-003 an
 
 A node under a BC-FR72 equivocation exclusion is not in `A` while the exclusion lasts (Project Lead, 2026-10-22; DEC-165).
 
+The subgroup is drawn from the **voting set** `A'` = `A` without the deviation's proposer and its originally-top node, the two parties to the decision; when `A'` is empty no approval can form (Project Lead, 2026-10-27; DEC-172).
+
 #### Seed
 
 ```
@@ -48,16 +50,17 @@ node_value(n) = ( H(seed ‖ node_id(n))  mod 2³² ) · 2³²  +  node_id(n)
 - `node_id` is a fixed 32-bit value, so the full `node_value` fits in 64 bits with a deterministic tiebreaker.
 - Upper-32-bit collisions are statistically negligible at expected active-set sizes and are broken deterministically by the 32-bit `node_id`.
 
-The subgroup is the `m` nodes of `A` with the smallest `node_value`. Growing `m` only adds members (monotonicity), which preserves earlier selections if a wider subgroup is ever needed.
+The subgroup is the `m` nodes of `A'` with the smallest `node_value`. Growing `m` only adds members (monotonicity), which preserves earlier selections if a wider subgroup is ever needed.
 
 #### Subgroup size
 
 ```
-m = min( 2 · required_support − 1 ,  |A| )
+r_eff = min( required_support ,  ⌊|A'| / 2⌋ + 1 )
+m     = min( 2 · r_eff − 1 ,  |A'| )
 ```
 
-- The first term makes `required_support` exactly a 50%+1 majority inside the subgroup.
-- The `|A|` cap covers the degenerate case of a shrunken network: the subgroup becomes the whole active set, and the approval naturally reduces to whole-network majority.
+- `r_eff` is a strict majority of the subgroup at every size, so two quorums for conflicting outcomes always share a member.
+- In a large network `r_eff = required_support`, which is therefore a cap; in a shrunken network the subgroup becomes the whole voting set and the approval needs its simple majority. Before 2026-10-27 the threshold stayed `required_support` while `m` was capped at `|A|`, so no approval could form when `|A| < required_support`, and between `required_support` and `2·required_support − 1` it was a supermajority (DEC-172).
 
 #### Chain-config invariant
 
@@ -71,14 +74,14 @@ required_support ≤ MAX_AGGREGATED_SIGNATURES(backend)
 
 #### Fallback when an approval cannot collect enough support
 
-If an approval cannot collect `required_support` signatures in time, the subgroup is **not** widened. Instead, the existing grace-period expansion (Algorithm 5) admits the next-ranked creator candidate, which starts a new approval with its own freshly derived subgroup. Approval fallback therefore stays aligned with the existing grace-period mechanics and does not duplicate them.
+If an approval cannot collect `r_eff` signatures in time, the subgroup is **not** widened. Instead, the existing grace-period expansion (Algorithm 5) admits the next-ranked creator candidate, which starts a new approval with its own freshly derived subgroup. Approval fallback therefore stays aligned with the existing grace-period mechanics and does not duplicate them.
 
 ### Consequences
 
 #### Positive
 - Deterministic and verifiable from active-chain state alone, without persisted membership or external randomness.
 - No grindable inputs: neither the proposer nor any single past creator can bias the subgroup.
-- Self-capping for small networks: `m = |A|` when the active set is below the normal subgroup size.
+- Self-capping for small networks: `m = |A'|` and a simple-majority threshold when the voting set is below the normal subgroup size.
 - Monotonic in `m`, which keeps this ADR compatible with any future mechanism that needs to widen a deterministic ordering.
 - Aligns with ADR-003 (authoritative vs. derived state), ADR-005 (Chain Knowledge Core orchestration), PRD FR55 (vote module scope vs. external `scoring_module`), and ADR-008 (active-chain-centered local queries).
 - Aligns with the bounded-aggregation principle from `moonblokz-crypto-concept.md` by treating the crypto ceiling as a hard chain-config bound.
