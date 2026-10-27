@@ -21,7 +21,7 @@ Ordered by severity at the time of entry.
 |---|---|---|---|---|---|
 | AR-001 | A creator can re-include a transfer or balance input whose original block has left the window. | High | Adopted: block-level `anchor ≥ max(0, s − W)` (the parent's window tail) for node transfers and balance inputs, which makes the window duplicate check complete (DEC-174). | Mitigated · DEC-174, 7.3 | §6, §16.10; BC-FR6, BC-FR9, BC-FR14 |
 | AR-002 | Creator equivocation is neither detected nor penalized; the creator picks the winning twin. | High | Adopted: same-parent twins are held at the first-adopted twin, resolved by a subgroup verdict recorded in a twin evidence block, and the equivocator is excluded from block creation for `W` blocks (DEC-162..165). | Mitigated · DEC-162..165, 6.12, 6.13 | §11, §16.15; BC-FR21, BC-FR70–FR72 |
-| AR-003 | A colluding pair concentrates accumulated vote and dominates block creation on low-traffic chains. | High (Medium at high traffic) | Credit at most one `vs` per vote target per block; alternatives: vote weight tied to fee, no credit for votes the creator includes for its partner. | Open · — | §7, §12, §16.3, §16.4; BC-FR37, BC-FR55 |
+| AR-003 | A colluding pair concentrates accumulated vote and dominates block creation on low-traffic chains. | High (Medium at high traffic) | Adopted: at most one `vs` credit per vote target per block, with the `vote_interest` default raised to 50 (DEC-176); the pair falls to about its fair share. | Mitigated · DEC-176, 7.2 | §7, §12, §16.3, §16.4; BC-FR37, BC-FR55 |
 | AR-004 | Support signatures may not bind to proposer and deviating block. | High | Sign `(proposer, deviation sequence, deviating block hash)`. | Treatment proposed · O-002, story 6.4 | §2, §9; [OG-014](./moonblokz-open-gaps-register.md) |
 | AR-005 | An approval-less deviation block can outweigh the original creator's block through its own vote credits. | Medium | Adopted: `consumed_votes` is the post-interest, pre-credit snapshot, so `d` is valued before its own credits and is never higher than `u`'s normal block (equal votes tie); verified at Tier 3 (DEC-156). | Mitigated · DEC-156, story 6.2 | §7, §9, §16.2; BC-FR28 |
 | AR-006 | An approved deviation overturns about `r` normal blocks. | Medium | Evidence value independent of `m`; support only for direct head extensions; published confirmation depth `⌊m/2⌋ + 2`. | Open (O-012 partial) · — | §9, §11, §16.7, §16.11; BC-FR12 (a) |
@@ -37,7 +37,7 @@ Ordered by severity at the time of entry.
 | AR-017 | A ready node's deep-zone chain switch ran the window-anchored FR3 pass, whose pre-seed auto-acceptance let a branch define its own starting balances, votes, keys and carry-forwards. | High | Adopted: no deep zone; every switch is an in-place walk within `H` blocks of the head (DEC-159). | Mitigated · DEC-159, 9.7 | §4, §11; BC-FR3, BC-FR58 |
 | AR-018 | Until Story 9.7 retains the verification horizon, a chain switch inside the bound (and an FR3 adoption) trusts the FR48 binding and the below-tail UTXO references of replayed blocks at positions up to `S_head`. | Low (Medium if a colluding set can outweigh the honest branch at low traffic) | Horizon retention `R = H` (9.7). | Planned · DEC-166, 9.7 | §10, §11; BC-FR23, BC-FR39, BC-FR58 |
 | AR-019 | Registered nodes (valid signature, forged `consumed_votes`) and creators registered above the common ancestor can force failed chain-switch attempts. | Low | DEC-170's pre-pass covers fork-independent creators; rate limiting is not specified. | Open · — | §5, §11; BC-FR9, BC-FR23 |
-| AR-020 | A coalition that stays the entitled creator for many consecutive blocks on its own private branch — through self-credited votes or members arranged next to each other in the creator order — builds a fully valid heavier branch and reorganizes the chain up to the FR58 bound. | High at the default `vote_interest` and low traffic; Medium with the treatments | Scale `vote_interest` with network size (about `5·vs / N`) and keep the `vs` cap; per-target credit cap (AR-003); price votes (`tx_fee_per_byte_min > 0`); a published confirmation depth above any feasible adjacent cluster. The FR70 twin hold already defeats the route that starts with a same-parent twin. | Open · — | §7, §9, §11, §16.3, §16.4; BC-FR21, BC-FR37, BC-FR38, BC-FR70 |
+| AR-020 | A coalition that stays the entitled creator for many consecutive blocks on its own private branch — through self-credited votes or members arranged next to each other in the creator order — builds a fully valid heavier branch and reorganizes the chain up to the FR58 bound. | Medium since DEC-176 (High before, at `vi = 5` and low traffic) | Adopted: `vote_interest` default 50 with the `vs` cap kept, and the per-target credit cap (DEC-176), which close the natural-fork route for `N ≳ 100`. Open: price votes (`tx_fee_per_byte_min > 0`); a published confirmation depth above any feasible adjacent cluster. Network-size-adaptive `vote_interest` is post-MVP (O-031). The FR70 twin hold already defeats the route that starts with a same-parent twin. | Open · DEC-176 (partial) | §7, §9, §11, §16.3, §16.4; BC-FR21, BC-FR37, BC-FR38, BC-FR70 |
 | AR-021 | Coalition members that hold consecutive positions in the creator order and stay silent force a grace expiry for every skipped rank and an approved deviation for every slot, stalling the chain at no cost to themselves; they climb back by voting for each other. | Medium (High at a large `required_support` without the treatments) | Reset every skipped top at a deviation; exclude a node named as `first_voted_node` in the window from creation for `W` blocks; a two-level grace period (short when the admitted proposer issued nothing, long while a deviation is pending). | Open · — | §9, §16.6; BC-FR12, BC-FR37, BC-FR44, BC-FR47 |
 
 ## Detail Notes
@@ -64,6 +64,16 @@ The creator alone selects the transactions, and therefore the vote credits, of i
 | 30 / 100 / 300 | 3 (low traffic) | 96% / 87% / 60% |
 
 The pair votes only inside its own blocks. If it also buys space in honest blocks, it takes over 90% even at 1,000 nodes, at a fee cost. With at most one credit per target per block, the pair falls to 9% / 2.9% / 0.8% at low traffic, close to the fair share.
+
+**Treatment (DEC-176).** The per-target credit cap, with `vote_interest` 50. The cap separates collusion from popularity: the pair's 18 credits collapse to one, while an honestly popular node rarely receives two votes in one block. Vote steering, measured as the block share of the 20 % of nodes that receive 80 % of the votes (vote-proportional target about 80 %; the interest pulls it down by design), at low / high traffic:
+
+| `N` | `vi = 5`, no cap (before) | `vi = 5`, cap | `vi = 50`, cap (adopted) |
+|---|---|---|---|
+| 30 | 71% / 72% | 70% / 57% | 61% / 43% |
+| 100 | 71% / 68% | 70% / 64% | 55% / 35% |
+| 300 | 63% / 55% | 63% / 53% | 52% / 28% |
+
+The cap alone fixes the pair at any `vi`; `vi = 50` is the price of AR-020. Higher `vi` costs little more steering (255: 52% / 31% at `N = 100`).
 
 ### AR-005 — Own-credit deviation value
 
@@ -173,11 +183,22 @@ Blocks cost nothing to make (no work, no timestamp, §16.1), so the length a pri
 
 | Setting (vote model below, 3 honest tx/block) | 51-block private branch |
 |---|---|
-| `vi = 5` (default), pair, `N ≤ 300` | at every fork point, with a higher branch value |
+| `vi = 5` (default before DEC-176), pair, `N ≤ 300` | at every fork point, with a higher branch value |
 | `vi ≈ 5·vs/N` (50 at `N = 100`, 17 at `N = 300`), coalition ≤ 10 % of `A`, no approvals | 0 % |
 | same, coalition of 20 % of `A`, approvals with proposer grinding, `r = 3` | about 50 % per attempt at `N = 300` |
 | same, `r = 50` | ≤ 7·10⁻⁹³ per attempt |
 | coalition holding the top `c` creator positions | exactly `c` blocks, whatever `vi` and `r` |
+
+**Treatment (DEC-176).** With the per-target credit cap the coalition spreads its block's credits over up to 18 members instead of one, so the cap alone does not stop it; `vi` does. Approvals are closed to a minority since DEC-172 (`r_eff` is a subgroup majority). Longest private run from natural fork points, 300 fork points, the coalition not colluding on the public chain (its better strategy):
+
+| `vi` (with cap) | `N = 30` | `N = 100` | `N = 300` | `N = 1000` |
+|---|---|---|---|---|
+| 5 | 51 | 51 | 51 | 5 |
+| 20 | 46 | 51 | 5 | 4 |
+| 50 (adopted) | 14 | 6 | 5 | 4 |
+| 255 | 6 | 4 | 5 | — |
+
+Coalition of 20 % of the nodes; a pair stays at 2 blocks with the cap at every `vi`. The protection threshold is about `N·vi/vs ≳ 5`, and the vote steering at the threshold is the same at every `N` (about 55 % / 34 %, AR-003), so a network-size-adaptive `vi` would gain only a few points of steering at large `N` and the stronger bound below `N = 100`. It was not adopted: its only chain-info input, the registered-node count, can be inflated with dead sybil registrations to lower `vi` for everyone (at `N = 100`, 100 sybils halve it and reopen 51-block runs), and it needs a bound per-block call site and a window-anchored pass that can evaluate it (O-031). A network below about 100 nodes may declare a higher literal. The adjacent-cluster route is untouched.
 
 Arranging members next to each other is feasible: members park at zero accumulated vote after creating (no interest on zero), then restart together on their own zero-fee votes. A heuristic strategy reached 50 adjacent members in 0.3–1.6 days at `N = 100` and 10–18 days with 55–60 members at `N = 1000` (none within 40 000 blocks at `N = 300`, which reflects the heuristic, not a bound). Paths to a reorg and what stops them today:
 
@@ -201,6 +222,7 @@ The figures above come from simplified models, not from the radio simulator:
 - **Retries:** hypergeometric draws from `A`, one try per reachable proposer per grace step.
 - **Private branch (AR-020):** the vote model with `N` up to 1000, a coalition of `c` members, a fork at every point where a member is top; on the private branch only coalition transactions (18 per block, all crediting the next member), honest nodes gain interest only; an honest top needs an approved deviation, counted with the probability that the coalition holds `r` of the `2r − 1` subgroup seats (hypergeometric, grinding over members' proposals where OG-015 allows it). 300–600 fork points per setting.
 - **Clustering (AR-020):** park → synchronise → maintain, spending the coalition's own block credits and the free slots of honest blocks on zero-fee votes; success when the top 50 creator positions are all coalition; 40 000 blocks per setting.
+- **Interest sweep (DEC-176):** the vote model with `vi` ∈ {5, 10, 20, 50, 100, 255}, with and without the per-target cap; 36 000–60 000 blocks per setting; steering with 20 % of nodes drawing 80 % of the vote targets; offline nodes (10 % and 30 %) for the deviation rate, which does not depend on `vi`; a greedy attacker spending every vote of every block to starve one node, for the accumulated-vote ceiling (about `N·vs`).
 - **Stall (AR-021):** expiries and approval rounds counted from the block propagation measurement (`t₅₀` 33 s, `t₉₀` about 60 s, 100 random nodes), not simulated.
 
 ## Not Yet Assessed

@@ -101,7 +101,7 @@ Common: every referenced id (initializer, receiver, balance-input initializer, b
 
 For every accepted block `b` with creator `c`, in order [FR37]:
 1. `∀ n: av(n) += min(⌊av(n)·vi / vs⌋, vs)` — anti-capture interest, `c` included.
-2. `∀ tx ∈ b` except carry-forward: `av(tx.vote) += vs`, unless `tx.vote` is under an FR72 exclusion at `b` (DEC-175).
+2. `∀ n ∈ {tx.vote : tx ∈ b}`, carry-forward excluded: `av(n) += vs` once, however many transactions name `n` (DEC-176), unless `n` is under an FR72 exclusion at `b` (DEC-175).
 3. `av(c) := 0`. A deviation block additionally sets `av(first_voted_node) := 0`.
 4. Overflow of any `av` ⇒ the block is invalid.
 
@@ -194,7 +194,7 @@ Block #0 (by node 0, `previous_hash = 0³²`): registration of node 0 (`new_node
 | 4 | `max_block_utxo_output` | 255 | | 23 | `custodian_fee` (c) | 1 |
 | 5 | `mining_reward` | 0 | | 24 | `registration_price` | 100 |
 | 6 | `vote_scale` (vs) | 1000 | | 25 | `tx_fee_per_byte_min` | 0 |
-| 7 | `vote_interest` (vi) | 5 | | 26 | `tx_fee_per_byte_max` | 1000 |
+| 7 | `vote_interest` (vi) | 50 | | 26 | `tx_fee_per_byte_max` | 1000 |
 | 8 | `parent_recovery_per_head_retry_interval_ms` | 120 000 | | 27 | `deviation_replay_insertion_delay_ms` | 300 000 |
 | 9 | `parent_recovery_min_emit_interval_ms` | 10 000 | | 28 | `replay_block_reward` | 100 |
 | 10 | `required_support` (r, cap of `r_eff`) | 40 (⇒ m = 79 once `\|A'\| ≥ 79`) | | 29 | VM fuel limit | its ceiling |
@@ -220,8 +220,8 @@ Each entry is defined in the [Open Gaps Register](./moonblokz-open-gaps-register
 
 1. Every time-dependent rule (grace admission, pacing soft-fail, support eligibility) uses the node's local clock and local arrival times; no time is chain-verifiable [FR46, FR9, FR12].
 2. `consumed_votes(b)` excludes the vote credits of transactions inside `b` itself: it is `av(c)` after interest and before credits (§7, DEC-156). The credits `b` gives its creator are wiped by the reset, and those it gives anyone else count from then on.
-3. No-self-vote forbids only `vote = initializer`; a vote for any other existing id is unrestricted. Each transaction adds `vs` regardless of value; `tx_fee_per_byte_min` defaults to 0.
-4. Interest adds at most `vs` per node per block; with defaults it is `⌊av/200⌋`, i.e. ~0.5 % per block until `av ≥ 200·vs` (derived).
+3. No-self-vote forbids only `vote = initializer`; a vote for any other existing id is unrestricted. Each named node gains one `vs` per block regardless of value and of how many transactions name it (DEC-176); `tx_fee_per_byte_min` defaults to 0.
+4. Interest adds at most `vs` per node per block; with defaults it is `⌊av/20⌋`, i.e. 5 % per block until `av ≥ 20·vs` (derived; DEC-176).
 5. Support non-conflict is scoped to `(proposer, sequence)`, so one node may support deviations by different proposers at the same sequence. `A` and the seed are evaluated per branch on the supporter's local chain.
 6. The approval threshold is `r_eff = min(r, ⌊|A'|/2⌋ + 1)`, a strict majority of the subgroup at every size, so evidence can form whenever a majority of the subgroup signs; a small voting set approves by simple majority (DEC-172). The seed contains no proposer-controlled block content; the tail hash was fixed `W` blocks earlier.
 7. `supporter_vote_sum` is a closed form of chain state, not of the signer set.

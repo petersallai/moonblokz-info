@@ -678,7 +678,7 @@ Select the next block creator using lightweight locally available information wh
 ### Selection process
 
 1. The vote target is resolved outside the blockchain module: the transaction's creator (typically consulting the radio-side scoring module) writes it into the signed `vote` field before submission. The blockchain module never consults the scoring module; it only validates the field ([Blockchain PRD](./moonblokz-blockchain-prd.md) FR55). This radio-derived score is distinct from the per-node **accumulated vote** maintained by the blockchain vote module (see Algorithm 9).
-2. Aggregate per-node **accumulated vote** inside blockchain state from the votes already present in accepted transactions and blocks, with each accepted transaction contributing one configured `vote_scale` credit to its target node; zero-input carry-forward transactions credit no vote (FR37).
+2. Aggregate per-node **accumulated vote** inside blockchain state from the votes already present in accepted transactions and blocks, with each node named by at least one of an accepted block's transactions receiving one configured `vote_scale` credit from that block, however many transactions name it (DEC-176); zero-input carry-forward transactions credit no vote (FR37).
 3. When a block should be created, select the node with the highest **accumulated vote**.
 4. Break ties by ascending node identifier (FR38).
 5. After successful block creation by the selected node, reset that node's **accumulated vote** to zero.

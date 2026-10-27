@@ -135,7 +135,7 @@ Value-form column: `L` = literal only; `L/B` = literal or bytecode. **Parameters
 | 4 | `max_block_utxo_output` | u16 | 2 | 255 | L | Bound-checked, §6 (`1 ≤ value ≤ UTXO_UNSPENT_BITS`) |
 | 5 | `mining_reward` | u32 | 4 | 0 | L/B | FR36 (a); FR6 requires a block's `mined_amount` header field to equal it. Width matches the header field |
 | 6 | `vote_scale` | u16 (non-zero) | 2 | 1000 | L/B | FR37; zero is invalid, enforced at resolution |
-| 7 | `vote_interest` | u8 | 1 | 5 | L/B | FR37 |
+| 7 | `vote_interest` | u8 | 1 | 50 | L/B | FR37. The ratio to `vote_scale` sets the per-block interest (50 / 1000 = 5 %). Default raised from 5 by DEC-176: it is the protection threshold at about 100 nodes; a smaller network may declare more, up to 255, and over-declaring costs only a few points of vote steering |
 | 8 | `parent_recovery_per_head_retry_interval_ms` | u32 | 4 | 120_000 | L/B | FR19 / FR46 |
 | 9 | `parent_recovery_min_emit_interval_ms` | u32 | 4 | 10_000 | L/B | FR46 |
 | 10 | `required_support` | u8 | 1 | 40 | L | Bound-checked, §6 checks 2–3 (`1 ≤ value ≤ MAX_AGGREGATED_SIGNATURES`); the ceiling is per-build, so literal-only (§6 kind 2). The cap of the effective approval threshold `r_eff` (BC-FR12, DEC-172) |
