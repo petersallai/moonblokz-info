@@ -19,7 +19,7 @@ Ordered by severity at the time of entry.
 
 | ID | Risk | Severity | Treatment options | Status · Owner | Sources |
 |---|---|---|---|---|---|
-| AR-001 | A creator can re-include a transfer or balance input whose original block has left the window. | High | Block-level `anchor ≥ S_tail` for node transfers and balance inputs. | Open · — | §6, §16.10; [OG-017](./moonblokz-open-gaps-register.md) |
+| AR-001 | A creator can re-include a transfer or balance input whose original block has left the window. | High | Adopted: block-level `anchor ≥ max(0, s − W)` (the parent's window tail) for node transfers and balance inputs, which makes the window duplicate check complete (DEC-174). | Mitigated · DEC-174, 7.3 | §6, §16.10; BC-FR6, BC-FR9, BC-FR14 |
 | AR-002 | Creator equivocation is neither detected nor penalized; the creator picks the winning twin. | High | Adopted: same-parent twins are held at the first-adopted twin, resolved by a subgroup verdict recorded in a twin evidence block, and the equivocator is excluded from block creation for `W` blocks (DEC-162..165). | Mitigated · DEC-162..165, 6.12, 6.13 | §11, §16.15; BC-FR21, BC-FR70–FR72 |
 | AR-003 | A colluding pair concentrates accumulated vote and dominates block creation on low-traffic chains. | High (Medium at high traffic) | Credit at most one `vs` per vote target per block; alternatives: vote weight tied to fee, no credit for votes the creator includes for its partner. | Open · — | §7, §12, §16.3, §16.4; BC-FR37, BC-FR55 |
 | AR-004 | Support signatures may not bind to proposer and deviating block. | High | Sign `(proposer, deviation sequence, deviating block hash)`. | Treatment proposed · O-002, story 6.4 | §2, §9; [OG-014](./moonblokz-open-gaps-register.md) |
@@ -45,6 +45,8 @@ Ordered by severity at the time of entry.
 ### AR-001 — Out-of-window re-inclusion
 
 Block-level rules for a node transfer or balance input are `s > anchor` plus no duplicate within the retained candidate chain; `anchor ≥ S_tail` holds only at mempool intake and reconciliation (§6, §16.10). Once the original block drops below `S_tail`, a creator may include the same signed transaction again: the initializer pays twice, the receiver and the creator gain. Any node reaches the creator role through rotation. The current code's Tier 1 check enforces only `block.sequence > anchor_sequence`.
+
+Adopted 2026-10-27 (DEC-174): a block of sequence `s` requires `anchor ≥ max(0, s − W)` for every node transfer and balance input, the window tail of its parent and the bound the mempool admitted the transaction against. An earlier inclusion at `s₀` satisfies `s₀ > anchor ≥ s − W`, so it lies inside the window of `s` and the existing duplicate check finds it. The rule needs only the block's sequence and `W`, so every branch evaluates it the same way; it is Tier 1 once the configuration is locked, and the FR3 pass checks it before the lock against the candidate's own `W`. Residuals: the window-anchored FR3 pass cannot see duplicates before its segment, which it trusts like other pre-window history (DEC-129); a transaction can still be valid on both sides of a partition (AR-016). Story 7.3 adds the check beside the existing one.
 
 ### AR-002 — Creator equivocation
 

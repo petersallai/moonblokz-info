@@ -78,7 +78,7 @@ Header: `version u8 (=1) | sequence u32 | creator u32 | mined_amount u32 | paylo
 Outcome ∈ {Accepted-new, Already-known, Invalid-evidence, Out-of-window, Deferred} [FR10]; duplicate key `(sequence, hash)` [FR11].
 
 - **Out-of-window** (ready only): `S_new ≥ S_head + W` or `S_new < S_tail` ⇒ discarded, not stored; the forward case is logged as long-disconnect [FR60].
-- **Tier 1** (block bytes + locked configuration; failure ⇒ not stored; the list is exhaustive) [FR9, FR16]: version; payload schema; `|b| ≤ L`; chain-config content equals the lock; ready-window membership; `s > anchor` for T1 and every balance input; no-self-vote; T3 with inputs: `Σ declared in ≥ Σ out` without u64 overflow; T2/T3 exclusion; `new_key_sig` valid; anchor checks (`new_node_id = 0 ⇒ new_pk = pk0`; balance entry `owner = 0 ⇒ pk = pk0`; `content_sig` valid against `pk0`); `sequence ≠ u32::MAX`; UTXO-output cap; UTXO `q < s` (code-level only, [OG-011]).
+- **Tier 1** (block bytes + locked configuration; failure ⇒ not stored; the list is exhaustive) [FR9, FR16]: version; payload schema; `|b| ≤ L`; chain-config content equals the lock; ready-window membership; `max(0, s − W) ≤ anchor < s` for T1 and every balance input (the FR3 pass checks the lower bound before the lock, DEC-174); no-self-vote; T3 with inputs: `Σ declared in ≥ Σ out` without u64 overflow; T2/T3 exclusion; `new_key_sig` valid; anchor checks (`new_node_id = 0 ⇒ new_pk = pk0`; balance entry `owner = 0 ⇒ pk = pk0`; `content_sig` valid against `pk0`); `sequence ≠ u32::MAX`; UTXO-output cap; UTXO `q < s` (code-level only, [OG-011]).
   - The creator signature is exact evidence in ready state for a direct extension of the active head with a derivable key, and for any block whose creator's key is branch-independent (node 0, or seeded at or below `S_tail`). Otherwise signature checks are opportunistic (a failure does not invalidate) and the decision waits for Tier 3. A verified block is marked and not verified again [FR9, DEC-157].
   - Header vote form: `first_voted_node = c` ⇒ `consumed_votes_from_first_voted_node = 0`; otherwise `consumed_votes ≤ consumed_votes_from_first_voted_node` [FR9].
   - For a ready direct head extension, also exact evidence: a non-proposer block above a deviation block; a carry-forward failing §10.3 (i)–(v).
@@ -92,10 +92,10 @@ Outcome ∈ {Accepted-new, Already-known, Invalid-evidence, Out-of-window, Defer
 
 Common: every referenced id (initializer, receiver, balance-input initializer, balance-output receiver, `vote`) lies in `[0, M]`. No-self-vote: `vote ≠ initializer` (T1, T2) and `vote ≠` any balance-input initializer (T3); permanent exemption `initializer = 0 ∧ vote = 0`; `vote = 0` is always a valid target; block #0 is exempt [FR6, FR37, FR54].
 
-- T1: `s > anchor`; `balance(init) ≥ amount + fee`; sig valid; key `(init, recv, amount, anchor, comment)` not already confirmed on the candidate chain; fee within the per-byte `[min, max]` policy (predicate open, [OG-016]).
+- T1: `max(0, s − W) ≤ anchor < s`; `balance(init) ≥ amount + fee`; sig valid; key `(init, recv, amount, anchor, comment)` not already confirmed on the candidate chain; fee within the per-byte `[min, max]` policy (predicate open, [OG-016]).
 - T2: `balance(init) ≥ price + fee`; `new_node_id = M + 1`, strictly sequential within a block; `new_pk` unique on the chain; `new_key_sig` and sig valid. Effect: `M += 1`, bind `id → pk`, burn `price`.
-- T3 with ≥ 1 input: each UTXO input `(q, i, a)` has block `q` on the active chain, `q ≥ S_tail`, `U_q[i] = 1`, `a = amount(q, i)`; each balance input has `s > anchor` and sufficient balance; every sig valid; `Σ in ≥ Σ out`; no negative balance; the input set not already confirmed. Effect: clear `U_q[i]`; set the block's own output bits.
-- Mempool intake (ready only) [FR14]: `anchor ≥ S_tail` with no upper bound; UTXO `q ≥ S_tail`; unknown `vote` target ⇒ Deferred, never Rejected; competing spends admitted. Uniqueness keys: T1 tuple above; T2 `new_pk`; T3 full ordered input set. The `anchor ≥ S_tail` bound has no block-level counterpart [OG-017].
+- T3 with ≥ 1 input: each UTXO input `(q, i, a)` has block `q` on the active chain, `q ≥ S_tail`, `U_q[i] = 1`, `a = amount(q, i)`; each balance input has `max(0, s − W) ≤ anchor < s` and sufficient balance; every sig valid; `Σ in ≥ Σ out`; no negative balance; the input set not already confirmed. Effect: clear `U_q[i]`; set the block's own output bits.
+- Mempool intake (ready only) [FR14]: `anchor ≥ S_tail` with no upper bound; UTXO `q ≥ S_tail`; unknown `vote` target ⇒ Deferred, never Rejected; competing spends admitted. Uniqueness keys: T1 tuple above; T2 `new_pk`; T3 full ordered input set. Its block-level counterpart is `anchor ≥ max(0, s − W)`, the parent's tail, so an admitted entry stays includable in the next block [DEC-174].
 
 ## 7. Vote dynamics and creator selection
 
@@ -213,7 +213,6 @@ Each entry is defined in the [Open Gaps Register](./moonblokz-open-gaps-register
 - [OG-014] support-message signed content (FR12 vs FR26).
 - [OG-015] grace-period time origin, and how creator entitlement `I-10` is checked.
 - [OG-016] fee-policy validity predicate.
-- [OG-017] no block-level `anchor ≥ S_tail` bound.
 - [OG-018] carry-forward below-fee discard wording.
 - Post-MVP: [OG-005] UTXO saturation / dynamic custodian fee; [OG-006] long-disconnect recovery; [OG-007] concurrent ingestion while processing; [OG-010] sequence wrap.
 
@@ -228,7 +227,7 @@ Each entry is defined in the [Open Gaps Register](./moonblokz-open-gaps-register
 7. `supporter_vote_sum` is a closed form of chain state, not of the signer set.
 8. Schnorr aggregate weights depend on `(Σ r_i mod p, m, i)` only, not on the public keys. Registration requires proof of possession `new_key_sig = Sig_{sk_new}(new_pk)` (ordinary signature type).
 9. `hash(b)` covers the signature; the block signature covers the header with the signature field zeroed and `H(payload)` [FR70].
-10. Block-level rules for T1 and balance inputs are `s > anchor` plus no duplicate within the retained candidate chain; `anchor ≥ S_tail` is enforced only at mempool intake and mempool reconciliation [FR14, FR32, OG-017].
+10. Block-level rules for T1 and balance inputs are `max(0, s − W) ≤ anchor < s` plus no duplicate within the retained candidate chain. An earlier inclusion lies above the anchor and so inside the window: the duplicate check is complete, and a transaction cannot be included again after its block leaves the window [FR6, FR9, FR14, DEC-174].
 11. UTXO references `(q, i)` are branch-relative: after a reorg the same pair may name a different output, and spends of outputs re-included at another position become invalid [ADR-016].
 12. Outside direct head extensions and blocks whose creator key is branch-independent (DEC-157), blocks are stored before signature and state validation (opportunistic signatures, Tier 3 deferred); bounded storage is reclaimed by lowest-`BV` side-branch eviction [FR16, FR57].
 13. Bootstrap acquisition picks the highest tip sequence, not value, among qualifying segments; the processing pass auto-accepts pre-seed state-dependent checks and trusts obligations and UTXO references preceding a window-anchored segment [FR2, FR3, FR6].
