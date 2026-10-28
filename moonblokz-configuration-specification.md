@@ -143,8 +143,8 @@ Value-form column: `L` = literal only; `L/B` = literal or bytecode. **Parameters
 | 21 | `active_chain_length` | u16 | 2 | 500 | L | `W`; bound-checked against the compile-time capacity, §6 |
 | 22 | `mempool_replenishment_interval_ms` | u32 | 4 | 500_000 | L/B | FR56 |
 | 23 | `custodian_fee` | u64 | 8 | 1 | L/B | FR51 carry-forward |
-| 24 | `registration_price` | u64 | 8 | 100 | L/B | A size-dependent price reads chain-info 1, effective only where the consumer binds a source (§4.6 rule 5) |
-| 25 | `tx_fee_per_byte_min` | u64 | 8 | 0 | L/B | FR56 fee policy |
+| 24 | `registration_price` | u64 | 8 | 100 | L/B | A size-dependent price reads chain-info 1, effective only where the consumer binds a source (§4.6 rule 5). The intended model is open (O-033): a base price orders of magnitude above a transaction fee, rising with the node count toward infinity at the network's rational maximum, as a per-network program; it must saturate, not trap, and carry a high fallback |
+| 25 | `tx_fee_per_byte_min` | u64 | 8 | 1 | L/B | FR56 fee policy; predicate `min · size ≤ fee ≤ max · size` (BC-FR56). Default raised from 0 by DEC-181: a node transfer (101 B) pays at least 101, which prices votes bought in honest blocks |
 | 26 | `tx_fee_per_byte_max` | u64 | 8 | 1000 | L/B | FR56 fee policy |
 | 27 | `deviation_replay_insertion_delay_ms` | u32 | 4 | 300_000 | L/B | FR29 pacing |
 | 28 | `replay_block_reward` | u64 | 8 | 100 | L/B | FR36 (c) |

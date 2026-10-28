@@ -170,7 +170,7 @@ Checked at head extension in Ready, and inside the FR3 pass against the candidat
 | # | Invariant | FRs | Checked | Built |
 |---|---|---|---|---|
 | I-35 | Every chain-config block is byte-identical to the durable lock | FR3, FR6, FR8, FR17 | T1 (silent discard after the lock); pass; FR8 cleanup | built (4.3, 5.9) |
-| I-36 | Blocks comply with the locked configuration in scope (fee policy, registration price, custodian fee, approval threshold, other limits) | FR6, FR9 | T2 | not built beyond the size limit — fee policy and registration price 7.3, custodian fee 9.5, approval threshold 6.7 |
+| I-36 | Blocks comply with the locked configuration in scope (fee policy — FR56 `min · size ≤ fee ≤ max · size`, DEC-181 — registration price, custodian fee, approval threshold, other limits) | FR6, FR9 | T2 | not built beyond the size limit — fee policy and registration price 7.3, custodian fee 9.5, approval threshold 6.7 |
 | I-37 | Configuration content is accepted: well-formed, within the §6 bounds of the [specification](./moonblokz-configuration-specification.md) (including `1 ≤ required_support ≤ MAX_AGGREGATED_SIGNATURES`, `1 ≤ H ≤ W` and `W + 2·H ≤` block-storage capacity) | FR8, FR56 | accept (→ FR16 exact evidence) | partial — built (5.7, 5.9, 5.11) except the restored check 3, which the code still clamps (6.4), and the `H` checks 14–16 (9.7) |
 | I-38 | A candidate segment contains at least one chain-config block | FR2, FR3, FR8 | FR2 selection; pass | built (5.9, 5.13) |
 
