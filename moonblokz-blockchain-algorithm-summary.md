@@ -236,6 +236,7 @@ Each entry is defined in the [Open Gaps Register](./moonblokz-open-gaps-register
 15. Same-parent equivocation is held at each node's first-adopted twin, resolved by a subgroup verdict in a twin evidence block, and penalized by a `W`-block exclusion of the creator from block creation and from `A`; only the equivocating creator is provable. Same-creator blocks at one sequence on different parents are legitimate and are resolved by FR21 [FR70–FR72].
 16. Configuration is immutable and anchored to the compiled-in `pk0`, so any change requires a new chain; unknown configuration ids cause rejection (firmware-capability gating) [FR8, config §3.4].
 17. Branch switching is local and pairwise (triggered head vs active head); `Hv` is chain configuration and bounds the switch depth identically on every node [FR22, FR58].
+18. A confirmation at least `H` deep and not disputed is reported `final` (FR40): no admissible switch reaches it, so it is irreversible on that node; finality is node-local under a permanent fork, and below `H` an approved deviation or an adjacent cluster can still overturn a confirmation [FR40, DEC-182].
 
 ## Related Documents
 

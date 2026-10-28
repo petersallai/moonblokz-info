@@ -43,7 +43,7 @@ Node #0 after genesis behaves as Ready. "Not-ready" is the FR1 indication return
 | Tick — mempool replenishment | Not scheduled (FR46) | Not scheduled (FR46) | Runs on every node whose mempool is below the fill threshold, creator or not (FR46) | not built (8.4; responder 10.4) |
 | Tick — block creation | Not-ready (FR1 gates FR44) | Not specified | If the local node is the current creator: create when the fill threshold is reached, or on the timer with at least one includable transaction; replay obligations go out as soon as the node is eligible (FR45, FR46) | not built (8.3, 8.4; replay 9.2–9.5) |
 | Tick — grace period | Not specified | Not specified | Widen the admitted creator set by one; no accumulated-vote reset (FR47) | not built (8.5) |
-| Queries | Not-ready (FR1, FR43) | Not-ready (FR42, FR43); FR40 / FR41 answers are not observable before Ready (FR8) | Transaction state Unknown / In-mempool / Confirmed with depth and the disputed flag (FR40, FR70); balance and accumulated vote, address UTXOs (FR41); active-chain blocks only, else not-available (FR42); at most one transaction (FR43) | not built (10.1–10.4; not-ready gates built in 5.1) |
+| Queries | Not-ready (FR1, FR43) | Not-ready (FR42, FR43); FR40 / FR41 answers are not observable before Ready (FR8) | Transaction state Unknown / In-mempool / Confirmed with depth, the disputed flag and the `final` flag (FR40, FR70, DEC-182); balance and accumulated vote, address UTXOs (FR41); active-chain blocks only, else not-available (FR42); at most one transaction (FR43) | not built (10.1–10.4; not-ready gates built in 5.1) |
 | Creator-role determination | Not-ready (FR1) | Not specified | Whether the local node tops the FR38 creator order (FR44) | not built (8.2) |
 
 ## 4. Block Status Machine
@@ -138,6 +138,7 @@ What a valid chain must satisfy, grouped by scope. **Checked** names where the r
 | I-45 | `anchor_sequence ≥ max(0, block.sequence − W)` for node transfers and complex balance inputs (the parent's window tail), so the duplicate check over the window is complete (DEC-174) | FR6, FR9, FR14 | T1; pass | not built (7.3) |
 | I-46 | At block `s ≥ H`, after FR37 steps 1–3, the creator of block `s − H` gains `⌈vote_scale / vote_interest⌉` (not the creator of `s`, not FR72-excluded or named by a twin evidence block `s`, `vote_interest > 0`) | FR37, DEC-178 | T3; pass | not built (7.2) |
 | I-47 | A window-anchored candidate is at least `W + H` long, and a node's accumulated vote in it is seeded from its first seed source at or after the earliest block + `H` | FR2, FR3, DEC-177 | pass | not built (9.7) |
+| I-48 | FR40 reports `final` exactly when the confirming block is at least `H` deep (sequence `≤ S_head − H`) and the confirmation is not disputed | FR40, FR58, DEC-182 | query | not built (10.1) |
 | I-21 | Transaction and input signatures valid (UTXO inputs against the referenced output's address) | FR3, FR6, FR9 | T3 (T1 opportunistic); pass | partial — transfers and registrations built (5.4); balance and UTXO inputs 7.1 |
 | I-22 | No duplicate of a confirmed transaction (transfer key, complex input set) | FR6, FR9, FR14 | T3; pass | not built for balance-side keys (ratified deferral to Epic 7); UTXO side covered by available-UTXO bits |
 | I-23 | Every referenced node id lies within `[0, max_known_node_id]` | FR6 | T3; pass | built (5.4) |
