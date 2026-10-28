@@ -189,7 +189,7 @@ This trait defines the main cryptographic behavior:
 - `multi_sign(&self, message: &[u8]) -> MultiSignature`
 - `verify_multi_signature(&self, message: &[u8], multi_signature: &MultiSignature, public_key: &PublicKey) -> bool`
 - `verify_signature(&self, message: &[u8], signature: &Signature, public_key: &PublicKey) -> bool`
-- `aggregate_signatures(&self, signatures: &[&MultiSignature], message: &[u8]) -> Result<AggregatedSignature, CryptoError>`
+- `aggregate_signatures(&self, signatures: &[&MultiSignature], message: &[u8]) -> Result<AggregatedSignature, CryptoError>` (to gain the signers' public keys, DEC-194)
 - `verify_aggregated_signature(&self, message: &[u8], aggregated_signature: &AggregatedSignature, public_keys: &[&PublicKey]) -> bool`
 
 ## Signature Role Model
@@ -398,6 +398,8 @@ It performs these steps:
 5. compute the aggregated `s` as the weighted modular sum of all component `s` values
 
 This means the current Schnorr aggregate is a **deterministically weighted aggregate**, not just a naive additive bundle.
+
+**Decided change (DEC-194, before Story 6.6).** Step 2 derives the seed from every signer's `r` and public key in order, and the message — `H("aggregate", r₁ ‖ … ‖ rₙ ‖ P₁ ‖ … ‖ Pₙ ‖ message)` — instead of from `r_sum` alone, as published half-aggregation schemes with a security proof do; `aggregate_signatures` therefore takes the signers' public keys, and verification derives the same seed. No attack on the current form is known, and rogue keys are blocked by the registration proof of possession. An external cryptographic review is recommended.
 
 ### Aggregate verification
 
