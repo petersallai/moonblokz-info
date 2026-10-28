@@ -231,7 +231,7 @@ Per [`AGENTS.md`](./AGENTS.md), divergences must be flagged, not silently resolv
 | G1 | Gap | No regional LoRa **duty-cycle** limit documented anywhere. | Capacity/airtime planning for real deployments cannot be grounded in KB values. |
 | G2 | Gap | Flash **wear-lifetime** not quantified ([`moonblokz-storage-algorythm.md`](./moonblokz-storage-algorythm.md) explicitly defers it). | Long-term durability budgeting is undefined. |
 | G3 | Verify | Storage general slot-count formula divides by `MAX_BLOCK_SIZE` (2016), while the RP2040 placement contract uses `SLOT_SIZE_BYTES` (2048, includes the per-slot hash). | General capacity estimate may slightly over-count slots vs. the hardware geometry; confirm intended divisor. |
-| G4 | Verify | `grace_period_window_ms` defaults to 30 s ([Configuration Module Specification](./moonblokz-configuration-specification.md) §4.1 ID 2). That is below the measured unsigned-block propagation median of 33 s, and well below the verification-inclusive estimate of §2.1 (about 1–2.3 min per block). | A grace this short expires before most nodes hold the top creator's block and starts needless deviations; it is to be sized with the deviation-approval reform (OG-015, AR-021). |
+| G4 | **Resolved (DEC-183)** — default now 240 000 ms (4 min). | `grace_period_window_ms` defaults to 30 s ([Configuration Module Specification](./moonblokz-configuration-specification.md) §4.1 ID 2). That is below the measured unsigned-block propagation median of 33 s, and well below the verification-inclusive estimate of §2.1 (about 1–2.3 min per block). | A grace this short expires before most nodes hold the top creator's block and starts needless deviations; it is to be sized with the deviation-approval reform (OG-015, AR-021). |
 
 ---
 

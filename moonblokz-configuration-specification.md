@@ -130,7 +130,7 @@ Value-form column: `L` = literal only; `L/B` = literal or bytecode. **Parameters
 | ID | Parameter | Type | Width | Default | Form | Notes |
 |---:|---|---|---:|---|:--:|---|
 | 1 | `inter_block_interval_ms` | u32 | 4 | 60_000 | L/B | FR45 (b) |
-| 2 | `grace_period_window_ms` | u32 | 4 | 30_000 | L/B | FR47 |
+| 2 | `grace_period_window_ms` | u32 | 4 | 240_000 | L/B | FR47: the step between successive grace expiries; the `k`-th fires `k · g` after the local acceptance of block `p − 1`. Default raised from 30 s by DEC-183, above the verification-inclusive normal-block `t₉₀` (about 1.5–3.4 min, system constraints §2.1) |
 | 3 | `block_size_limit` | u16 | 2 | 2016 | L | Bound-checked, §6 (`HEADER_SIZE` < value ≤ `MAX_BLOCK_SIZE`) |
 | 4 | `max_block_utxo_output` | u16 | 2 | 255 | L | Bound-checked, §6 (`1 ≤ value ≤ UTXO_UNSPENT_BITS`) |
 | 5 | `mining_reward` | u32 | 4 | 0 | L/B | FR36 (a); FR6 requires a block's `mined_amount` header field to equal it. Width matches the header field |
