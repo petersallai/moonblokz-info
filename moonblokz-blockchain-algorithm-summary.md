@@ -119,7 +119,7 @@ The expected creator after block `s` is the top of the creator order; zero-vote 
 
 ## 9. Fallback and approval
 
-**Grace expansion** [Algorithm 5, FR44, FR47]: with `g = grace_period_window_ms`, after `k` local expiries the admitted set is the top `k + 1` of the creator order. Expiry changes no vote and does not shift the order; the original top may still produce at any time, and its block is never lower in value than an approval-less deviation branch (equal votes tie). The `k`-th expiry fires `k · g` after the local acceptance of block `p − 1` (`g` = 4 min by default); the expansion has no bound and continues while approvals at `p` are pending, so rounds may overlap and branch value decides. Admission gates only local creation and support, never block validity [FR47, DEC-183].
+**Grace expansion** [Algorithm 5, FR44, FR47]: with `g = grace_period_window_ms`, after `k` local expiries the admitted set is the top `k + 1` of the creator order. Expiry changes no vote and does not shift the order; the original top may still produce at any time, and its block is never lower in value than an approval-less deviation branch (equal votes tie). The `k`-th expiry fires at `E + k · g` (`g` = 4 min by default), where `E = min(t_fill, max(t_accept(p − 1) + inter_block_interval, t_first))` is the expected creation time from the local mempool, and no expiry runs while nothing is includable [DEC-186]; the expansion has no bound and continues while approvals at `p` are pending, so rounds may overlap and branch value decides. Admission gates only local creation and support, never block validity [FR47, DEC-183].
 
 **Deviation block** `d` at sequence `p` by an admitted `x ≠ u` (`u` = top at `p − 1`): `first_voted_node = u`, `consumed_votes` = `x`'s value after step 1 of §7; on acceptance `av(x) := 0` and `av(u) := 0` [FR28, FR37]. It is accepted immediately as an active extension. `u` is the top, so `av(x) ≤ av(u)`, and `v(d)` never exceeds the normal block `n` that `u` could create at `p`. An approval-less deviation branch therefore cannot overtake the normal branch, and equal votes tie [FR21, FR28, DEC-156].
 
@@ -192,7 +192,7 @@ Block #0 (by node 0, `previous_hash = 0³²`): registration of node 0 (`new_node
 
 | id | parameter | default | | id | parameter | default |
 |---:|---|---|---|---:|---|---|
-| 1 | `inter_block_interval_ms` | 60 000 | | 20 | `block_fill_threshold_percent` (θ) | 80 |
+| 1 | `inter_block_interval_ms` | 900 000 | | 20 | `block_fill_threshold_percent` (θ) | 80 |
 | 2 | `grace_period_window_ms` (g) | 30 000 | | 21 | `active_chain_length` (W) | 500 |
 | 3 | `block_size_limit` (L) | 2016 | | 22 | `mempool_replenishment_interval_ms` | 500 000 |
 | 4 | `max_block_utxo_output` | 255 | | 23 | `custodian_fee` (c) | 1 |
