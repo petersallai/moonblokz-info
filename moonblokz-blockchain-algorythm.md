@@ -98,7 +98,7 @@ Typical responsibilities include:
 - tracking unresolved ancestry,
 - requesting missing parents,
 - maintaining the FR19 `chain_heads` table,
-- detecting the FR2 stopping condition: a continuous segment that is either genesis-anchored or at least `W` blocks long, and that contains a chain-config block (highest tip sequence wins, then lowest tip hash) ([Blockchain PRD](./moonblokz-blockchain-prd.md) FR2).
+- detecting the FR2 stopping condition: a continuous segment that is either genesis-anchored or at least `W + H` blocks long (DEC-177), and that contains a chain-config block (highest tip sequence wins, then lowest tip hash) ([Blockchain PRD](./moonblokz-blockchain-prd.md) FR2).
 
 ### Processing transition
 
@@ -682,6 +682,7 @@ Select the next block creator using lightweight locally available information wh
 3. When a block should be created, select the node with the highest **accumulated vote**.
 4. Break ties by ascending node identifier (FR38).
 5. After successful block creation by the selected node, reset that node's **accumulated vote** to zero.
+6. `H` blocks after a block it created, add `⌈vote_scale / vote_interest⌉` to that node's **accumulated vote**, so that a node left without votes resumes earning interest (liveness credit, [Blockchain PRD](./moonblokz-blockchain-prd.md) FR37, DEC-178).
 
 ### Boundary note
 
