@@ -406,7 +406,7 @@ Fields:
    The referenced output's amount, declared by the spender (DEC-131); it must equal the output's amount. With it every input declares its value, so the transaction's input sum and fee follow from its bytes, and the signature commits to the amount spent.
 
 4. **`signature: [u8;64]`**  
-   Signature over this input and all outputs, using the private key corresponding to the referenced UTXO address.
+   Signature over the whole complex transaction — its serialized bytes with every input's signature field zeroed — using the private key corresponding to the referenced UTXO address (DEC-196). Every input signs the same preimage, so each signer commits to all inputs, all outputs and the `vote` field.
 
 #### Why sequence numbers instead of transaction hashes?
 
@@ -414,7 +414,7 @@ For processing performance (DEC-130): a sequence reference resolves with a RAM-o
 
 ### 6.2 Balance input (`input type = 1`)
 
-Part V says the fields are the same as in a node transfer, except that the signature covers the balance input and all outputs.
+Part V says the fields are the same as in a node transfer, except that the signature covers the balance input and all outputs. The preimage is fixed by DEC-196: the whole complex transaction with every input's signature field zeroed, signed with the `initializer`'s key, as for a UTXO input.
 
 That implies:
 
@@ -851,7 +851,7 @@ Allow old transaction blocks to disappear without losing live address-state.
 3. read the dropping block's per-block available-UTXO bitfield (per [ADR-016](./blockchain-adrs/ADR-016-sequence-indexed-utxo-input-model.md)) to classify each UTXO output as unspent (bit `1`) or not on the current active chain; whether any output must be carried forward is decided from the bitfield alone, without a block read,
 4. create a special **complex transaction with zero inputs** whose outputs correspond to the still-unspent UTXOs identified in step 3,
 5. reduce each re-added UTXO by the custodian fee,
-6. discard any UTXO whose amount becomes smaller than the custodian fee.
+6. discard any UTXO whose amount is at most the custodian fee (DEC-196): an output is carried only when its amount exceeds the fee, so no zero-amount output arises.
 
 Repeated carry-forward is intentionally self-clearing: each preservation step reduces every surviving UTXO by the custodian fee, and once the remaining amount falls below that fee the UTXO disappears instead of being replayed again. The custodian fee is therefore the long-run relief mechanism that eventually clears retained carry-forward-only residue.
 
@@ -893,7 +893,7 @@ Complex transactions follow two distinct validity regimes depending on whether t
 
 A complex transaction with at least one input is valid only if:
 
-- every referenced UTXO input resolves against the current active chain: the block at `block_sequence` exists within the retained window, and the corresponding bit in that block's available-UTXO bitfield is `1` (the output exists and is unspent; this also covers `output_index` past the block's UTXO-output stream) per [ADR-016](./blockchain-adrs/ADR-016-sequence-indexed-utxo-input-model.md),
+- every referenced UTXO input resolves against the current active chain: the block at `block_sequence` lies in the consuming block's own window, `s − W + 1 ≤ block_sequence < s` (DEC-196), and the corresponding bit in that block's available-UTXO bitfield is `1` (the output exists and is unspent; this also covers `output_index` past the block's UTXO-output stream) per [ADR-016](./blockchain-adrs/ADR-016-sequence-indexed-utxo-input-model.md),
 - every balance input is valid against current balance state, with `block sequence > anchor_sequence ≥ max(0, block sequence − W)`,
 - every input signature is valid for its scope,
 - total inputs are greater than or equal to total outputs,
@@ -1109,7 +1109,7 @@ As already described in Part III, approval may fail if too many active nodes dis
 
 ### UTXO saturation stall
 
-If re-added live UTXOs occupy all available block capacity, the chain may temporarily stall because no additional transactions can fit. The blockchain module performs no special saturation detection, status reporting, log emission, mempool admission backpressure, or replay deferral: ordinary block creation continues against whatever pending replay obligations exist, producing a sequence of replay-bearing blocks that admit no ordinary mempool transactions. The condition self-clears across many tail-advance cycles because the fixed custodian fee reduces every surviving carried-forward UTXO at each carry-forward step until UTXOs whose pre-fee amount falls below the custodian fee are discarded under FR51's below-fee rule, eventually freeing block capacity for ordinary mempool transactions again. The mempool continues to accept new transactions normally throughout. Source: this no-special-handling rule is normatively pinned by [Blockchain PRD](./moonblokz-blockchain-prd.md) FR52 / FR51 (MVP stance tracked as [OG-005](./moonblokz-open-gaps-register.md)).
+If re-added live UTXOs occupy all available block capacity, the chain may temporarily stall because no additional transactions can fit. The blockchain module performs no special saturation detection, status reporting, log emission, mempool admission backpressure, or replay deferral: ordinary block creation continues against whatever pending replay obligations exist, producing a sequence of replay-bearing blocks that admit no ordinary mempool transactions. The condition self-clears across many tail-advance cycles because the fixed custodian fee reduces every surviving carried-forward UTXO at each carry-forward step until UTXOs whose amount is at most the custodian fee are discarded under FR51's below-fee rule (DEC-196), eventually freeing block capacity for ordinary mempool transactions again. The mempool continues to accept new transactions normally throughout. Source: this no-special-handling rule is normatively pinned by [Blockchain PRD](./moonblokz-blockchain-prd.md) FR52 / FR51 (MVP stance tracked as [OG-005](./moonblokz-open-gaps-register.md)).
 
 ### Sequence Wrap-Around
 

@@ -36,7 +36,7 @@ Header: `version u8 (=1) | sequence u32 | creator u32 | mined_amount u32 | paylo
 - **T1 node transfer**: `anchor u32, initializer, receiver, amount u64, fee u32, comment u64, sig`; `sig = Sig_{sk(initializer)}(transaction bytes, sig zeroed)`, covering `type` and `vote`.
 - **T2 registration**: `initializer, new_node_id, registration_price u64, fee u64, new_pk, new_key_sig = Sig_{sk_new}(new_pk), sig = Sig_{sk(initializer)}(transaction bytes, sig zeroed, new_key_sig present)`. No anchor.
 - **T3 complex**: `in_count u8, out_count u8`, inputs, outputs (≥ 1 output; UTXO outputs per block ≤ `max_block_utxo_output`).
-  - UTXO input: `(q = block_sequence u32, i = output_index u8, a = amount u64, sig)`. `sig` is by the key equal to the referenced output's address, "over this input and all outputs" (preimage open, [OG-013]). `i` = position in block `q`'s UTXO-output stream (UTXO outputs only, transaction order, output order) [ADR-016, DEC-131].
+  - UTXO input: `(q = block_sequence u32, i = output_index u8, a = amount u64, sig)`. `sig` is by the key equal to the referenced output's address, over the whole transaction with every input signature zeroed [DEC-196]. `i` = position in block `q`'s UTXO-output stream (UTXO outputs only, transaction order, output order) [ADR-016, DEC-131].
   - Balance input: `(anchor, initializer, amount, comment, sig)`, sig "over this input and all outputs".
   - UTXO output: `(address = owner pk [32], amount)`. Balance output: `(receiver u32, amount)`.
   - `fee = Σ in − Σ out ≥ 0`. Zero inputs ⇒ valid only as a `snake_chain` carry-forward (§10.3).
@@ -79,7 +79,7 @@ Header: `version u8 (=1) | sequence u32 | creator u32 | mined_amount u32 | paylo
 Outcome ∈ {Accepted-new, Already-known, Invalid-evidence, Out-of-window, Deferred} [FR10]; duplicate key `(sequence, hash)` [FR11].
 
 - **Out-of-window** (ready only): `S_new ≥ S_head + W` or `S_new < S_tail` ⇒ discarded, not stored; the forward case is logged as long-disconnect [FR60].
-- **Tier 1** (block bytes + locked configuration; failure ⇒ not stored; the list is exhaustive) [FR9, FR16]: version; payload schema; `|b| ≤ L`; chain-config content equals the lock; ready-window membership; `max(0, s − W) ≤ anchor < s` for T1 and every balance input (the FR3 pass checks the lower bound before the lock, DEC-174); no-self-vote; T3 with inputs: `Σ declared in ≥ Σ out` without u64 overflow; T2/T3 exclusion; `new_key_sig` valid; anchor checks (`new_node_id = 0 ⇒ new_pk = pk0`; balance entry `owner = 0 ⇒ pk = pk0`; `content_sig` valid against `pk0`); `sequence ≠ u32::MAX`; UTXO-output cap; UTXO `q < s` (code-level only, [OG-011]).
+- **Tier 1** (block bytes + locked configuration; failure ⇒ not stored; the list is exhaustive) [FR9, FR16]: version; payload schema; `|b| ≤ L`; chain-config content equals the lock; ready-window membership; `max(0, s − W) ≤ anchor < s` for T1 and every balance input (the FR3 pass checks the lower bound before the lock, DEC-174); no-self-vote; T3 with inputs: `Σ declared in ≥ Σ out` without u64 overflow; T2/T3 exclusion; `new_key_sig` valid; anchor checks (`new_node_id = 0 ⇒ new_pk = pk0`; balance entry `owner = 0 ⇒ pk = pk0`; `content_sig` valid against `pk0`); `sequence ≠ u32::MAX`; UTXO-output cap; UTXO `q < s` [DEC-196].
   - The creator signature is exact evidence in ready state for a direct extension of the active head with a derivable key, and for any block whose creator's key is branch-independent (node 0, or seeded at or below `S_tail`). Otherwise signature checks are opportunistic (a failure does not invalidate) and the decision waits for Tier 3. A verified block is marked and not verified again [FR9, DEC-157].
   - Header vote form: `first_voted_node = c` ⇒ `consumed_votes_from_first_voted_node = 0`; otherwise `consumed_votes ≤ consumed_votes_from_first_voted_node` [FR9].
   - For a ready direct head extension, also exact evidence: a non-proposer block above a deviation block; a carry-forward failing §10.3 (i)–(v).
@@ -95,8 +95,8 @@ Common: every referenced id (initializer, receiver, balance-input initializer, b
 
 - T1: `max(0, s − W) ≤ anchor < s`; `balance(init) ≥ amount + fee`; sig valid; key `(init, recv, amount, anchor, comment)` not already confirmed on the candidate chain; `min · size ≤ fee ≤ max · size` over the integers, `size` = serialized length in the payload [FR56, DEC-181].
 - T2: `balance(init) ≥ price + fee`; `new_node_id = M + 1`, strictly sequential within a block; `new_pk` unique on the chain; `new_key_sig` and sig valid. Effect: `M += 1`, bind `id → pk`, burn `price`.
-- T3 with ≥ 1 input: each UTXO input `(q, i, a)` has block `q` on the active chain, `q ≥ S_tail`, `U_q[i] = 1`, `a = amount(q, i)`; each balance input has `max(0, s − W) ≤ anchor < s` and sufficient balance; every sig valid; `Σ in ≥ Σ out`; no negative balance; the input set not already confirmed. Effect: clear `U_q[i]`; set the block's own output bits.
-- Mempool intake (ready only) [FR14]: `anchor ≥ S_tail` with no upper bound; UTXO `q ≥ S_tail`; unknown `vote` target ⇒ Deferred, never Rejected; competing spends admitted. Uniqueness keys: T1 tuple above; T2 `new_pk`; T3 full ordered input set. Its block-level counterpart is `anchor ≥ max(0, s − W)`, the parent's tail, so an admitted entry stays includable in the next block [DEC-174].
+- T3 with ≥ 1 input: each UTXO input `(q, i, a)` has block `q` on the active chain with `s − W + 1 ≤ q < s` [DEC-196], `U_q[i] = 1`, `a = amount(q, i)`; each balance input has `max(0, s − W) ≤ anchor < s` and sufficient balance; every sig valid; `Σ in ≥ Σ out`; no negative balance; the input set not already confirmed. Effect: clear `U_q[i]`; set the block's own output bits.
+- Mempool intake (ready only) [FR14]: `anchor ≥ S_tail` with no upper bound; UTXO `q > S_tail` [DEC-196]; unknown `vote` target ⇒ Deferred, never Rejected; competing spends admitted. Uniqueness keys: T1 tuple above; T2 `new_pk`; T3 full ordered input set. Its block-level counterpart is `anchor ≥ max(0, s − W)`, the parent's tail, so an admitted entry stays includable in the next block [DEC-174].
 
 ## 7. Vote dynamics and creator selection
 
@@ -162,7 +162,7 @@ Invariant: every registered node has a seed source (balance entry or registratio
 
 ### 10.3 UTXO carry-forward [FR51, ADR-016]
 
-For a dropping transaction block `t` with unspent set `O = {o : U_t[o] = 1}`: one zero-input transaction at the head (1:1 with `t`, no coalescing) with outputs `{(addr_o, a_o − c) : o ∈ O, a_o ≥ c}`, where `c = custodian_fee`; outputs with `a_o < c` are discarded (wording drift, [OG-018]). Acceptance requires (i) the tail advances by exactly one; (ii) `t` is a transaction block with UTXO outputs; (iii) the `(address, amount)` multiset equals `O` after the fee; (iv) below-fee outputs are omitted; (v) no extra outputs. Carry-forward is vote-neutral and fee-free; carried outputs get new references `(head_seq, i′)` and old references stop resolving.
+For a dropping transaction block `t` with unspent set `O = {o : U_t[o] = 1}`: one zero-input transaction at the head (1:1 with `t`, no coalescing) with outputs `{(addr_o, a_o − c) : o ∈ O, a_o > c}`, where `c = custodian_fee`; outputs with `a_o ≤ c` are discarded [DEC-196]. Acceptance requires (i) the tail advances by exactly one; (ii) `t` is a transaction block with UTXO outputs; (iii) the `(address, amount)` multiset equals `O` after the fee; (iv) below-fee outputs are omitted; (v) no extra outputs. Carry-forward is vote-neutral and fee-free; carried outputs get new references `(head_seq, i′)` and old references stop resolving.
 
 ## 11. Fork choice
 
@@ -210,10 +210,7 @@ Literal-only and bound-checked at acceptance: 3, 4, 10, 21, 30. The others may b
 
 Each entry is defined in the [Open Gaps Register](./moonblokz-open-gaps-register.md):
 
-- [OG-011] UTXO causality (`q < s`, no same-block spend) exists only in code.
-- [OG-012] the UTXO reference bound is worded three ways.
-- [OG-013] input-signature preimage of complex transactions.
-- [OG-018] carry-forward below-fee discard wording.
+- None open within the MVP blockchain scope since DEC-196.
 - Post-MVP: [OG-005] UTXO saturation / dynamic custodian fee; [OG-006] long-disconnect recovery; [OG-007] concurrent ingestion while processing; [OG-010] sequence wrap.
 
 ## 16. Security-relevant facts (stated, not evaluated)
