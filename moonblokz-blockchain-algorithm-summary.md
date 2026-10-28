@@ -64,11 +64,12 @@ Header: `version u8 (=1) | sequence u32 | creator u32 | mined_amount u32 | paylo
 
 `collecting → processing pass → ready`; a failed pass returns to collecting; a restart always re-enters collecting [FR1–FR5, FR59].
 
-- **Collecting**: store every parseable block passing Tier 1; recover missing parents (≤ 1 request per tick, to the most-overdue Stored head, under per-head retry and global minimum-emit throttles) [FR19, FR46]. Stop when a continuous segment is (genesis-anchored ∨ length ≥ `W`) ∧ contains a chain-config block; choose `argmax tip.sequence`, tie `argmin tip.hash` — not branch value [FR2].
+- **Collecting**: store every parseable block passing Tier 1; recover missing parents (≤ 1 request per tick, to the most-overdue Stored head, under per-head retry and global minimum-emit throttles) [FR19, FR46]. Stop when a continuous segment is (genesis-anchored ∨ length ≥ `W + H`) ∧ contains a chain-config block (DEC-177); choose `argmax tip.sequence`, tie `argmin tip.hash` — not branch value [FR2].
 - **Config commitment**: the first chain-config block whose `content_sig` verifies against `pk0` and which the configuration module accepts is loaded tentatively; before ready the candidate's configuration must byte-match it, then it is durably locked (set-once). Chain-config-derived failures invalidate blocks only after the lock, except the UTXO-reference `W` bound and the per-block UTXO-output cap [FR8, FR9, DEC-129, DEC-133].
 - **Processing pass** (one forward pass, non-resumable) [FR3, FR6]: backward-mark the candidate; preload its configuration (all its chain-config blocks byte-identical); forward-rebuild all derived state; validate every block and transaction.
   - Seeding: a node is seeded from its earliest in-segment balance entry, else its in-segment registration. **Pre-seed rule**: checks depending on a node's state before its seed are auto-accepted; structural, config-derived and UTXO-reference checks still run.
   - Window-anchored candidate: replay obligations whose dropping block precedes the segment are trusted; a UTXO input referencing a block below the anchor is trusted (declared amount included) if `≤ W` back, invalid if further [FR3, FR6, DEC-129].
+  - Window-anchored candidate with earliest block `a`: a node's `av` is seeded only from its first seed source at or after `a + H`, and checks that depend on its `av` are auto-accepted before it; the `W + H` length gives every node such a seed [FR3, DEC-177].
   - `M` starts from the earliest balance block's `max_node_id` (0 at genesis).
   - Failure ⇒ atomic discard of the working state; delete the earliest offending block and its descendants (if unidentifiable: the candidate head only); return to collecting [FR5].
 - **Ready**: intake, extension, fork choice, block production, approval.
@@ -103,7 +104,8 @@ For every accepted block `b` with creator `c`, in order [FR37]:
 1. `∀ n: av(n) += min(⌊av(n)·vi / vs⌋, vs)` — anti-capture interest, `c` included.
 2. `∀ n ∈ {tx.vote : tx ∈ b}`, carry-forward excluded: `av(n) += vs` once, however many transactions name `n` (DEC-176), unless `n` is under an FR72 exclusion at `b` (DEC-175).
 3. `av(c) := 0`. A deviation block additionally sets `av(first_voted_node) := 0`.
-4. Overflow of any `av` ⇒ the block is invalid.
+4. Liveness credit: if `s ≥ H` and `vi > 0`, the creator `n` of block `s − H` gains `av(n) += ⌈vs/vi⌉`, unless `n = c`, `n` is FR72-excluded, or `b` is a twin evidence block naming `n` [DEC-178].
+5. Overflow of any `av` ⇒ the block is invalid.
 
 Header snapshots: `consumed_votes(b)` is `av(c)` after step 1 and before step 2. A deviation block's `consumed_votes_from_first_voted_node` is that node's value at the same point; it is verified at Tier 3 and used to undo the penalty, but it adds no branch value. So a block's own credits never enter its value, while step 3 still wipes the credits `b` gave `c` [FR37, DEC-156].
 
