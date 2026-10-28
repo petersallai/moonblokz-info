@@ -84,7 +84,7 @@ This document explains:
 - the threat-model boundary, the severity scale and the status lifecycle from *Open* to *Mitigated*,
 - each risk with its severity, treatment options, linked open decision or owner story, and sources,
 - the evidence behind the ratings (vote-concentration, reorg-depth, subgroup-majority and approval-liveness models) and their assumptions,
-- and the security-relevant facts not yet assessed.
+- and the assessment of the summary's §16 security-relevant facts.
 
 It is explicitly **not authoritative**: ratings and treatments are assessments, and a treatment binds only through a [Decision Register](./moonblokz-decision-register.md) entry. Use it to pick risk-reduction work for a sprint and to check whether a weakness is already known.
 
