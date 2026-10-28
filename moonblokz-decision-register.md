@@ -211,6 +211,7 @@ Not repeated here: architecture decisions logged in [architecture §14](./moonbl
 | DEC-115 | 2026-09-21 | On restart a stored configuration passes the FR7 check before the lock is restored, and the lock-time cleanups re-run; after a refused restart intake answers `Unstorable` until re-initialization. | FR7, FR8, FR59 | story 5.10 | in force |
 | DEC-116 | 2026-10-10 | The BMAD `prd.md` and `architecture.md` are symbolic links to the KB documents. | PRD, ARCH | PRD / ARCH Provenance | done |
 | DEC-117 | 2026-10-12 | The blockchain module never receives the private key: `load_control_data()` drops it, `load_private_key()` serves the runtime. | FR59, FR68; ST-FR11, ST-FR54 | ST-PRD; PRD FR59 | in force · 6.9 |
+| DEC-182 | 2026-10-28 | Published confirmation rule: FR40 `Confirmed` carries a `final` flag when the confirming block is at least `H` deep (sequence `≤ S_head − H`) and the confirmation is not disputed. No admissible switch reaches such a block (DEC-159), so `final` is irreversible on the reporting node whatever the coalition, deviation or twin route; below `H` an approved deviation (about `r` = 40 blocks, also from an honest partition heal) or an adjacent cluster can still overturn it, so a shallower depth is the caller's risk decision. Residuals, documented: finality is node-local under a permanent fork (AR-016); reaching depth `H` takes `H` blocks of traffic, since blocks are not made empty (FR45); a confirmation leaves FR40 after `W`. | FR40, FR58 | PRD FR40; Provenance | in force · 10.1 |
 
 ## 7. Process and Knowledge Base
 
