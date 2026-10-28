@@ -19,11 +19,11 @@ Approval subgroup selection uses a deterministic, seed-derived rendezvous-hash o
 
 #### Active-node set
 
-A node is **active** at a given moment if it appears in the current active `snake_chain` as the creator of at least one block **or** transaction. Transaction creators count, not only block creators.
+A node is **active** at an evaluation point if, within that point's active window, it created at least one block (of any payload type) or is a signer listed in an approval evidence block or a twin verdict bitmap. Transaction initiation alone does not count (Project Lead, 2026-10-28; DEC-185): sleeping senders cannot sign and so cost approval liveness (AR-008), and an identity could join `A` for one transaction fee. The evaluation point is the deviation's parent `p − 1` for an approval and the twins' shared parent `P` for a verdict, so every node derives the same set (O-030 closed). With `vote_interest = 50` creation rotates, so for `N ≤ W` every voted node creates within the window and `A` covers the network; for `N > W` it is a sample of about `W` creators in which a coalition keeps about its population share.
 
 The active set `A` is therefore derivable from active-chain state per ADR-003 and ADR-008, bounded by the `snake_chain` length, and does not require separately persisted membership state.
 
-A node under a BC-FR72 equivocation exclusion is not in `A` while the exclusion lasts (Project Lead, 2026-10-22; DEC-165).
+A node under a BC-FR72 equivocation exclusion is not in `A` while the exclusion lasts (Project Lead, 2026-10-22; DEC-165), nor is a node under a late-node exclusion (BC-FR37, DEC-184, DEC-185).
 
 The subgroup is drawn from the **voting set** `A'` = `A` without the deviation's proposer and its originally-top node, the two parties to the decision; when `A'` is empty no approval can form (Project Lead, 2026-10-27; DEC-172).
 
@@ -107,4 +107,4 @@ This decision implies that later design work must define:
 - the chain-config validator rule that enforces `required_support ≤ MAX_AGGREGATED_SIGNATURES(backend)`,
 - and the interaction between the subgroup rule and the detailed grace-period progression, particularly for back-to-back approvals under `snake_chain` precedence (Algorithm 18).
 
-The BC-FR71 twin verdict reuses this selection with a domain-separated seed, `H("twin" ‖ hash(tail_P) ‖ c ‖ s)`, over the active set at the twins' shared parent `P`, without the equivocating creator `c` (DEC-164). Because its signers are a bitmap over the subgroup positions, the active set must be bit-identical on every node (O-030).
+The BC-FR71 twin verdict reuses this selection with a domain-separated seed, `H("twin" ‖ hash(tail_P) ‖ c ‖ s)`, over the active set at the twins' shared parent `P`, without the equivocating creator `c` (DEC-164). Because its signers are a bitmap over the subgroup positions, the active set must be bit-identical on every node; the evaluation point and membership rule above make it so (DEC-185).

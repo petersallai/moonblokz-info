@@ -126,7 +126,7 @@ The expected creator after block `s` is the top of the creator order; zero-vote 
 **Late-node penalty** [FR27, FR37, FR38, DEC-184]: the evidence block of a deviation by `x` at `p` lists, in creator order at `p − 1`, the nodes ranked above `x` except `u`, each with its accumulated vote, as many as fit (about 50 at `r = 40`). Each listed node and `u` is reset to 0 and left out of the creator order for `W` blocks, its vote held at 0 (no credits, no liveness credit), so one approval removes a silent cluster.
 
 **Subgroup** [ADR-015, FR12], evaluated on the evaluator's local active chain:
-- `A` = nodes that created at least one block or transaction within the active window.
+- `A` = nodes that, within the window of `p − 1`, created a block (any type) or signed an evidence block or twin verdict; transaction senders do not count; FR72- and late-node-excluded nodes are left out [DEC-185].
 - `seed = H(hash(tail) ‖ x ‖ p)`; `node_value(n) = (H(seed ‖ n) mod 2³²)·2³² + n`.
 - Voting set `A'` = `A` without `x` and `u`; `r_eff = min(r, ⌊|A'|/2⌋ + 1)` with `r = required_support ∈ [1, MAX_AGG]` (a cap), `m = min(2·r_eff − 1, |A'|)`; subgroup = the `m` members of `A'` with the smallest `node_value`; `A'` empty ⇒ no approval [DEC-172].
 

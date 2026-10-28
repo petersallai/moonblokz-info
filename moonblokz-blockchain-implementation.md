@@ -364,7 +364,7 @@ Resolved by [ADR-015](./blockchain-adrs/ADR-015-approval-subgroup-selection.md).
 
 ### 4. Active-node-window semantics
 
-Resolved by [ADR-015](./blockchain-adrs/ADR-015-approval-subgroup-selection.md). A node is active if it appears in the current active `snake_chain` as the creator of at least one block or transaction.
+Resolved by [ADR-015](./blockchain-adrs/ADR-015-approval-subgroup-selection.md). A node is active if, within the window of the evaluation point (`p − 1` for an approval, `P` for a twin verdict), it created a block or signed an evidence block or verdict; transaction senders do not count, and FR72- or late-node-excluded nodes are left out (DEC-185).
 
 ### 5. Mutable configuration support
 
