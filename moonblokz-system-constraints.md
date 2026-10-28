@@ -12,6 +12,7 @@ When a new numeric cap, budget, or limit is introduced anywhere in the knowledge
 
 - **Hardware sizing question** → start with §3 (RAM budget) + §1 (capacity caps) + §6 (radio profiles), then read the cited architecture sections for rationale.
 - **Capacity planning** → §1 (const-generics) + §2 (crypto bounds).
+- **CPU time and latency** → §2.1 (measured crypto timings and what they cost per block).
 - **Flash / persistence sizing** → §4.
 - **Radio / airtime** → §5 + §6.
 - **Before trusting a margin figure** → read §7 (Known Discrepancies & Gaps) first.
@@ -87,6 +88,24 @@ Global, all families:
 `MAX_AGGREGATED_SIGNATURES` is also the ceiling the chain-declared `max_aggregated_signatures` is checked against at acceptance, and the one `required_support` is clamped to at resolution — see [Configuration Module Specification](./moonblokz-configuration-specification.md) §4.5 for why the clamp reads the chain's value rather than this constant.
 
 Cross-check: this is why the `ApprovalAccumulator` (§3) costs ~36 B/supporter on Schnorr (`4 + 32`) and ~4 B/supporter on BLS (`4 + 0`), at an identical ~2 KB allocated buffer — see [`moonblokz-blockchain-architecture.md`](./moonblokz-blockchain-architecture.md) §6.5.
+
+### 2.1 Measured crypto timings (RP2040) and what they cost
+
+Authoritative source: [`moonblokz-crypto-implementation.md`](./moonblokz-crypto-implementation.md) §Measured timings on the reference hardware (DEC-180). The current build is `schnorr-malachite` with `opt-level = "z"`: about 0.9 s to sign, 1.9 s to verify one signature, and 2.9 s per signer to verify an aggregate. The `"s"` profile is about 25 % faster.
+
+A node relays a block or support message only after accepting it, so each relay hop adds the verification time. The costs below are derived, not measured: they assume about 3 hops to the median node, on top of the measured unsigned-block `t₅₀` of 33 s at 100 nodes.
+
+| Work | Verification per node | Remark |
+|---|---:|---|
+| Full transaction block (18 transfers + block signature) | about 36 s | median propagation about 2.3 min |
+| Low-traffic block (3 transfers + block signature) | about 7.6 s | median propagation about 1 min |
+| Approval evidence block, `r = 40` | about 2 min | median propagation about 6–7 min |
+| Support message | 1.9 s | the proposer needs 40 (about 76 s); a node that relays all 79 spends about 2.5 min |
+| One approval round, `r = 40` | — | about 8–10 min end to end |
+| FR3 pass over `W + H = 550` blocks | about 70 min (low traffic) to 5.5 h (full blocks) | plus about 2 min per evidence block |
+| Chain switch over `H = 50` full blocks | about 30 min | replay only |
+
+At about 36 s per full block, a node verifies at most about 1.7 full blocks per minute. That caps the network at roughly 30 transfers per minute, before support traffic.
 
 ---
 
@@ -212,6 +231,7 @@ Per [`AGENTS.md`](./AGENTS.md), divergences must be flagged, not silently resolv
 | G1 | Gap | No regional LoRa **duty-cycle** limit documented anywhere. | Capacity/airtime planning for real deployments cannot be grounded in KB values. |
 | G2 | Gap | Flash **wear-lifetime** not quantified ([`moonblokz-storage-algorythm.md`](./moonblokz-storage-algorythm.md) explicitly defers it). | Long-term durability budgeting is undefined. |
 | G3 | Verify | Storage general slot-count formula divides by `MAX_BLOCK_SIZE` (2016), while the RP2040 placement contract uses `SLOT_SIZE_BYTES` (2048, includes the per-slot hash). | General capacity estimate may slightly over-count slots vs. the hardware geometry; confirm intended divisor. |
+| G4 | Verify | `grace_period_window_ms` defaults to 30 s ([Configuration Module Specification](./moonblokz-configuration-specification.md) §4.1 ID 2). That is below the measured unsigned-block propagation median of 33 s, and well below the verification-inclusive estimate of §2.1 (about 1–2.3 min per block). | A grace this short expires before most nodes hold the top creator's block and starts needless deviations; it is to be sized with the deviation-approval reform (OG-015, AR-021). |
 
 ---
 
