@@ -700,6 +700,8 @@ pub(crate) struct ApprovalAccumulator {
 
 Here BLS is significantly **more efficient** than Schnorr: the same 2 KB buffer can hold 5–10× more supporters. The allocated memory remains unchanged at ~2 KB for both variants.
 
+**Corrected (O-004, DEC-195).** Since DEC-194 the Schnorr weight seed binds every signer's `(R_i, P_i)`, so the aggregate `s` can be formed only once the signer set is final: the proposer keeps every accepted support's `r` and `s` with its subgroup rank, about 68 B per supporter, about **3.4 KB** at `MAX_AGGREGATED_SIGNATURES = 50`, and writes the DEC-195 payload at emission. BLS keeps the ~2 KB figure.
+
 ### 6.6 `EmitScratch` — outcome view source
 
 ```rust
@@ -769,12 +771,14 @@ pub struct VoteEngine<const MAX_NODES: usize> {
 | BlockTable | 600 × 76 B | 45 600 |
 | ChainHeadsTable | 40 × 72 B | 2 880 |
 | snake_chain fields | 2 × 4 B | 8 |
-| ApprovalAccumulator | MAX_BLOCK_SIZE buffer (crypto-agnostic) | ~2 048 |
+| ApprovalAccumulator | MAX_BLOCK_SIZE buffer (crypto-agnostic); ~3 400 since DEC-195, see note | ~2 048 |
 | EmitScratch.block_buffer | MAX_BLOCK_SIZE | ~2 000 |
 | lifecycle_phase | u8 | 1 |
 | SchedulerState | 4 × Option\<u64\> + u64 | 72 |
 | PRNG root | u64 | 8 |
 | **Subtotal (Schnorr)** | | **~95 021** |
+
+**Pending refresh (2026-10-28).** Not yet folded into this subtotal: the DEC-185 active-set counter (about 2 KB at `MAX_NODES = 1000`) and the DEC-195 Schnorr accumulator (about +1.4 KB). Together about +3.4 KB, which lowers the §7 margin from about 28 KB to about 24.6 KB. The BLS subtotal gains the active-set counter only.
 
 ### 7.2 Chain-lib subtotal — BLS — ~159 KB
 

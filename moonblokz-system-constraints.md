@@ -120,9 +120,9 @@ Authoritative source: [`moonblokz-blockchain-architecture.md`](./moonblokz-block
 | `NodeInfo` (SoA) | ~44 KB | ~108 KB | `MAX_NODES` × (`PUBLIC_KEY_SIZE` + 8 + 4) |
 | `BlockTable` | 45.6 KB | 45.6 KB | `MAX_BLOCKS` × 76 B |
 | `ChainHeadsTable` | 1.28 KB | 1.28 KB | `MAX_BRANCH_COUNT` × 32 B |
-| `ApprovalAccumulator` | ~2 KB | ~2 KB | `MAX_BLOCK_SIZE` buffer (crypto-agnostic) |
+| `ApprovalAccumulator` | ~3.4 KB | ~2 KB | Schnorr keeps every support's `r`, `s` and rank until emission (DEC-194, DEC-195); BLS a `MAX_BLOCK_SIZE` buffer |
 | `EmitScratch` + scheduler + lifecycle + PRNG | ~2.1 KB | ~2.1 KB | `MAX_BLOCK_SIZE` buffer + small fields |
-| **`moonblokz-blockchain` subtotal** | **~95 KB** | **~159 KB** | matches architecture §7.1 / §7.2 |
+| **`moonblokz-blockchain` subtotal** | **~95 KB** | **~159 KB** | matches architecture §7.1 / §7.2; pending refresh there: about +3.4 KB Schnorr / +2 KB BLS (DEC-185 active-set counter, DEC-195 accumulator) |
 | `Mempool` (sibling `moonblokz-mempool`) | ~23–25 KB | ~23–25 KB | `MEMPOOL_COMPACT_BYTES` + compact index including stored `transaction_fee` + small fields; authoritative layout in blockchain architecture §6.8 |
 | `VoteEngine.accumulated_vote` (sibling `moonblokz-vote`) | ~4 KB | ~4 KB | `MAX_NODES` × 4 B |
 | **blockchain + mempool + vote** | **~123–124 KB** | **~187–188 KB** | carried into §3.2 |

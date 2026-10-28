@@ -549,7 +549,7 @@ The parameter registry — the identifier of each parameter, its type, width, de
 
 ## 9. Approval Payload
 
-Part V deferred the approval payload; it states that approval is represented by a multi-signature plus a list of supporting nodes. Its content is now fixed by [Blockchain PRD](./moonblokz-blockchain-prd.md) FR12 / FR21 / FR27 and [ADR-015](./blockchain-adrs/ADR-015-approval-subgroup-selection.md): `supporter_vote_sum: u64`, then the aggregated support signature, then the supporter-identity list; only its exact binary encoding remains open ([OG-008](./moonblokz-open-gaps-register.md)).
+Part V deferred the approval payload; it states that approval is represented by a multi-signature plus a list of supporting nodes. Its content is now fixed by [Blockchain PRD](./moonblokz-blockchain-prd.md) FR12 / FR21 / FR27 and [ADR-015](./blockchain-adrs/ADR-015-approval-subgroup-selection.md): `supporter_vote_sum: u64`, then the aggregated support signature, then the supporters. The binary encoding is fixed by DEC-195 ([Blockchain PRD](./moonblokz-blockchain-prd.md) FR27): `supporter_vote_sum u64 ‖ deviation_sequence u32 ‖ m u8 ‖ signer bitmap (⌈m/8⌉ B, subgroup ranks in ascending node_value order) ‖ aggregated signature (crypto-library serialization, signers in rank order) ‖ late_count u8 ‖ late-node entries (node_id u32, accumulated_vote u32)`, little-endian; the signed content `"MBSUP" ‖ proposer ‖ deviation_sequence ‖ hash(d)` binds it to the deviation.
 
 Algorithmically, this means the payload must be capable of proving:
 
@@ -1158,7 +1158,7 @@ The MoonBlokz blockchain module pins this tradeoff with an explicit verification
 Parts III, IV, and V left several details for later work. They are now specified elsewhere:
 
 - communication protocol — the radio message model ([Radio Algorithm](./moonblokz-radio-algorythm.md) Section C) and the whole-block boundary (FR61),
-- approval messaging and evidence content — FR26 / FR27 and Section 9 above; only the exact evidence-payload byte encoding remains open ([OG-008](./moonblokz-open-gaps-register.md)),
+- approval messaging and evidence content — FR26 / FR27 and Section 9 above, including the evidence-payload byte encoding (DEC-195),
 - multi-signature efficiency — Schnorr vs. BLS per-supporter cost ([architecture](./moonblokz-blockchain-architecture.md) §6.5) and the backend's `MAX_AGGREGATED_SIGNATURES`, above which `required_support` is refused at acceptance ([Configuration Module Specification](./moonblokz-configuration-specification.md) §6 check 3),
 - chain-configuration schema — the parameter registry (Configuration Module Specification §4),
 - mutable future configuration — none: configuration is locked for the lifetime of the chain (FR8; Configuration Module Specification §1),

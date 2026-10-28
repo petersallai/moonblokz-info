@@ -45,7 +45,7 @@ Header: `version u8 (=1) | sequence u32 | creator u32 | mined_amount u32 | paylo
 
 **Chain-config block** (type 3): `count u16, {key u8, len u8, value}*, content_sig = Sig_{sk0}(content region)`. Key bit 7 = literal/bytecode, bits 0–6 = parameter id ∈ [1, 126]; content is an override set over code defaults; an unknown id ⇒ reject. Bytecode values run on a deterministic, fuel-bounded VM; failure falls back to default, then fallback literal. Configuration is immutable for the chain's lifetime and every chain-config block is byte-identical [FR7, FR8, FR17, config §3–§5].
 
-**Approval-evidence block** (type 4): `supporter_vote_sum u64 | aggregated signature | supporter id list`; byte encoding and binding to the deviation block are open [OG-008].
+**Approval-evidence block** (type 4), little-endian: `supporter_vote_sum u64 ‖ deviation_sequence u32 ‖ m u8 ‖ signer bitmap (⌈m/8⌉ B over the subgroup ranks) ‖ aggregated signature (signers in rank order) ‖ late_count u8 ‖ late-node entries (u32 id, u32 vote)`; bound to the deviation by the signed content `"MBSUP" ‖ x ‖ p ‖ hash(d)` [FR27, DEC-195].
 
 **Twin evidence block** (type 5): `c`, `s`, `hash(P)`; the other twin's header and payload hash (the proof); `c`'s accumulated-vote snapshot; with a quorum, a verdict = signer bitmap over the subgroup positions + aggregated signature [FR71].
 
@@ -210,7 +210,6 @@ Literal-only and bound-checked at acceptance: 3, 4, 10, 21, 30. The others may b
 
 Each entry is defined in the [Open Gaps Register](./moonblokz-open-gaps-register.md):
 
-- [OG-008] approval-evidence byte encoding and its binding to the deviation block.
 - [OG-011] UTXO causality (`q < s`, no same-block spend) exists only in code.
 - [OG-012] the UTXO reference bound is worded three ways.
 - [OG-013] input-signature preimage of complex transactions.
