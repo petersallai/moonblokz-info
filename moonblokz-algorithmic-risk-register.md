@@ -122,12 +122,14 @@ The Project Lead stated that the default must follow:
 - **Schnorr:** the evidence-block capacity, about 36 B per supporter, at most about 50.
 - **BLS:** security and practicality, because its evidence capacity (about 450) is not binding.
 
-The binding cost is radio. All `m = 2r − 1` subgroup members send a support message of about 225 B. At a channel throughput of about 30–50 B/s, before relaying:
+The binding cost is radio. All `m = 2r − 1` subgroup members send a support message of 113 B (O-002, DEC-187). At a channel throughput of about 30–50 B/s, before relaying:
 
-| `r` | 10 | 25 | 50 | 100 |
-|---|---|---|---|---|
-| Message volume | 4 KB | 11 KB | 22 KB | 44 KB |
-| Whole-channel time | 1.5–2.5 min | 4–6 min | 7–12 min | 15–25 min |
+| `r` | 10 | 25 | 40 (default) | 50 | 100 |
+|---|---|---|---|---|---|
+| Message volume | 2.1 KB | 5.5 KB | 8.9 KB | 11.2 KB | 22.5 KB |
+| Whole-channel time | 0.7–1.2 min | 1.8–3.1 min | 3–5 min | 3.7–6.2 min | 7.5–12.5 min |
+
+An earlier version of this table assumed 225 B per message, twice the actual size; the range below was drawn from it. Verification CPU adds to the radio time (DEC-180).
 
 A realistic range is therefore about 10–25 for Schnorr and 25–50 for BLS, to be confirmed in the radio simulator. The Project Lead set the default to 40 on 2026-10-27 (DEC-173), below the cap of 50 to keep the AR-006 depth under `H = 50`; with O-002's 113 B support message an approval round (79 messages) is about 9 KB. Since DEC-172 the value is a cap: a voting set smaller than `2r − 1` approves by simple majority, so a large `r` no longer halts a small network. Raising `r` lowers AR-006 likelihood but raises its depth, unless AR-006's decoupling is adopted. Since DEC-183 successive proposers are admitted every 4 minutes while a round takes about 8–10, so a missing top typically starts 2–3 overlapping support rounds; the stop rule (no support after an evidence) thins them, and branch value decides between approved branches. **CPU (DEC-180):** at the measured 2.9 s per signer (RP2040, current build), an `r = 40` evidence block costs about 2 minutes of verification on every node, paid again at every relay hop, and each support message 1.9 s. An approval round therefore takes about 8–10 minutes rather than the 1–1.5 minutes of radio time alone. The Project Lead kept `r = 40` on 2026-10-28 and deferred crypto acceleration to a later development phase (O-032).
 
@@ -269,14 +271,14 @@ The figures above come from simplified models, not from the radio simulator:
 - **Capture (AR-022):** the vote model with a coalition that credits only its own members and omits every honest vote from its blocks, honest blocks carrying `T` uniform votes; capture means no honest block in the last 5 000 of 30 000 blocks; the liveness credit (or a lift only at zero) is applied after the creator reset to the creator of the block `K` back; silent nodes receive no votes.
 - **Stall (AR-021):** expiries and approval rounds counted from the block propagation measurement (`t₅₀` 33 s, `t₉₀` about 60 s, 100 random nodes, unsigned test blocks), plus the measured RP2040 verification time at about 3 relay hops (system constraints §2.1); not simulated.
 
-## Not Yet Assessed
+## Assessed §16 Facts
 
-The following §16 facts are not yet analyzed:
+The §16 facts this section listed as not yet assessed were assessed on 2026-10-28:
 
-- 16.5: several proposers can be supported at the same sequence (competing approved deviations).
-- 16.8: Schnorr aggregate weights are independent of the public keys, and the aggregate check is x-only.
-- 16.17: branch re-evaluation is pairwise.
-- §5: the pacing soft-fail relies on local arrival times.
+- **16.5, several proposers supported at one sequence.** Settled by DEC-183. Grace keeps admitting ranks while approvals are pending, so rounds can overlap; a node stops supporting once it holds an evidence block or the top's own block, and branch value decides between approved branches.
+- **16.8, Schnorr aggregate weights.** No attack was found. Key cancellation (rogue keys) is blocked by the registration proof of possession. The weights, however, are derived from the sum of the nonce `r` values and the message only ([Crypto Algorithm](./moonblokz-crypto-algorythm.md) §Deterministically weighted aggregation), whereas published half-aggregation schemes with a security proof bind each weight to every signer's nonce, key and message. Proposed in O-036: bind the weights to the full ordered list of `(R_i, P_i)`, which costs little next to the 2.9 s per signer of verification. The x-only check follows the BIP340 convention.
+- **16.17, pairwise re-evaluation.** Safe. Every head's branch value shares `S_tail`, so a tail slide shifts all heads equally, and the order of two heads changes only when one of them extends; FR22 re-evaluates exactly then. Admissibility only narrows as the tail advances, and a twin verdict or a Stored → Connected change arrives as an extension or admission event. Liveness residual: when the best candidate's switch fails at Tier 3 and is restored, a second heavier head is not tried until it extends again. Proposed in O-035: re-run the selection over the remaining admissible heads after a failed switch.
+- **§5, pacing on local arrival times.** Accepted. A local clock can only defer a block (soft-fail) and never invalidates it, so differing arrival times delay acceptance on some nodes without splitting the chain.
 
 ## Related Documents
 
