@@ -93,7 +93,7 @@ Outcome ∈ {Accepted-new, Already-known, Invalid-evidence, Out-of-window, Defer
 
 Common: every referenced id (initializer, receiver, balance-input initializer, balance-output receiver, `vote`) lies in `[0, M]`. No-self-vote: `vote ≠ initializer` (T1, T2) and `vote ≠` any balance-input initializer (T3); permanent exemption `initializer = 0 ∧ vote = 0`; `vote = 0` is always a valid target; block #0 is exempt [FR6, FR37, FR54].
 
-- T1: `max(0, s − W) ≤ anchor < s`; `balance(init) ≥ amount + fee`; sig valid; key `(init, recv, amount, anchor, comment)` not already confirmed on the candidate chain; fee within the per-byte `[min, max]` policy (predicate open, [OG-016]).
+- T1: `max(0, s − W) ≤ anchor < s`; `balance(init) ≥ amount + fee`; sig valid; key `(init, recv, amount, anchor, comment)` not already confirmed on the candidate chain; `min · size ≤ fee ≤ max · size` over the integers, `size` = serialized length in the payload [FR56, DEC-181].
 - T2: `balance(init) ≥ price + fee`; `new_node_id = M + 1`, strictly sequential within a block; `new_pk` unique on the chain; `new_key_sig` and sig valid. Effect: `M += 1`, bind `id → pk`, burn `price`.
 - T3 with ≥ 1 input: each UTXO input `(q, i, a)` has block `q` on the active chain, `q ≥ S_tail`, `U_q[i] = 1`, `a = amount(q, i)`; each balance input has `max(0, s − W) ≤ anchor < s` and sufficient balance; every sig valid; `Σ in ≥ Σ out`; no negative balance; the input set not already confirmed. Effect: clear `U_q[i]`; set the block's own output bits.
 - Mempool intake (ready only) [FR14]: `anchor ≥ S_tail` with no upper bound; UTXO `q ≥ S_tail`; unknown `vote` target ⇒ Deferred, never Rejected; competing spends admitted. Uniqueness keys: T1 tuple above; T2 `new_pk`; T3 full ordered input set. Its block-level counterpart is `anchor ≥ max(0, s − W)`, the parent's tail, so an admitted entry stays includable in the next block [DEC-174].
@@ -195,7 +195,7 @@ Block #0 (by node 0, `previous_hash = 0³²`): registration of node 0 (`new_node
 | 3 | `block_size_limit` (L) | 2016 | | 22 | `mempool_replenishment_interval_ms` | 500 000 |
 | 4 | `max_block_utxo_output` | 255 | | 23 | `custodian_fee` (c) | 1 |
 | 5 | `mining_reward` | 0 | | 24 | `registration_price` | 100 |
-| 6 | `vote_scale` (vs) | 1000 | | 25 | `tx_fee_per_byte_min` | 0 |
+| 6 | `vote_scale` (vs) | 1000 | | 25 | `tx_fee_per_byte_min` | 1 |
 | 7 | `vote_interest` (vi) | 50 | | 26 | `tx_fee_per_byte_max` | 1000 |
 | 8 | `parent_recovery_per_head_retry_interval_ms` | 120 000 | | 27 | `deviation_replay_insertion_delay_ms` | 300 000 |
 | 9 | `parent_recovery_min_emit_interval_ms` | 10 000 | | 28 | `replay_block_reward` | 100 |
@@ -214,7 +214,6 @@ Each entry is defined in the [Open Gaps Register](./moonblokz-open-gaps-register
 - [OG-013] input-signature preimage of complex transactions.
 - [OG-014] support-message signed content (FR12 vs FR26).
 - [OG-015] grace-period time origin, and how creator entitlement `I-10` is checked.
-- [OG-016] fee-policy validity predicate.
 - [OG-018] carry-forward below-fee discard wording.
 - Post-MVP: [OG-005] UTXO saturation / dynamic custodian fee; [OG-006] long-disconnect recovery; [OG-007] concurrent ingestion while processing; [OG-010] sequence wrap.
 
@@ -222,7 +221,7 @@ Each entry is defined in the [Open Gaps Register](./moonblokz-open-gaps-register
 
 1. Every time-dependent rule (grace admission, pacing soft-fail, support eligibility) uses the node's local clock and local arrival times; no time is chain-verifiable [FR46, FR9, FR12].
 2. `consumed_votes(b)` excludes the vote credits of transactions inside `b` itself: it is `av(c)` after interest and before credits (§7, DEC-156). The credits `b` gives its creator are wiped by the reset, and those it gives anyone else count from then on.
-3. No-self-vote forbids only `vote = initializer`; a vote for any other existing id is unrestricted. Each named node gains one `vs` per block regardless of value and of how many transactions name it (DEC-176); `tx_fee_per_byte_min` defaults to 0.
+3. No-self-vote forbids only `vote = initializer`; a vote for any other existing id is unrestricted. Each named node gains one `vs` per block regardless of value and of how many transactions name it (DEC-176); `tx_fee_per_byte_min` defaults to 1 (DEC-181), so a node transfer pays at least 101; a coalition's fees inside its own blocks return to it.
 4. Interest adds at most `vs` per node per block; with defaults it is `⌊av/20⌋`, i.e. 5 % per block until `av ≥ 20·vs` (derived; DEC-176).
 5. Support non-conflict is scoped to `(proposer, sequence)`, so one node may support deviations by different proposers at the same sequence. `A` and the seed are evaluated per branch on the supporter's local chain.
 6. The approval threshold is `r_eff = min(r, ⌊|A'|/2⌋ + 1)`, a strict majority of the subgroup at every size, so evidence can form whenever a majority of the subgroup signs; a small voting set approves by simple majority (DEC-172). The seed contains no proposer-controlled block content; the tail hash was fixed `W` blocks earlier.
