@@ -30,14 +30,14 @@ The subgroup is drawn from the **voting set** `A'` = `A` without the deviation's
 #### Seed
 
 ```
-seed = H( snake_chain_tail_hash  ‖  proposer_node_id  ‖  proposed_sequence )
+seed = H( "MBSEED"  ‖  proposed_sequence  ‖  circulating_currency(p − 1)  ‖  proposer_node_id )
 ```
 
-- `snake_chain_tail_hash` is the hash of the tail block of the active chain at approval time; because the tail sits `snake_chain_length` blocks before `proposed_sequence`, it was created long before the approval situation was predictable.
-- The tail is always unambiguous: head branching is possible, tail branching in practice is not, and tail drop only occurs on acceptance of a new head block, so at approval-validation time the tail is still available.
-- `proposer_node_id` binds the seed to the proposer identity.
-- `proposed_sequence` is included explicitly so that proposals during bootstrap (while the tail is still genesis) and branch-adjacent edge cases remain uniquely seeded.
-- No proposer-controllable content (such as the proposed block's contents or hash) enters the seed, so no grind surface is introduced.
+- `circulating_currency(p − 1)` is the money on the chain after block `p − 1` — every balance plus every unspent UTXO amount, a `u64` — the Story 7.6 projection, maintained per block and identical on every node holding `p − 1` (Project Lead, 2026-10-28; DEC-192).
+- It replaces the tail block's hash, which its creator could vary freely (transaction order, comments) and so grind for a subgroup it controls (AR-013). Within a block the total moves only through deterministic minting and burning and through registrations, whose price is burned; a creator can vary the seed only by including or leaving out pending registrations, usually one or two variants, and each sybil registration it adds for more variants costs the full registration price.
+- The seed is known only once `p − 1` is fixed, where the tail hash was known `W` blocks ahead.
+- `proposed_sequence` keeps proposals at different positions apart; `proposer_node_id` binds the seed to the proposer; the domain tag separates it from the twin verdict seed.
+- On a window-anchored FR3 candidate the total is not served before the pass has covered the window, so subgroup checks of evidence blocks whose evaluation point lies in the segment's first `W` positions are trusted there, like other pre-window state (DEC-107).
 
 #### Subgroup selection
 
@@ -107,4 +107,4 @@ This decision implies that later design work must define:
 - the chain-config validator rule that enforces `required_support ≤ MAX_AGGREGATED_SIGNATURES(backend)`,
 - and the interaction between the subgroup rule and the detailed grace-period progression, particularly for back-to-back approvals under `snake_chain` precedence (Algorithm 18).
 
-The BC-FR71 twin verdict reuses this selection with a domain-separated seed, `H("twin" ‖ hash(tail_P) ‖ c ‖ s)`, over the active set at the twins' shared parent `P`, without the equivocating creator `c` (DEC-164). Because its signers are a bitmap over the subgroup positions, the active set must be bit-identical on every node; the evaluation point and membership rule above make it so (DEC-185).
+The BC-FR71 twin verdict reuses this selection with a domain-separated seed, `H("twin" ‖ s ‖ circulating_currency(P) ‖ c)` (DEC-192), over the active set at the twins' shared parent `P`, without the equivocating creator `c` (DEC-164). Because its signers are a bitmap over the subgroup positions, the active set must be bit-identical on every node; the evaluation point and membership rule above make it so (DEC-185).
