@@ -133,7 +133,7 @@ This document explains:
 - flash and storage-geometry gaps such as unquantified wear-lifetime and the storage slot-count divisor verification item,
 - telemetry deployment-model and docs-vs-code drift across Probe, HUB, Collector, CLI, and Update Server,
 - the accepted MVP no-saturation-handling stance for bounded UTXO retention,
-- the blockchain specification gaps for the approval-evidence byte encoding, the UTXO input (causality, window-bound wording, signing preimage), the support-message signed content, and the carry-forward discard wording, and the post-MVP sequence wrap-around question,
+- the blockchain specification gaps for the UTXO input (causality, window-bound wording, signing preimage), the support-message signed content, and the carry-forward discard wording, and the post-MVP sequence wrap-around question,
 - and the post-MVP open questions around dynamic custodian fees, long-disconnect recovery, and promoting processing to a concurrent-ingestion lifecycle state.
 
 It is explicitly **not authoritative**: each entry links to the source document where the underlying gap, drift, limitation, or open question is defined. Use this file before planning work that depends on unresolved deployment constraints, telemetry interoperability assumptions, UTXO saturation behavior, or long-disconnect recovery.
