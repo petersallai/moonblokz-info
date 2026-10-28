@@ -102,9 +102,9 @@ Common: every referenced id (initializer, receiver, balance-input initializer, b
 
 For every accepted block `b` with creator `c`, in order [FR37]:
 1. `∀ n: av(n) += min(⌊av(n)·vi / vs⌋, vs)` — anti-capture interest, `c` included.
-2. `∀ n ∈ {tx.vote : tx ∈ b}`, carry-forward excluded: `av(n) += vs` once, however many transactions name `n` (DEC-176), unless `n` is under an FR72 exclusion at `b` (DEC-175).
+2. `∀ n ∈ {tx.vote : tx ∈ b}`, carry-forward excluded: `av(n) += vs` once, however many transactions name `n` (DEC-176), unless `n` is under an FR72 or late-node exclusion at `b` (DEC-175, DEC-184).
 3. `av(c) := 0`. A deviation block additionally sets `av(first_voted_node) := 0`.
-4. Liveness credit: if `s ≥ H` and `vi > 0`, the creator `n` of block `s − H` gains `av(n) += ⌈vs/vi⌉`, unless `n = c`, `n` is FR72-excluded, or `b` is a twin evidence block naming `n` [DEC-178].
+4. Liveness credit: if `s ≥ H` and `vi > 0`, the creator `n` of block `s − H` gains `av(n) += ⌈vs/vi⌉`, unless `n = c`, `n` is FR72- or late-node-excluded, or `b` is a twin evidence block naming `n` [DEC-178, DEC-184].
 5. Overflow of any `av` ⇒ the block is invalid.
 
 Header snapshots: `consumed_votes(b)` is `av(c)` after step 1 and before step 2. A deviation block's `consumed_votes_from_first_voted_node` is that node's value at the same point; it is verified at Tier 3 and used to undo the penalty, but it adds no branch value. So a block's own credits never enter its value, while step 3 still wipes the credits `b` gave `c` [FR37, DEC-156].
@@ -119,16 +119,18 @@ The expected creator after block `s` is the top of the creator order; zero-vote 
 
 ## 9. Fallback and approval
 
-**Grace expansion** [Algorithm 5, FR44, FR47]: with `g = grace_period_window_ms`, after `k` local expiries the admitted set is the top `k + 1` of the creator order. Expiry changes no vote and does not shift the order; the original top may still produce at any time, and its block is never lower in value than an approval-less deviation branch (equal votes tie). The window's time origin is open [OG-015].
+**Grace expansion** [Algorithm 5, FR44, FR47]: with `g = grace_period_window_ms`, after `k` local expiries the admitted set is the top `k + 1` of the creator order. Expiry changes no vote and does not shift the order; the original top may still produce at any time, and its block is never lower in value than an approval-less deviation branch (equal votes tie). The `k`-th expiry fires `k · g` after the local acceptance of block `p − 1` (`g` = 4 min by default); the expansion has no bound and continues while approvals at `p` are pending, so rounds may overlap and branch value decides. Admission gates only local creation and support, never block validity [FR47, DEC-183].
 
 **Deviation block** `d` at sequence `p` by an admitted `x ≠ u` (`u` = top at `p − 1`): `first_voted_node = u`, `consumed_votes` = `x`'s value after step 1 of §7; on acceptance `av(x) := 0` and `av(u) := 0` [FR28, FR37]. It is accepted immediately as an active extension. `u` is the top, so `av(x) ≤ av(u)`, and `v(d)` never exceeds the normal block `n` that `u` could create at `p`. An approval-less deviation branch therefore cannot overtake the normal branch, and equal votes tie [FR21, FR28, DEC-156].
+
+**Late-node penalty** [FR27, FR37, FR38, DEC-184]: the evidence block of a deviation by `x` at `p` lists, in creator order at `p − 1`, the nodes ranked above `x` except `u`, each with its accumulated vote, as many as fit (about 50 at `r = 40`). Each listed node and `u` is reset to 0 and left out of the creator order for `W` blocks, its vote held at 0 (no credits, no liveness credit), so one approval removes a silent cluster.
 
 **Subgroup** [ADR-015, FR12], evaluated on the evaluator's local active chain:
 - `A` = nodes that created at least one block or transaction within the active window.
 - `seed = H(hash(tail) ‖ x ‖ p)`; `node_value(n) = (H(seed ‖ n) mod 2³²)·2³² + n`.
 - Voting set `A'` = `A` without `x` and `u`; `r_eff = min(r, ⌊|A'|/2⌋ + 1)` with `r = required_support ∈ [1, MAX_AGG]` (a cap), `m = min(2·r_eff − 1, |A'|)`; subgroup = the `m` members of `A'` with the smallest `node_value`; `A'` empty ⇒ no approval [DEC-172].
 
-**Support** [FR12]: node `n` signs iff `x` is inside `n`'s local grace window ∧ `n ∈ A'` ∧ `n ∈` subgroup ∧ `n` has not supported a different block for the same `(x, p)` ∧ no tail replay is pending locally. Relay [FR26]: Accepted iff the format is valid ∧ not an LRU duplicate, plus — when evaluable — signature valid, tuple coherent, and, if `d` is on the local active chain, supporter ∈ subgroup ∧ no evidence yet.
+**Support** [FR12]: node `n` signs iff `x` is inside `n`'s local grace window ∧ `n ∈ A'` ∧ `n ∈` subgroup ∧ `n` has not supported a different block for the same `(x, p)` ∧ `n` holds neither an evidence block for `p` nor `u`'s own block at `p` (DEC-183) ∧ no tail replay is pending locally. Relay [FR26]: Accepted iff the format is valid ∧ not an LRU duplicate, plus — when evaluable — signature valid, tuple coherent, and, if `d` is on the local active chain, supporter ∈ subgroup ∧ no evidence yet.
 
 **Evidence** [FR27]: only the proposer `x` accumulates; at `|supports| ≥ r_eff` it emits evidence `e` with
 `supporter_vote_sum = (⌊m/2⌋ + 1)·av_{p−1}(x) + av_{p−1}(u)`,
@@ -213,7 +215,6 @@ Each entry is defined in the [Open Gaps Register](./moonblokz-open-gaps-register
 - [OG-012] the UTXO reference bound is worded three ways.
 - [OG-013] input-signature preimage of complex transactions.
 - [OG-014] support-message signed content (FR12 vs FR26).
-- [OG-015] grace-period time origin, and how creator entitlement `I-10` is checked.
 - [OG-018] carry-forward below-fee discard wording.
 - Post-MVP: [OG-005] UTXO saturation / dynamic custodian fee; [OG-006] long-disconnect recovery; [OG-007] concurrent ingestion while processing; [OG-010] sequence wrap.
 
