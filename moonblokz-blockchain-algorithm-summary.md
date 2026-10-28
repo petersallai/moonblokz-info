@@ -49,7 +49,7 @@ Header: `version u8 (=1) | sequence u32 | creator u32 | mined_amount u32 | paylo
 
 **Twin evidence block** (type 5): `c`, `s`, `hash(P)`; the other twin's header and payload hash (the proof); `c`'s accumulated-vote snapshot; with a quorum, a verdict = signer bitmap over the subgroup positions + aggregated signature [FR71].
 
-**Support message** (off-chain): `(supporter_id, deviation_sequence, deviation_block_hash, sig)`; signed content per FR12 = `(proposer, deviation_sequence, deviation_block_hash)` (FR26 wording differs, [OG-014]).
+**Support message** (off-chain): `(supporter_id, proposer_id, deviation_sequence, deviation_block_hash, sig)`; signed content `"MBSUP" ‖ proposer ‖ deviation_sequence ‖ deviation_block_hash` [FR12, FR26, DEC-187].
 
 **Twin vote** (off-chain): signed content `("MBTWN", c, s, hash(P), hash(chosen twin))`, one per member and `(c, s, P)` [FR71].
 
@@ -130,7 +130,7 @@ The expected creator after block `s` is the top of the creator order; zero-vote 
 - `seed = H(hash(tail) ‖ x ‖ p)`; `node_value(n) = (H(seed ‖ n) mod 2³²)·2³² + n`.
 - Voting set `A'` = `A` without `x` and `u`; `r_eff = min(r, ⌊|A'|/2⌋ + 1)` with `r = required_support ∈ [1, MAX_AGG]` (a cap), `m = min(2·r_eff − 1, |A'|)`; subgroup = the `m` members of `A'` with the smallest `node_value`; `A'` empty ⇒ no approval [DEC-172].
 
-**Support** [FR12]: node `n` signs iff `x` is inside `n`'s local grace window ∧ `n ∈ A'` ∧ `n ∈` subgroup ∧ `n` has not supported a different block for the same `(x, p)` ∧ `n` holds neither an evidence block for `p` nor `u`'s own block at `p` (DEC-183) ∧ no tail replay is pending locally. Relay [FR26]: Accepted iff the format is valid ∧ not an LRU duplicate, plus — when evaluable — signature valid, tuple coherent, and, if `d` is on the local active chain, supporter ∈ subgroup ∧ no evidence yet.
+**Support** [FR12]: node `n` signs iff `x` is inside `n`'s local grace window ∧ `n ∈ A'` ∧ `n ∈` subgroup ∧ `n` has not supported a different block for the same `(x, p)` ∧ `n` holds neither an evidence block for `p` nor `u`'s own block at `p` (DEC-183) ∧ no tail replay is pending locally; the signature covers `"MBSUP" ‖ x ‖ p ‖ hash(d)` [DEC-187]. Relay [FR26]: Accepted iff the format is valid ∧ not an LRU duplicate, plus — when evaluable — signature valid, tuple coherent, and, if `d` is on the local active chain, supporter ∈ subgroup ∧ no evidence yet.
 
 **Evidence** [FR27]: only the proposer `x` accumulates; at `|supports| ≥ r_eff` it emits evidence `e` with
 `supporter_vote_sum = (⌊m/2⌋ + 1)·av_{p−1}(x) + av_{p−1}(u)`,
@@ -175,7 +175,7 @@ For a dropping transaction block `t` with unspent set `O = {o : U_t[o] = 1}`: on
 - Switch at divergence point `D` [FR23, FR58, DEC-159]:
   - `D ≥ S_head − Hv + 1`, measured against the node's own head: atomic undo to `D` and forward redo with Tier 3; the mempool is reconciled per block. The common ancestor must lie at or above the completeness horizon `C`, a signature pre-pass first checks fork-independent creators, and the replay's tail releases wait for the commit, so a Tier 3 failure restores the original chain in place and deletes the offending block with its descendants (no FR5). Until 9.7 retains the horizon, below-tail references inside the bound are trusted [DEC-166..170].
   - `D ≤ S_head − Hv`: the branch never becomes active and is reclaimed when it leaves the bound; ready state has no full-reconstruction path.
-- Storage pressure evicts exactly one side branch, the lowest `BV` (ties: lowest tip sequence, creator id, hash), back to the shared ancestor; active-chain and horizon blocks are never evicted [FR57]. `chain_heads` overflow evicts the non-active head with the lowest `head_sequence` [FR19].
+- Storage pressure evicts exactly one side branch, the lowest `BV` (ties: lowest tip sequence, creator id, hash), back to the shared ancestor; active-chain and horizon blocks are never evicted [FR57]. `chain_heads` overflow evicts, in ready state, a Stored head before any Connected one — the Stored head farthest from `S_head` — and otherwise the lowest `head_sequence` [FR19, DEC-188].
 
 ## 12. Economics (supply flows)
 
@@ -214,7 +214,6 @@ Each entry is defined in the [Open Gaps Register](./moonblokz-open-gaps-register
 - [OG-011] UTXO causality (`q < s`, no same-block spend) exists only in code.
 - [OG-012] the UTXO reference bound is worded three ways.
 - [OG-013] input-signature preimage of complex transactions.
-- [OG-014] support-message signed content (FR12 vs FR26).
 - [OG-018] carry-forward below-fee discard wording.
 - Post-MVP: [OG-005] UTXO saturation / dynamic custodian fee; [OG-006] long-disconnect recovery; [OG-007] concurrent ingestion while processing; [OG-010] sequence wrap.
 
