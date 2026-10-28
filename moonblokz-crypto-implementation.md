@@ -28,6 +28,7 @@ This document is based on the current contents of:
 - `moonblokz-crypto-lib/src/bls_bls12_381_bls_signer.rs`
 - `moonblokz-crypto-lib/README.md`
 - `moonblokz-crypto-lib/run_tests.sh` as referenced by the repository guidance
+- the Project Lead's reference-hardware measurements in the series article *MoonBlokz series part VI — Crypto Algorithms* (2025-05-26), named the current reference on 2026-10-28 (DEC-180)
 
 ## Scope and Intent
 
@@ -426,7 +427,32 @@ The current knowledge-base update is based on the codebase rather than benchmark
 
 ### What should not be overstated from code alone
 
-The current codebase by itself does not prove fresh benchmark rankings for all backends. Any claim about one backend being faster today must be backed by current measurements, not only by earlier article context.
+The current codebase by itself does not prove fresh benchmark rankings for all backends. Any claim about one backend being faster today must be backed by measurements. The Project Lead's measurements below are the current reference (DEC-180); repeat them when a backend, its arithmetic library or the build profile changes.
+
+### Measured timings on the reference hardware
+
+The Project Lead measured the backends on the reference hardware and published the results in the series article *MoonBlokz series part VI — Crypto Algorithms* (2025-05-26). On 2026-10-28 the Project Lead named these the current reference (DEC-180). Hardware: Waveshare RP2040-LoRa (Raspberry Pi Pico 1 class, dual-core 133 MHz, 264 KB SRAM). Test project: Embassy firmware, 10 signers, SHA-256, message `"Hello, world!"`. "Aggregate" is the aggregation of 10 multi-signatures, and "Verify aggregated" is the verification of that aggregate.
+
+| Backend (profile, binary) | Sign | Verify | Multi-sign | Aggregate (10) | Verify aggregated (10) |
+|---|---:|---:|---:|---:|---:|
+| `bls-bls12_381-bls` (`opt-level = "z"`, 220 KB) | 4.6 s | 13.1 s | 6.9 s | 3 s | 66 s |
+| `bls-bls12_381-bls` (`"s"`, 428 KB) | 7 s | 17.1 s | 10.5 s | 3 s | 76 s |
+| `bls-bls12_381-bls` (`3`, 718 KB) | 7.8 s | 19.6 s | 11.7 s | 3 s | 85 s |
+| `schnorr-num-bigint-dig` (`"z"`, 123 KB) | 2.7 s | 5.4 s | 2.7 s | 0 s | 85 s |
+| `schnorr-num-bigint-dig` (`"s"`, 181 KB) | 2 s | 4.1 s | 2 s | 0 s | 65 s |
+| `schnorr-num-bigint-dig` (`3`, 242 KB) | 2 s | 4.1 s | 2 s | 0 s | 63 s |
+| `schnorr-malachite` (`"z"`, 596 KB) | 0.9 s | 1.9 s | 0.9 s | 0 s | 29 s |
+| `schnorr-malachite` (`"s"`, 576 KB) | 0.7 s | 1.4 s | 0.7 s | 0 s | 22 s |
+| `schnorr-malachite` (`3`, 1,124 KB) | 1 s | 2.1 s | 1 s | 0 s | 33 s |
+
+What follows for the current build:
+
+- **Which row applies.** The default backend is `schnorr-malachite`, and `moonblokz-node` builds with `opt-level = "z"`, so a single verification costs about 1.9 s and an aggregate costs about 2.9 s per signer. The `"s"` profile is about 25 % faster.
+- **Aggregation saves space, not time.** The Schnorr half-aggregate is slower to verify per signer than separate verifications (2.9 s against 1.9 s).
+- **BLS is out of reach on this hardware.** A single verification takes 13–20 s, and the article estimates about 2.5 minutes for a block.
+- **Not measured:** the `schnorr-crypto-bigint` backend.
+- **Acceleration is deferred to a later development phase (O-032).**
+
 
 This matters because the code now includes a `schnorr-crypto-bigint` backend that earlier documentation did not cover.
 
