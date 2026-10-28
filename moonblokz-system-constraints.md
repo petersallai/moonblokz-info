@@ -87,7 +87,7 @@ Global, all families:
 
 `MAX_AGGREGATED_SIGNATURES` is also the ceiling the chain-declared `max_aggregated_signatures` is checked against at acceptance, and the one `required_support` is clamped to at resolution — see [Configuration Module Specification](./moonblokz-configuration-specification.md) §4.5 for why the clamp reads the chain's value rather than this constant.
 
-Cross-check: this is why the `ApprovalAccumulator` (§3) costs ~36 B/supporter on Schnorr (`4 + 32`) and ~4 B/supporter on BLS (`4 + 0`), at an identical ~2 KB allocated buffer — see [`moonblokz-blockchain-architecture.md`](./moonblokz-blockchain-architecture.md) §6.5.
+Cross-check: on BLS the `ApprovalAccumulator` costs ~4 B per supporter (`4 + 0`) inside a ~2 KB `MAX_BLOCK_SIZE` buffer, because the signature aggregates into one slot. On Schnorr it keeps each support's `r`, `s` and rank until emission — about 68 B per supporter, ~3.4 KB at 50 — because the DEC-194 weights need the complete signer set before `s` can be formed (DEC-195); see [`moonblokz-blockchain-architecture.md`](./moonblokz-blockchain-architecture.md) §6.5.
 
 ### 2.1 Measured crypto timings (RP2040) and what they cost
 
@@ -119,28 +119,29 @@ Authoritative source: [`moonblokz-blockchain-architecture.md`](./moonblokz-block
 |---|---:|---:|---|
 | `NodeInfo` (SoA) | ~44 KB | ~108 KB | `MAX_NODES` × (`PUBLIC_KEY_SIZE` + 8 + 4) |
 | `BlockTable` | 45.6 KB | 45.6 KB | `MAX_BLOCKS` × 76 B |
-| `ChainHeadsTable` | 1.28 KB | 1.28 KB | `MAX_BRANCH_COUNT` × 32 B |
+| `ChainHeadsTable` | 2.88 KB | 2.88 KB | `MAX_BRANCH_COUNT` × 72 B (architecture §7.1; was listed here as 32 B) |
 | `ApprovalAccumulator` | ~3.4 KB | ~2 KB | Schnorr keeps every support's `r`, `s` and rank until emission (DEC-194, DEC-195); BLS a `MAX_BLOCK_SIZE` buffer |
+| Active-set counter, exclusion markers, circulating currency, requester LRU | ~2.5 KB | ~2.5 KB | DEC-185 (`MAX_NODES` × 2 B), FR72 / DEC-184 (1 bit per node), DEC-192 (u64), DEC-189 (~384 B, sized by 10.4) |
 | `EmitScratch` + scheduler + lifecycle + PRNG | ~2.1 KB | ~2.1 KB | `MAX_BLOCK_SIZE` buffer + small fields |
-| **`moonblokz-blockchain` subtotal** | **~95 KB** | **~159 KB** | matches architecture §7.1 / §7.2; pending refresh there: about +3.4 KB Schnorr / +2 KB BLS (DEC-185 active-set counter, DEC-195 accumulator) |
+| **`moonblokz-blockchain` subtotal** | **~99 KB** | **~162 KB** | matches architecture §7.1 / §7.2 (refreshed 2026-10-28) |
 | `Mempool` (sibling `moonblokz-mempool`) | ~23–25 KB | ~23–25 KB | `MEMPOOL_COMPACT_BYTES` + compact index including stored `transaction_fee` + small fields; authoritative layout in blockchain architecture §6.8 |
 | `VoteEngine.accumulated_vote` (sibling `moonblokz-vote`) | ~4 KB | ~4 KB | `MAX_NODES` × 4 B |
-| **blockchain + mempool + vote** | **~123–124 KB** | **~187–188 KB** | carried into §3.2 |
+| **blockchain + mempool + vote** | **~126–128 KB** | **~189–191 KB** | carried into §3.2 |
 
-Raising `MAX_NODES` costs ~48 B/node (Schnorr) or ~112 B/node (BLS) across the node-id-indexed arrays (`NodeInfo` + `accumulated_vote`), derived from architecture §7.1 and corroborated by its §12.1 tuning levers. The default 1000-node cap already consumes most of the RP2040 budget, so caps an order of magnitude larger (for example a city-scale payment network) exceed RP2040 SRAM and require an MCU with substantially more RAM.
+Raising `MAX_NODES` costs ~50 B/node (Schnorr) or ~114 B/node (BLS) across the node-id-indexed arrays (`NodeInfo` + `accumulated_vote`), derived from architecture §7.1 and corroborated by its §12.1 tuning levers. The default 1000-node cap already consumes most of the RP2040 budget, so caps an order of magnitude larger (for example a city-scale payment network) exceed RP2040 SRAM and require an MCU with substantially more RAM.
 
 ### 3.2 Full-system allocation
 
 | Consumer | Schnorr | BLS |
 |---|---:|---:|
-| blockchain + mempool + vote | ~122 KB | ~186 KB |
+| blockchain + mempool + vote | ~126 KB | ~189 KB |
 | radio-lib (memory-config-medium) | ~60 KB | ~60 KB |
 | crypto-lib scratch | ~4 KB | ~4 KB |
 | storage page buffer | ~4 KB | ~4 KB |
 | Stacks: Core 1 (blockchain task) 24 KB + other tasks ~18 KB | ~42 KB | ~42 KB |
 | Embassy executor + statics | ~4 KB | ~4 KB |
-| **Subtotal allocated** | **~236 KB** | **~300 KB** |
-| **Margin (264 KB − allocated)** | **~28 KB (~11%)** ✅ | **~−36 KB (exceeds 264 KB)** ❌ |
+| **Subtotal allocated** | **~240 KB** | **~303 KB** |
+| **Margin (264 KB − allocated)** | **~24 KB (~9%)** ✅ | **~−39 KB (exceeds 264 KB)** ❌ |
 
 The radio figure is the **source-confirmed** `memory-config-medium = ~60 KB` (radio module `README.md` + `lib.rs` profile consts; see §6 and §7/D1), additive to the separately-counted Embassy task stacks. **Consequence:** at the default 1000-node profile the BLS backend **exceeds the 264 KB ceiling by ~18 KB** — const-generic tuning (e.g. `MAX_NODES 1000 → 500`, §3.4) is therefore **mandatory** for BLS, not optional. Schnorr keeps a comfortable ~46 KB (~17%) margin. The authoritative architecture §7.3/§7.4/§12 and the index have been updated to match this source-confirmed figure (radio = 60 KB).
 
@@ -155,11 +156,11 @@ Per-lever savings: [`moonblokz-blockchain-architecture.md`](./moonblokz-blockcha
 
 | Profile | `MAX_NODES` | `SNAKE_CHAIN_LENGTH_MAX` | BLS margin (radio = 60 KB) |
 |---|---:|---:|---:|
-| BLS-large (default) | 1000 | 500 | **~−36 KB (does not fit)** ❌ |
-| BLS-medium | 500 | 500 | ~21 KB ✅ |
-| BLS-small | 250 | 300 | ~55 KB ✅ |
+| BLS-large (default) | 1000 | 500 | **~−39 KB (does not fit)** ❌ |
+| BLS-medium | 500 | 500 | ~20 KB ✅ |
+| BLS-small | 250 | 300 | ~54 KB ✅ |
 
-Most impactful lever: `MAX_NODES 1000 → 500` saves ~56 KB (BLS) but halves the network-size cap — and is the minimum tuning needed to make BLS fit at all once the radio medium profile is counted at its real ~60 KB.
+Most impactful lever: `MAX_NODES 1000 → 500` saves ~57 KB (BLS) but halves the network-size cap — and is the minimum tuning needed to make BLS fit at all once the radio medium profile is counted at its real ~60 KB.
 
 ---
 

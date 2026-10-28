@@ -112,7 +112,7 @@ The concrete in-memory layouts, field-by-field sizes, alignment, sentinels, and 
 - **Branch / chain-heads tracking** → architecture §4.2 (`chain_heads.rs`) and §6.3 (`ChainHeadEntry` 72 B padded × `MAX_BRANCH_COUNT`).
 - **Per-node SoA state (public keys, balances, FR50 seed-source projection, max_known_node_id)** → architecture §4.2 (`node_info.rs`) and §6.1.
 - **Available-UTXO projection** → architecture §4.2 (`available_utxo.rs`) and §6.2 (co-located in `BlockEntry`).
-- **Approval evidence accumulation** → architecture §4.2 (`approval.rs`) and §6.5 (`ApprovalAccumulator` ~2 KB crypto-agnostic MAX_BLOCK_SIZE buffer).
+- **Approval evidence accumulation** → architecture §4.2 (`approval.rs`) and §6.5 (`ApprovalAccumulator`: ~3.4 KB per-support store on Schnorr, ~2 KB buffer on BLS; DEC-195).
 - **Mempool** → architecture §3.3 (sub-crate API) and §6.8 (internals).
 - **Vote engine** → architecture §3.4 (sub-crate API) and §6.9 (internals).
 - **Scheduler / `NextCall` deadlines** → architecture §4.2 (`scheduler.rs`) and §6.7 (`SchedulerState` ~72 B with `Option<u64>` deadlines).
