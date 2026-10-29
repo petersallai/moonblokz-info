@@ -121,7 +121,7 @@ Content is malformed — and its chain-config block is rejected as exact evidenc
 
 The registry is a single flat key space shared by every consuming subsystem. It is **permanent wire format**: an ID's meaning cannot change once any chain exists, IDs are allocated densely and are never reused or renumbered, and a new parameter takes the next free ID.
 
-**Next free ID: 31.**
+**Next free ID: 32.**
 
 Value-form column: `L` = literal only; `L/B` = literal or bytecode. **Parameters take no arguments**: a program computes from other parameters (`GETCONFIG` with an argument count of 0) and from chain-info (`GETCHAININFO`, §4.6). Which inputs a value depends on is the bytecode's decision, not the accessor's *(Project Lead, 2026-10-09)*.
 
@@ -130,7 +130,7 @@ Value-form column: `L` = literal only; `L/B` = literal or bytecode. **Parameters
 | ID | Parameter | Type | Width | Default | Form | Notes |
 |---:|---|---|---:|---|:--:|---|
 | 1 | `inter_block_interval_ms` | u32 | 4 | 900_000 | L/B | FR45 (b); also the FR9 pacing wait and part of the FR47 grace origin. Default raised from 60 s by DEC-186: 18 × 0.8 rounded up, so that about one transaction per minute fills a block to the 80 % threshold |
-| 2 | `grace_period_window_ms` | u32 | 4 | 240_000 | L/B | FR47: the step between successive grace expiries; the `k`-th fires `k · g` after the expected creation time `E` (BC-FR47, DEC-186). Default raised from 30 s by DEC-183, above the verification-inclusive normal-block `t₉₀` (about 1.5–3.4 min, system constraints §2.1) |
+| 2 | `grace_period_window_ms` | u32 | 4 | 240_000 | L/B | FR47: the delay of the first grace expiry after the expected creation time `E` (BC-FR47, DEC-186); later expiries follow ID 31 (DEC-203). Default raised from 30 s by DEC-183, above the verification-inclusive normal-block `t₉₀` (about 1.5–3.4 min, system constraints §2.1) |
 | 3 | `block_size_limit` | u16 | 2 | 2016 | L | Bound-checked, §6 (`HEADER_SIZE` < value ≤ `MAX_BLOCK_SIZE`) |
 | 4 | `max_block_utxo_output` | u16 | 2 | 255 | L | Bound-checked, §6 (`1 ≤ value ≤ UTXO_UNSPENT_BITS`) |
 | 5 | `mining_reward` | u32 | 4 | 0 | L/B | FR36 (a); FR6 requires a block's `mined_amount` header field to equal it. Width matches the header field |
@@ -149,10 +149,13 @@ Value-form column: `L` = literal only; `L/B` = literal or bytecode. **Parameters
 | 27 | `deviation_replay_insertion_delay_ms` | u32 | 4 | 300_000 | L/B | FR29 pacing |
 | 28 | `replay_block_reward` | u64 | 8 | 100 | L/B | FR36 (c) |
 | 30 | `verification_horizon` | u16 | 2 | 50 | L | `H` (FR58); bound-checked, §6 checks 14–16 (16 against the caller's `BuildLimits`) |
+| 31 | `grace_period_step_ms` | u32 | 4 | 900_000 | L/B | FR47: the step between later grace expiries; the `k`-th fires at `E + g + (k − 1) · step` (DEC-203). Default 15 minutes, about one `r = 40` approval round from the deviation's receipt (system constraints §2.1), so the next rank is admitted after a pending evidence has typically arrived |
 
 ID 5 was reassigned before any chain existed *(Project Lead, 2026-10-12)*: it first carried `max_aggregated_signatures`, the clamp ceiling for ID 10 retired with §6 check 3's restoration, and now carries `mining_reward`. §4.5 rule 1 forbids this once a chain exists.
 
 ID 30 was allocated on 2026-10-22, when the Project Lead made the FR58 verification horizon chain configuration (DEC-160): it decides which chain switches a node admits, so it must be identical on every node. Its default is the plain literal 50 — `⌊W / 10⌋` for the default `W` — because §4.5 rule 3 forbids a derived default; a chain that declares a different `W` declares `H` as well.
+
+ID 31 was allocated on 2026-10-29 (DEC-203), when the Project Lead split the grace schedule: the first expiry keeps ID 2 (4 minutes), and every further one follows ID 31 (15 minutes), sized to an approval round so that successive approval rounds rarely overlap. Like ID 2 it gates only local creation and support, never block validity.
 
 ### 4.2 Radio parameters
 
@@ -268,7 +271,7 @@ It is a **separate space** from the parameter registry, reached by a second host
 - **Inside the FR3 reconstruction pass.** A genesis-anchored pass is complete from block #0. A window-anchored pass is **not** complete at its intermediate positions — the state at a position `X` depended on blocks before `S_tail` whose replays land after `X` — so a consumer judging a historical block there must **skip** its chain-info-dependent check, trusting the block exactly as the pre-seed zone does, and must never evaluate it against a fallback value, which could reject a block the chain accepted.
 - **A call site with no anchor** — such as `vote_scale` / `vote_interest`, read once at the start of a pass — binds no source, so its programs decline identically on every node.
 
-The blockchain module's FR35 forward-extension maintenance (Story 7.2) is what keeps a Ready node's projections at the head. **Until it lands, a served value is a per-node snapshot** — the state at the node's Ready transition, and for node #0, made Ready by genesis without a pass, the genesis state — so the only consumer that binds a source is one that is not consensus-relevant (the parent-recovery cadence), and Story 7.2 owns keeping the projections current before a consensus-relevant consumer binds.
+The blockchain module's FR35 forward-extension maintenance (Story 7.2) is what keeps a Ready node's projections at the head. **Until it lands, a served value is a per-node snapshot** — the state at the node's Ready transition, and for node #0, made Ready by genesis without a pass, the genesis state — except `REGISTERED_NODE_COUNT`, which follows the head since Story 6.0, whose registrations keep `max_known_node_id` current. The consumers that bind a source are therefore ones that are not consensus-relevant — the parent-recovery cadence, and the FR29 replay insertion delay (ID 27), read at the active head's post-state (DEC-197) — and Story 7.2 owns keeping the projections current before a consensus-relevant consumer binds. `required_support` (ID 10) is literal-only and binds nothing.
 
 **Binding is per call site, not per parameter.** A parameter read at an unbound call site declines its chain-info reads; the same parameter reached through a nested `GETCONFIG` from a bound caller reads them. A program that reads chain-info therefore takes effect only where its parameter is consumed under a bound handle — which, for a consensus-relevant parameter, is the consuming story's to arrange, with the rules above.
 

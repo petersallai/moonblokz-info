@@ -733,8 +733,8 @@ Allow the network to recover when the selected creator does not produce a block.
 
 1. During the first grace period, only the highest-voted node’s block is accepted.
 2. If that period expires without a block, permit the first-ranked and second-ranked nodes.
-3. After double the grace period, permit the top three.
-4. Continue widening the acceptable creator set as waiting continues.
+3. After a further grace step (`grace_period_step_ms`, 15 minutes by default — about the time an approval takes to reach most nodes; DEC-203), permit the top three.
+4. Continue widening the acceptable creator set by one rank per grace step as waiting continues. An expiry that admits a rank re-evaluates support for the held deviation blocks of that rank.
 
 ### Accumulated-vote reset is applied only to the first node
 
@@ -750,9 +750,9 @@ Legitimize deviation from the default creator-selection result and make the devi
 
 ### Approval flow
 
-1. An eligible node proposes and creates a deviation block after the applicable grace-period condition; this block may extend the creator's current active chain immediately.
-2. Other nodes send digitally signed support messages for that proposed block.
-3. As soon as the proposer collects the predetermined support package — the required 50%+1 majority represented by `required_support` for the deterministically selected subgroup — it creates another block containing approval evidence.
+1. An eligible node proposes and creates a deviation block after the applicable grace-period condition; this block may extend the creator's current active chain immediately; when the creator's head is another proposer's approval-less deviation at the same sequence, the block is created on their shared parent as a sibling (DEC-200).
+2. Other nodes send digitally signed support messages for that proposed block when its parent lies on their active chain and they hold neither an evidence block nor the originally-top node's block for that sequence (FR12, DEC-183, DEC-200).
+3. As soon as the proposer collects the predetermined support package — the majority `r_eff = min(required_support, ⌊|A'|/2⌋ + 1)` of the deterministically selected subgroup — it creates another block containing approval evidence.
 4. The branch containing that evidence becomes the legitimacy-bearing and branch-value-competitive branch for that deviation.
 
 ### Supporting subgroup
@@ -761,7 +761,7 @@ The set of nodes whose support signatures count toward an approval is selected d
 
 ### Fallback when support is insufficient
 
-When an approval cannot collect enough support in time, the subgroup is not widened. The grace-period expansion in Algorithm 5 admits the next-ranked creator candidate, which starts a new approval with its own freshly derived subgroup.
+When an approval cannot collect enough support in time, the subgroup is not widened. The grace-period expansion in Algorithm 5 admits the next-ranked creator candidate, which starts a new approval with its own freshly derived subgroup. Later grace steps are sized to about one approval round (DEC-203), so a new round starts mainly when the previous one is slow or has failed, and a sibling deviation collects support while the earlier one is still pending (DEC-200).
 
 ### Important notes
 
