@@ -181,19 +181,17 @@ For every wire-format payload (Block, Transaction, Support, … ) `moonblokz-cha
 
 Outcomes use `BlockView<'_>` to keep enum variants small (~16 B borrow), not 2 KB owned. The `emit_scratch.block_buffer` in blockchain state owns the bytes; the view borrows them.
 
-### 2.3 PRNG sub-seed derivation hierarchy (FR43)
+### 2.3 PRNG sub-seed derivation hierarchy (FR33)
 
 ```mermaid
 graph TB
     Root["Blockchain root PRNG (Xoshiro256PlusPlus, 256-bit state)<br/>Seeded from initial node_id + restart timestamp"]
-    Mempool["Mempool sub-seed<br/>FR43 random eviction"]
-    Replay["Snake_chain replay sub-seed<br/>FR50 seed-source selection"]
+    Mempool["Mempool sub-seed<br/>FR33 random eviction"]
 
     Root -->|"derive_subseed('mempool')"| Mempool
-    Root -->|"derive_subseed('replay')"| Replay
 ```
 
-The mempool sub-crate receives a sub-seed during initialization; the blockchain retains the root (the vote sub-crate is fully deterministic and takes no sub-seed). This ensures deterministic, reproducible PRNG behavior across the system without coupling the sub-crates to each other.
+The mempool sub-crate receives a sub-seed during initialization; the blockchain retains the root (the vote sub-crate is fully deterministic and takes no sub-seed). FR50 replay ordering is deterministic too and takes none; the earlier `replay` sub-seed was dropped (DEC-201). This ensures deterministic, reproducible PRNG behavior across the system without coupling the sub-crates to each other.
 
 **Algorithm choice (2026-06-27 revision).** The original Step 4 framing named WyRand u64 as the root PRNG. The 2026-06-27 implementation pass (Story 1.3) substituted Xoshiro256PlusPlus (Blackman & Vigna, 2018, via the `rand_xoshiro` crate) for the same root + sub-seed-derivation role. The substitution is contained: it does not change the public `derive_subseed(label) -> u64` contract or the sub-crate integration (each sub-crate still receives an opaque `u64` and chooses its own internal PRNG). Rationale: significantly higher statistical quality (PractRand >2 TB vs. ~32 GB) at negligible cost on RP2040 (+24 B per instance, comparable cycle budget per `next_u64`, no new transitive deps beyond `rand_xoshiro` + `rand_core`, both `no_std` with `default-features = false`).
 
@@ -760,7 +758,7 @@ pub struct VoteEngine<const MAX_NODES: usize> {
 
 ## 7. RAM budget verification (Steps 6 §4 + 7 §3)
 
-### 7.1 Chain-lib subtotal — Schnorr (default) — ~99 KB
+### 7.1 Chain-lib subtotal — Schnorr (default) — ~101 KB
 
 | Component | Calculation | Bytes |
 |---|---:|---:|
@@ -772,6 +770,8 @@ pub struct VoteEngine<const MAX_NODES: usize> {
 | Exclusion markers (FR72, DEC-184) | 1000 bits; sized by 6.13 | ~125 |
 | Circulating currency (7.6, DEC-192) | u64 | 8 |
 | Replenishment requester LRU (DEC-189) | ~32 × 12 B; sized by 10.4 | ~384 |
+| Non-conflict ring (DEC-198) | 16 × 13 B | 208 |
+| Support-relay dedupe LRU (DEC-199) | 128 × 12 B | 1 536 |
 | BlockTable | 600 × 76 B | 45 600 |
 | ChainHeadsTable | 40 × 72 B | 2 880 |
 | snake_chain fields | 2 × 4 B | 8 |
@@ -780,23 +780,23 @@ pub struct VoteEngine<const MAX_NODES: usize> {
 | lifecycle_phase | u8 | 1 |
 | SchedulerState | 4 × Option\<u64\> + u64 | 72 |
 | PRNG root | u64 | 8 |
-| **Subtotal (Schnorr)** | | **~98 890** |
+| **Subtotal (Schnorr)** | | **~100 634** |
 
-**Refreshed 2026-10-28.** Adds the DEC-185 active-set counter, the FR72 / DEC-184 exclusion markers, the circulating currency (DEC-192) and the DEC-189 requester LRU, and replaces the ApprovalAccumulator buffer with the DEC-195 per-support store: about +3.9 KB over the earlier ~95 KB. The marker and LRU sizes are estimates until Stories 6.13 and 10.4 fix them.
+**Refreshed 2026-10-28.** Adds the DEC-185 active-set counter, the FR72 / DEC-184 exclusion markers, the circulating currency (DEC-192) and the DEC-189 requester LRU, and replaces the ApprovalAccumulator buffer with the DEC-195 per-support store: about +3.9 KB over the earlier ~95 KB. The marker and LRU sizes are estimates until Stories 6.13 and 10.4 fix them. **Refreshed 2026-10-29:** adds the DEC-198 non-conflict ring and the DEC-199 support-relay dedupe LRU, +1.7 KB.
 
-### 7.2 Chain-lib subtotal — BLS — ~162 KB
+### 7.2 Chain-lib subtotal — BLS — ~163 KB
 
 | Component | Calculation | Bytes |
 |---|---:|---:|
 | NodeInfo.public_keys | 1000 × 96 B | 96 000 |
 | NodeInfo.balances + seed_source_idx + max_known | 12 004 | 12 004 |
-| Active-set counter + exclusion markers + circulating currency + requester LRU | 2 000 + ~125 + 8 + ~384 | ~2 517 |
+| Active-set counter + exclusion markers + circulating currency + requester LRU + non-conflict ring + support-relay LRU | 2 000 + ~125 + 8 + ~384 + 208 + 1 536 | ~4 261 |
 | BlockTable | 600 × 76 B | 45 600 |
 | ChainHeadsTable | 40 × 72 B | 2 880 |
 | snake_chain fields | 8 | 8 |
 | ApprovalAccumulator | MAX_BLOCK_SIZE buffer (crypto-agnostic) | ~2 048 |
 | EmitScratch + lifecycle + scheduler + PRNG | ~2 081 | 2 081 |
-| **Subtotal (BLS)** | | **~161 538** |
+| **Subtotal (BLS)** | | **~163 282** |
 
 **Note:** Earlier Step 7 validation incorrectly assumed BLS ApprovalAccumulator was ~6 KB (per-supporter signature × MAX_AGGREGATED_SIGNATURES). The correct model is: ApprovalAccumulator holds a fixed MAX_BLOCK_SIZE buffer (~2 KB) for in-place evidence-block construction. BLS aggregation packs more supporters into the same buffer (~4 B per supporter) than Schnorr (~36 B per supporter), so BLS is actually *more efficient* per supporter — but the allocated memory is identical.
 
@@ -804,21 +804,21 @@ pub struct VoteEngine<const MAX_NODES: usize> {
 
 | Consumer | Schnorr | BLS |
 |---|---:|---:|
-| moonblokz-blockchain + mempool + vote | ~126 KB | ~189 KB |
+| moonblokz-blockchain + mempool + vote | ~128 KB | ~191 KB |
 | moonblokz-radio-lib (memory-config-medium) | ~60 KB | ~60 KB |
 | moonblokz-crypto-lib scratch | ~4 KB | ~4 KB |
 | moonblokz-storage page buffer | ~4 KB | ~4 KB |
 | Stacks: Core 1 (blockchain task) 24 KB (DEC-137) + other tasks ~18 KB | ~42 KB | ~42 KB |
 | Embassy executor + statics | ~4 KB | ~4 KB |
-| **Subtotal allocated** | **~240 KB** | **~303 KB** |
-| **Margin** (264 KB − allocated) | **~24 KB** (~9%) ✅ | **~−39 KB** (exceeds 264 KB) ❌ |
+| **Subtotal allocated** | **~242 KB** | **~305 KB** |
+| **Margin** (264 KB − allocated) | **~22 KB** (~8%) ✅ | **~−41 KB** (exceeds 264 KB) ❌ |
 
 **Radio figure:** `memory-config-medium` is counted at its source-confirmed ~60 KB (`moonblokz-radio-lib` README + `lib.rs` profile consts); an earlier ~30-40 KB estimate under-counted it and made the BLS default appear feasible.
 
 ### 7.4 Verdict
 
 - **Schnorr build**: comfortable margin, MVP-ready.
-- **BLS build**: does **not** fit at the 1000-node default once the radio `memory-config-medium` profile is counted at its source-confirmed ~60 KB (README + `lib.rs`) instead of the earlier ~30-40 KB estimate — the full-system total is ~303 KB, ~39 KB over the 264 KB ceiling (the 24 KB Core 1 stack included, DEC-137). Const-generic tuning (see §12) is therefore **mandatory** for BLS: `MAX_NODES 1000 → 500` frees ~56 KB, yielding ~21 KB margin.
+- **BLS build**: does **not** fit at the 1000-node default once the radio `memory-config-medium` profile is counted at its source-confirmed ~60 KB (README + `lib.rs`) instead of the earlier ~30-40 KB estimate — the full-system total is ~305 KB, ~41 KB over the 264 KB ceiling (the 24 KB Core 1 stack included, DEC-137). Const-generic tuning (see §12) is therefore **mandatory** for BLS: `MAX_NODES 1000 → 500` frees ~57 KB, yielding ~18 KB margin.
 
 ---
 
@@ -960,7 +960,7 @@ Three items from the earlier sketch are deliberately absent. FR7 signature valid
 
 ## 12. BLS deployment-tuning recipe (Step 8 — new)
 
-When a deployment selects the BLS crypto backend, the default const-generic values (1000 nodes, 500 snake-chain window) **do not fit** the 264 KB SRAM ceiling once the radio `memory-config-medium` profile is counted at its source-confirmed ~60 KB (full-system ~303 KB, ~39 KB over). The blockchain code does NOT need to change — tuning happens at the deployment binary's const-generic instantiation site, and for BLS it is mandatory rather than optional.
+When a deployment selects the BLS crypto backend, the default const-generic values (1000 nodes, 500 snake-chain window) **do not fit** the 264 KB SRAM ceiling once the radio `memory-config-medium` profile is counted at its source-confirmed ~60 KB (full-system ~305 KB, ~41 KB over). The blockchain code does NOT need to change — tuning happens at the deployment binary's const-generic instantiation site, and for BLS it is mandatory rather than optional.
 
 ### 12.1 Tuning levers (most impactful first)
 
@@ -979,9 +979,9 @@ When a deployment selects the BLS crypto backend, the default const-generic valu
 
 | Profile | MAX_NODES | SNAKE_CHAIN | Margin (BLS, 264 KB) |
 |---|---:|---:|---:|
-| BLS-large | 1000 | 500 | ~−39 KB (default — does NOT fit) ❌ |
-| BLS-medium | 500 | 500 | ~20 KB ✅ |
-| BLS-small | 250 | 300 | ~54 KB ✅ |
+| BLS-large | 1000 | 500 | ~−41 KB (default — does NOT fit) ❌ |
+| BLS-medium | 500 | 500 | ~18 KB ✅ |
+| BLS-small | 250 | 300 | ~52 KB ✅ |
 
 ### 12.3 Future optimization (NOT MVP)
 
@@ -1045,7 +1045,7 @@ Selected high-impact decisions from the Step 5 + Step 6 + Step 7 iterations:
 
 | Risk | Severity | Mitigation |
 |---|---|---|
-| BLS does not fit at 1000-node default (~−39 KB) with the ~60 KB radio medium profile and the 24 KB Core 1 stack | Medium-High | §12 tuning; `MAX_NODES 1000→500` mandatory for BLS → ~20 KB margin |
+| BLS does not fit at 1000-node default (~−41 KB) with the ~60 KB radio medium profile and the 24 KB Core 1 stack | Medium-High | §12 tuning; `MAX_NODES 1000→500` mandatory for BLS → ~18 KB margin |
 | Blockchain still reads the fixed-value chain-config stub, not `moonblokz-configuration` | Medium | Both crates exist and carry the §11 surface; the blockchain's path-dep migration is its own change, held to a behaviour-neutrality bar |
 | Blockchain-task stack peak grows past the 24 KB Core 1 stack as Epics 6–10 deepen the call graph | Medium | §8: re-measure with the probe method on material call-graph changes (DEC-137) |
 | ~~`MAX_AGGREGATED_SIGNATURES` / `MULTI_SIGNATURE_SIZE` const values not yet ratified~~ **Resolved:** `moonblokz-crypto` fixes `MAX_AGGREGATED_SIGNATURES = 50` for every backend and `MULTI_SIGNATURE_SIZE` at 64 B (Schnorr) / 48 B (BLS); chain-config `required_support` is refused at acceptance above the backend limit ([Configuration Module Specification](./moonblokz-configuration-specification.md) §6 check 3) | — | — |

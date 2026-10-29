@@ -42,7 +42,7 @@ Node #0 after genesis behaves as Ready. "Not-ready" is the FR1 indication return
 | Tick — parent recovery | At most one request per tick, toward the Stored head whose retry interval elapsed longest ago (FR1, FR19) | Not specified | Same as Collecting (FR19 has no phase limit) | built (4.4) |
 | Tick — mempool replenishment | Not scheduled (FR46) | Not scheduled (FR46) | Runs on every node whose mempool is below the fill threshold, creator or not (FR46) | not built (8.4; responder 10.4) |
 | Tick — block creation | Not-ready (FR1 gates FR44) | Not specified | If the local node is the current creator: create when the fill threshold is reached, or on the timer with at least one includable transaction; replay obligations go out as soon as the node is eligible (FR45, FR46) | not built (8.3, 8.4; replay 9.2–9.5) |
-| Tick — grace period | Not specified | Not specified | Widen the admitted creator set by one: the `k`-th expiry fires at `E + k · g`, `E` the expected creation time from the local mempool (`min(t_fill, max(t_accept + interval, t_first))`, none while nothing is includable; DEC-186), without bound and also while approvals are pending; no accumulated-vote reset (FR47, DEC-183) | not built (8.5) |
+| Tick — grace period | Not specified | Not specified | Widen the admitted creator set by one: the first expiry fires at `E + g` and each further one `g₂` later (`grace_period_step_ms`, 15 min; DEC-203), `E` the expected creation time from the local mempool (`min(t_fill, max(t_accept + interval, t_first))`, none while nothing is includable; DEC-186), without bound and also while approvals are pending; no accumulated-vote reset (FR47, DEC-183); the expiry re-evaluates FR12 support for held candidates of the admitted rank (DEC-203) | not built (8.5) |
 | Queries | Not-ready (FR1, FR43) | Not-ready (FR42, FR43); FR40 / FR41 answers are not observable before Ready (FR8) | Transaction state Unknown / In-mempool / Confirmed with depth, the disputed flag and the `final` flag (FR40, FR70, DEC-182); balance and accumulated vote, address UTXOs (FR41); active-chain blocks only, else not-available (FR42); at most one transaction (FR43) | not built (10.1–10.4; not-ready gates built in 5.1) |
 | Creator-role determination | Not-ready (FR1) | Not specified | Whether the local node tops the FR38 creator order (FR44) | not built (8.2) |
 
@@ -207,6 +207,8 @@ Durable truth is only the node id, the private key (never handed to this module)
 | `snake_chain` head and tail | Selected active chain | Promotion and head extension / set by the walk | two `u32` indices | FR19, FR48 | partial — head built (5.4); tail and its advance step built (9.1); head extension and tail advance in Ready built (6.0); set by the walk 6.3 |
 | Active-node set `A` | Creators inside the active window | Recomputed when evaluated | not stored | FR12, ADR-015 | not built (6.4) |
 | Approval accumulator | Accepted support for the proposer's own deviation | Accumulate / discarded on demotion and restart | `ApprovalAccumulator` (~2 KB; ~3.4 KB Schnorr per E6-4) | FR27 | not built (6.6) |
+| Non-conflict record | The node's own support messages and twin votes | Add on emission; resolved sequences dropped first, abstain when every entry is live / not reverted; lost on restart (no support or twin vote at or below the ready-entry head) | ring of 16 × 13 B (~208 B), not durable | FR12, FR71; DEC-198 | not built (6.4) |
+| Support-relay dedupe | Accepted support messages and twin votes | Insert on Accepted, least recently used evicted / not reverted; lost on restart | LRU of 128 × 12 B (~1.5 KB), not durable | FR26; DEC-199 | not built (6.5) |
 
 ## 7. Main Flows
 
@@ -296,11 +298,11 @@ Each flow lists its trigger, its steps, and what happens on failure. Step tables
 
 | # | Step | FRs | Built |
 |---|---|---|---|
-| 1 | A direct head extension by a creator other than the FR38 top, with a valid signature, starts support evaluation | FR12, FR16 | not built (6.4) |
+| 1 | A block by a creator other than the FR38 top whose parent `p − 1` lies on the active chain — a direct head extension, or a sibling of an approval-less deviation at `p` whose signature the node verifies — starts support evaluation, also at the grace expiry that admits its creator (DEC-200, DEC-203) | FR12, FR16 | not built (6.4) |
 | 2 | Eligibility: creator inside the grace window; local node in `A'` (`A` without proposer and originally-top node) and among the `m` lowest `node_value`, `r_eff = min(required_support, ⌊\|A'\|/2⌋ + 1)`; no conflict; no pending tail replay | FR12, ADR-015 | not built (6.4) |
-| 3 | Emit a signed support message as the intake outcome | FR10, FR12 | not built (6.4; signed content open, E6-2) |
+| 3 | Emit a signed support message as the intake outcome | FR10, FR12 | not built (6.4; signed content DEC-187) |
 | 4 | Support intake in every phase: format and de-duplication always; signature, coherence and subgroup checks once the deviation is on the local active chain; Accepted → relay | FR26 | not built (6.5) |
-| 5 | Proposer: collect subgroup supporters; at `r_eff` aggregate once and build the evidence block (`supporter_vote_sum`, signature, ids) | FR12, FR27 | not built (6.6) |
+| 5 | Proposer: collect subgroup supporters; at `r_eff` aggregate once and build the evidence block (`supporter_vote_sum`, signer bitmap, signature; DEC-195); a sibling proposer keeps collecting while a heavier approval-less sibling is its head (DEC-200) | FR12, FR27 | not built (6.6) |
 | 6 | The deviation block is Active at once and penalizes the original top creator; its branch is never higher in value than the normal branch (equal votes tie; FR21 tie-break) until the evidence block lands | FR21, FR28, FR37 | partial — admitted Active with its FR37 vote effects by the head-extension step built (6.0); branch value built (6.1); two-stage scoring built (6.2); the evidence block's value 6.7 |
 | 7 | Validate incoming evidence blocks (I-15) | FR6, FR9 | not built (6.7) |
 
