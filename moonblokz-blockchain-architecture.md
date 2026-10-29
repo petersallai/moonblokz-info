@@ -558,7 +558,7 @@ The full per-module breakdown (processes / data structures / relationships / API
 | `branch_value.rs` | FR21 | (stateless: the per-block value, the FR21 rank — value, tip size, tip hash — and operational admissibility; the values live in `Blockchain.active_branch_value` and the side heads' `ChainHeadEntry.branch_value`, DEC-144, DEC-154, DEC-155) |
 | `intake.rs` | FR10/FR14/FR16/FR26 | (stateless dispatcher) |
 | `staged_validation.rs` | FR9 | (stateless tier 1/2/3 checks) |
-| `reconciliation.rs` | FR23, FR58 | (stateless backward/forward walk) |
+| `reconciliation.rs` | FR23, FR58 | (stateless: the switch admission rule — FR58's bound, the completeness horizon `C` and the DEC-204 evaluability condition; the walk itself is private `Blockchain` methods in `api.rs`, because the state it rewrites is private there — `switch_toward`, `undo_active_head` / `undo_committed_block`, the replay through the shared step against a virtual tail, `commit_switch`, `restore_original`; DEC-171) |
 | `node_info.rs` | FR6, FR50, FR67/FR69 | 4 parallel arrays SoA (~44 KB Schnorr / ~108 KB BLS) |
 | `available_utxo.rs` | ADR-016, FR3, FR51 | (operates on `BlockEntry.available_utxo` co-located) |
 | `creator.rs` | FR44/FR45/FR47 | (stateless; uses `bc.crypto.sign`) |
@@ -667,7 +667,10 @@ pub(crate) struct ChainHeadEntry {
 active_chain_head_idx: u32,    // 4 B   index into blocks
 snake_chain_tail_idx:  u32,    // 4 B   index into blocks; NONE_REF = no window (every phase but Ready)
 active_branch_value:   u64,    // 8 B   FR21 value of the active branch over (S_tail, S_head] (Story 6.1 D3)
+complete_from_sequence: u32,   // 4 B   FR23 completeness horizon C (Story 6.3 D2, DEC-167)
 ```
+
+`complete_from_sequence` is the highest sequence at which the ready-entry FR3 pass floor-seeded a node (0 on a genesis-anchored chain): floor seeding has no inverse, so a chain switch never walks back across it. A chain switch keeps everything else in locals of the walk — the virtual tail its replay advances, the pending advance count and value, the recorded pre-switch value — and releases the tail only at its commit (DEC-168).
 
 `active_branch_value` is the active branch's FR21 value, held here rather than in a `chain_heads` entry because the active head is not always a tip: a Stored child makes it interior and event (i) moves its entry to the child (Story 6.1 D3). It is seeded by the FR3 forward walk (or from #1 at genesis) at Ready entry, grows on every head extension, loses the new `S_tail` block's value on every tail advance, and is cleared with the active head.
 
@@ -829,8 +832,8 @@ pub struct VoteEngine<const MAX_NODES: usize> {
 | (1) `receive_block` hash-already-known | api → intake → blocks.find_by_hash | ~250 B | Tier 1 fast-path |
 | (2) `receive_block` Tier 3 validation | api → intake → `tier1_admit` → `judge_head_extension` → `derive_block` → UTXO resolver (`storage.read_block_into`) | measured 11.5 KB worst case (via the FR3 pass); was ~1.5 KB estimated | local view refs. As built (Story 6.0) the step lives in `api.rs` (§4.2). The UTXO resolver, the creator-signature check and the continuation's stored-child step each hold their block-sized buffer in their own frame (DEC-136); the stored-child frame is gone before any deletion or tail advance, so it never shares the stack with the 2.4 KB delete-set buffer. |
 | (3) **FR45 block creation** | on_tick → creator.try_create_block → BlockBuilder (~2 KB) → bc.crypto.sign → emit_scratch | **~4 KB** | BlockBuilder is the hot spot |
-| (4) FR23 chain-switch backward walk | reconciliation loop { storage.read_block_into (~2 KB) → undo } | ~2.2 KB | one caller-owned read buffer, reused per iteration (DEC-136) |
-| (5) FR23 forward walk peak | reconciliation forward → mempool.recheck_eligibility | ~3 KB | accumulated locals |
+| (4) FR23 chain-switch backward walk | `receive_block` → `switch_toward` → `undo_active_head` → `balance_owners` / `previous_seed_sources` / `undo_committed_block` (each its own 2 KB read frame, never nested) | within `receive_block`'s measured 11.4 KB (Story 6.3: +16 B) | the pre-pass's read frame and the signature preimage frame do not nest with them either (DEC-136) |
+| (5) FR23 forward walk peak | `switch_toward` → `apply_stored_child` (2 KB read) → `judge_head_extension` → `derive_block` → preimage / `utxo_output_of` frames | the head-extension path's depth; `receive_block` measured 11.4 KB, worst case `process_genesis` 18.8 KB of the 24 KB Core 1 stack (Story 6.3) | the Story 7.4 mempool calls will add their own frame |
 | (6) FR59 restart | api.initialize_from_storage → rebuild scan → run_processing_pass loop | ~3 KB | same iter pattern as FR23. As built (Story 5.10) the spine lives in `api.rs`, not in `lifecycle.rs`/`reconciliation.rs`: it drives `run_processing_pass` / `recover_from_failed_pass`, which are `api.rs` methods over private fields, so reaching them from another module would mean widening the field surface for no gain. One caller-owned read buffer per scan, reused across slots (`read_block_into`, DEC-136). |
 
 **Measured (2026-10-18, DEC-136).** A thumbv6m probe binary at the §5 defaults (node release profile: LTO, `opt-level = "z"`; frames read from prologues and summed along the deepest call path; indirect calls not followed) gave worst-case blockchain-task stacks of `receive_block` 11.5 KB, `initialize_from_storage` 15.5 KB, `process_genesis` 19.2 KB and `on_tick` 1.0 KB, after reads were moved into one caller-owned buffer (`read_block_into`) and the block-sized buffers given their own frames (before: 27.9 / 25.9 / 25.6 KB — LTO merged them). The deepest path is the FR3 pass: `marked` (2.4 KB) + read buffer (2 KB) + creator-signature preimage (2 KB) + Schnorr verify (~3.9 KB). These exceed the original 6 KB budget, so the stack is sized to the measured peak (DEC-137, below).
@@ -854,7 +857,7 @@ pub struct VoteEngine<const MAX_NODES: usize> {
 
 - **FR9 Tier 1/2/3** → `staged_validation.rs` with crypto handle through `bc.crypto.verify`
 - **FR19 chain_heads** → `chain_heads.rs` + `scheduler.next_parent_recovery_tick_ms`
-- **FR23 chain-switch** → `reconciliation.reconcile_to_new_head` (backward + forward walk)
+- **FR23 chain-switch** → `Blockchain::switch_toward` in `api.rs` (backward + forward walk; DEC-153, DEC-171), its admission rule in `reconciliation::switch_admitted`
 - **FR45 block creation** → `creator.try_create_block` (`bc.crypto.sign` inside blockchain)
 - **FR50 balance replay coverage** → `node_info.seed_source_idx` per-node SoA projection
 - **FR62 simulator compat** → no_std + no_alloc + sync core (see §10)
