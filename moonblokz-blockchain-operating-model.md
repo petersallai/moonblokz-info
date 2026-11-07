@@ -14,7 +14,7 @@ Sections: 1 execution model · 2 lifecycle transitions · 3 event × phase matri
 
 ## 2. Lifecycle Phases and Transitions
 
-Two resting phases, **Collecting** and **Ready**, joined by the transient **Processing** pass (FR1–FR5). Node #0 skips Collecting entirely (FR54).
+Two resting phases, **Collecting** and **Ready**, joined by the transient **Processing** pass (FR1–FR5); Ready's only runtime exit is T9. Node #0 skips Collecting entirely (FR54).
 
 | # | From → To | Trigger | What runs | On failure | FRs | Built |
 |---|---|---|---|---|---|---|
@@ -27,6 +27,7 @@ Two resting phases, **Collecting** and **Ready**, joined by the transient **Proc
 | T6 | within Collecting | First chain-config block passing FR7 and accepted by the configuration module | Tentative load; later chain-config blocks are stored but do not override it | Module rejection is exact evidence; no load | FR8 | built (5.9) |
 | T7 | Ready → Processing → Ready | Withdrawn (DEC-159): there is no deep-zone switch, so Ready never re-enters Processing; a branch beyond FR58's switch bound is reclaimed (§7.3, §7.4) | — | — | FR58 | — |
 | T8 | Processing interrupted | Restart mid-pass | Partial state discarded; T0 restart path | — | FR3, FR59 | built (5.10) |
+| T9 | Ready → Collecting | An FR23 chain switch's restore fails (a second local fault) | The offender, if any, deleted; derived state discarded, every block Stored, `chain_heads` rebuilt from the retained tree (no durable re-read: the switch wrote nothing); FR2 evaluated (T2); a re-entry that reaches Ready runs one FR22 comparison | — | FR23, FR59; DEC-205 | built (6.3) |
 
 ## 3. Event × Phase Matrix
 
@@ -259,7 +260,7 @@ Each flow lists its trigger, its steps, and what happens on failure. Step tables
 | 6 | Commit: the deferred releases and FR21 (iii) subtractions, window expiry, deferred re-evaluation, `chain_heads` event (iii); discard a demoted proposer's accumulator | FR15, FR19, FR27, FR32 | partial — the deferred releases, the FR21 (iii) subtractions and event (iii) built (6.3); window expiry 7.4; deferred re-evaluation 7.5; the accumulator discard 6.6 |
 | 7 | Withdrawn (DEC-159): no deep-zone path | FR58 | — |
 
-**On failure (DEC-168):** a Tier 3 failure on the forward walk restores the original chain in place, then deletes the failing block with its descendants (no FR5); a local fault restores without deleting; a fault during the restore stops at the highest re-applied block, a valid shorter active chain. The whole switch runs inside one call, so no query sees a half-switched chain (FR24). No block bytes are written.
+**On failure (DEC-168):** a Tier 3 failure on the forward walk restores the original chain in place, then deletes the failing block with its descendants (no FR5); a local fault restores without deleting; a fault during the restore stops the walk, deletes the offender if there is one, and re-enters collecting over the retained tree (§2 T9, DEC-205), because a chain shorter than the window and horizon would break every ready-state rule that assumes them. The whole switch runs inside one call, so no query sees a half-switched chain (FR24). No block bytes are written.
 
 ### 7.4 Tail Advance and Replay
 

@@ -185,7 +185,7 @@ The ingredients are:
 
 - collecting selects the highest tip sequence among qualifying segments and has no window bound (§4, §16.13);
 - the pass auto-accepts pre-seed state-dependent checks, and how a seedless creator's block signature is verified is not specified (§4);
-- a restart re-enters collecting (§4).
+- a restart re-enters collecting (§4), and so does a chain switch whose restore fails (DEC-205) — a local storage or vote-engine fault no block can force.
 
 The attack needs radio-local presence, because ready nodes neither store nor relay out-of-window blocks (BC-FR60), and the forged segment must qualify before the genuine one. The victim then discards the real chain as out-of-window.
 
