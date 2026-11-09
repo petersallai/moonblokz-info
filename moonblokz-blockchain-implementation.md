@@ -236,7 +236,7 @@ If the node retains only a narrow history window beyond the currently active cha
 
 If the node retains a larger verification horizon, such as roughly an extra chain-length worth of history, future active-chain switches may become cheaper to validate but the storage footprint increases.
 
-[Blockchain PRD](./moonblokz-blockchain-prd.md) FR58 settles it: the chain configures a verification horizon `H` (`verification_horizon`, `1 ≤ H ≤ W`, default 50, identical on every node) retained beyond the window, and a node switches only to a branch that diverges within `H` blocks of its own head, always in place via FR23; ready state has no full FR3 reconstruction (DEC-159, DEC-160). The choice of `H` affects:
+[Blockchain PRD](./moonblokz-blockchain-prd.md) FR58 settles it: the chain configures a verification horizon `H` (`verification_horizon`, `1 ≤ H < W`, default 50, identical on every node) retained beyond the window, and a node switches only to a branch that diverges within `H` blocks of its own head, always in place via FR23; ready state has no full FR3 reconstruction (DEC-159, DEC-160). The choice of `H` affects:
 
 - storage sizing,
 - pruning policy,
