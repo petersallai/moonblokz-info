@@ -96,7 +96,7 @@ The current storage crate must solve the following combined problem:
 
 The current storage implementation relies on these chain-types constants:
 
-- `MAX_BLOCK_SIZE = 2016`
+- `MAX_BLOCK_SIZE = 2016` on the reference tier (the build selects it by a chain-types size-tier feature; DEC-220)
 - `HEADER_SIZE = 122`
 - `MAX_PAYLOAD_SIZE = MAX_BLOCK_SIZE - HEADER_SIZE = 1894`
 - `HASH_SIZE = 32`
@@ -217,7 +217,7 @@ Both current backends serialize a logically equivalent control-plane record cont
 4. own node ID (`u32`, little-endian)
 5. persisted init-params-size field (`u8`)
 6. init parameter bytes (`[u8; INIT_PARAMS_SIZE]`)
-7. persisted `MAX_BLOCK_SIZE` field (`u16`, little-endian)
+7. persisted `MAX_BLOCK_SIZE` field (`u32`, little-endian; bytes 139..143 with a 32-byte private key)
 8. reserved chain-configuration block space (`[u8; MAX_BLOCK_SIZE]`)
 9. CRC32 checksum (`u32`, little-endian)
 
@@ -232,6 +232,8 @@ A control-plane replica is accepted only if all of the following hold:
 5. the stored init-params-size field matches the current `INIT_PARAMS_SIZE`,
 6. the stored `MAX_BLOCK_SIZE` matches the current runtime `MAX_BLOCK_SIZE`,
 7. if a chain-configuration block is present, it parses successfully as `Block`.
+
+This is layout version 1 (`CONTROL_PLANE_VERSION = 1`). The `MAX_BLOCK_SIZE` field was widened from `u16` to `u32` on 2026-11-10 without a version bump, because no device holds a chain (DEC-226). A record in the earlier 2-byte layout, or the reverse, fails condition 2 — its CRC sits at another offset and is checked before the version — so it loads as `ControlPlaneCorrupted`, not `ControlPlaneIncompatible`, and the node re-initializes destructively. From the first release the version-1 layout is fixed.
 
 ## D3. Control-plane uninitialized conditions
 

@@ -216,7 +216,7 @@ The Part V header is not merely descriptive metadata. Several fields directly su
 
 ### Block size bound
 
-The total block size is bounded by the chain-config `block_size_limit` (ID 3), which is itself at most the node's physical block limit `MAX_BLOCK_SIZE` (the compile-time buffer width, 2016 B). This cap is algorithmically important because it constrains:
+The total block size is bounded by the chain-config `block_size_limit` (ID 3, `u32`). A build accepts only a chain whose `block_size_limit` fits its own block capacity `MAX_BLOCK_SIZE`, the size tier the build selects (2016 B on the reference LoRa build; DEC-220, DEC-227); a block above that capacity is refused locally and is never evidence (DEC-225). This cap is algorithmically important because it constrains:
 
 - how many transactions fit in a block,
 - how many balances can be replayed at once,
@@ -250,7 +250,7 @@ A transaction block begins with:
 - **`transaction_count: u16`**
 - followed by a list of transactions.
 
-The theoretical limit is `65535` transactions, but in practice `block_size_limit` is the real limiting factor.
+The count is a protocol bound of `65535` transactions per block (DEC-222); it limits the count, not the block, since a signed transaction is at least 101 B. On the reference build `block_size_limit` is the real limiting factor.
 
 Each transaction starts with a fixed mini-header:
 
@@ -387,7 +387,7 @@ The article states:
 
 - there may be zero or more inputs,
 - there must be one or more outputs,
-- maximum counts are nominally `255` each,
+- maximum counts are `255` each, a per-transaction protocol bound (DEC-222),
 - in practice the block size limit applies, and UTXO outputs per block are additionally capped by the chain-config `max_block_utxo_output` (ID 4, ≤ the build's available-UTXO bitfield width; [Configuration Module Specification](./moonblokz-configuration-specification.md) §4.1), counted over all of a block's complex transactions and enforced at intake (PRD FR9 Tier 1; the bitfield width before the durable lock) and in the FR6 pass (PRD FR6).
 
 A transaction with **zero inputs** is a special `snake_chain` maintenance case used to re-add surviving UTXO outputs.
@@ -399,8 +399,8 @@ Fields:
 1. **`block_sequence: u32`**  
    Sequence number of the block containing the complex transaction whose UTXO is being spent. The reference is resolved against the current active chain only; within the `snake_chain` window the sequence uniquely identifies a stored block.
 
-2. **`output_index: u8`**  
-   Position of the referenced output in the block's UTXO-output stream: UTXO outputs only (balance outputs are not counted), transaction by transaction in block order, output by output within each transaction. This is the output's bit in the block's per-block available-UTXO bitfield (PRD FR34).
+2. **`output_index: u16`**  
+   Position of the referenced output in the block's UTXO-output stream: UTXO outputs only (balance outputs are not counted), transaction by transaction in block order, output by output within each transaction. This is the output's bit in the block's per-block available-UTXO bitfield (PRD FR34). `u16` matches ID 4 `max_block_utxo_output` and the widest bitfield a build can state (DEC-222); the input is 79 B.
 
 3. **`amount: u64`**  
    The referenced output's amount, declared by the spender (DEC-131); it must equal the output's amount. With it every input declares its value, so the transaction's input sum and fee follow from its bytes, and the signature commits to the amount spent.
@@ -467,8 +467,8 @@ Balance blocks are much simpler than transaction blocks.
 
 ### Header fields
 
-1. **`nodeinfo_count: u16`**  
-   Number of balance entries in the block.
+1. **`nodeinfo_count: u32`**  
+   Number of balance entries in the block. `u32`, so a balance replay on a large block tier is never split by a count limit (DEC-222); the header is 8 B.
 
 2. **`max_node_id: u32`**  
    The chain-global node-id watermark at this balance block's sequence — i.e., the highest node identifier registered anywhere on the active chain up to and including this block, not a per-block coverage subset count. The blockchain module's `max_known_node_id` derived projection is initialized from the earliest balance block in a candidate segment and is incremented by exactly one on every subsequent registration; any later balance block whose `max_node_id` field disagrees with the forward-traversal-tracked watermark at that block's sequence is exact evidence of invalidity. Source: the chain-global watermark interpretation is normatively pinned by [Blockchain PRD](./moonblokz-blockchain-prd.md) FR50 / FR3 / FR9 (Tier 3) / FR54 (h); the original Part V wording ("highest node identifier known in the block's balance coverage") was ambiguous about whether the field was coverage-scoped or chain-global, and the PRD resolves it as chain-global.

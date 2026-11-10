@@ -101,7 +101,7 @@ This means the storage crate’s default development posture is a host-friendly 
 
 The current crate depends on:
 
-- `moonblokz-chain-types` for `Block`, `MAX_BLOCK_SIZE`, `HEADER_SIZE`, `MAX_PAYLOAD_SIZE`, `HASH_SIZE`, and `calculate_hash`
+- `moonblokz-chain-types` for `Block`, `MAX_BLOCK_SIZE` (the build's size tier, forwarded as a feature), `HEADER_SIZE`, `MAX_PAYLOAD_SIZE`, `HASH_SIZE`, and `calculate_hash`
 - `moonblokz-crypto` for `PRIVATE_KEY_SIZE`
 - `embassy-rp` only on ARM targets for the RP2040 backend
 
@@ -159,7 +159,7 @@ The exact parser constraints belong primarily in [moonblokz-storage-algorythm.md
 
 `moonblokz-chain-types` exposes `Block::hash()` / `BlockView::hash()` as the normal canonical block-identity hashing pattern.
 
-The RP2040 backend uses the same SHA-256 helper behind that typed API, but applies `calculate_hash` directly to the fixed 2016-byte slot block area for storage-integrity metadata.
+The RP2040 backend uses the same SHA-256 helper behind that typed API, but applies `calculate_hash` directly to the fixed `MAX_BLOCK_SIZE` slot block area (2016 B on the reference tier) for storage-integrity metadata.
 
 Engineering consequence:
 
@@ -319,7 +319,7 @@ Engineering consequence:
 
 ## Control-plane compatibility is tied to runtime constants
 
-Persisted `PRIVATE_KEY_SIZE`, `INIT_PARAMS_SIZE`, and `MAX_BLOCK_SIZE` are checked against current binary constants.
+Persisted `PRIVATE_KEY_SIZE`, `INIT_PARAMS_SIZE`, and `MAX_BLOCK_SIZE` (a `u32` field since DEC-226) are checked against current binary constants.
 
 Engineering consequence:
 

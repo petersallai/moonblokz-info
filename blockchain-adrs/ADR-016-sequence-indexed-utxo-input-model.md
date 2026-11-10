@@ -11,7 +11,9 @@ The `snake_chain` window bounds the region where UTXOs can be referenced in the 
 Spent-state tracking, which is the other half of the UTXO model, can then be represented as a per-block bitfield — one bit per output in that block — co-located with the block in storage. This removes the need for any live UTXO set as a continuously maintained projection.
 
 ### Decision
-MoonBlokz shall reference UTXOs by `(block_sequence, output_index)` rather than by `(transaction_hash, output_index)`. The complex-transaction UTXO input field shall carry `block_sequence: u32` and `output_index: u8` (replacing the previous `tr_hash: [u8;32]`).
+MoonBlokz shall reference UTXOs by `(block_sequence, output_index)` rather than by `(transaction_hash, output_index)`. The complex-transaction UTXO input field shall carry `block_sequence: u32` and `output_index` (`u8`, widened to `u16` by DEC-222) (replacing the previous `tr_hash: [u8;32]`).
+
+*Amendment (2026-11-10, DEC-222):* `output_index` is `u16`, not `u8`: 256 UTXO outputs per block would limit a large block tier, and `u16` matches `max_block_utxo_output` (configuration ID 4) and the widest available-UTXO bitfield a build can state. The input grows from 78 to 79 B; the input signature's preimage covers the field.
 
 *Amendment (2026-10-18, DEC-131):* the input also declares the referenced output's `amount: u64`, which must equal the output's amount. Every complex transaction's input sum and fee are then decidable from its bytes (Tier 1), including on a window-anchored candidate whose reference lies below its anchor (DEC-129); the resolver checks the declared amount against the output.
 

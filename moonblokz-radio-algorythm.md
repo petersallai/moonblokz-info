@@ -273,6 +273,8 @@ Carries:
 - CRC32C payload checksum
 - block payload bytes
 
+The block bytes fit at most `RADIO_MAX_MESSAGE_SIZE − 13 = 2000` B, less than the reference block capacity `MAX_BLOCK_SIZE = 2016` B: `add_block_with` copies the bytes into a fixed message buffer, so a 2001–2016 B block panics on the slice. This is LoRa-transport-specific and pre-existing, recorded by Story 6.15 and not fixed there; the owner is the radio / bridge layer.
+
 ### `AddTransaction`
 
 Carries:

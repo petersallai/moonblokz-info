@@ -53,11 +53,12 @@ Authoritative source: [`moonblokz-blockchain-architecture.md`](./moonblokz-block
 
 | Const generic | Default | Meaning / deployment implication |
 |---|---:|---|
-| `MAX_NODES` | 1000 | **Network-wide registered-node cap.** Sizes all node-id-indexed arrays (`NodeInfo`, `VoteEngine.accumulated_vote`); every node holds an entry for every registered node. Dominant RAM driver — see §3. |
+| `MAX_NODES` | 1000 | **The build's node capacity.** Sizes all node-id-indexed arrays (`NodeInfo`, `VoteEngine.accumulated_vote`); every node holds an entry for every registered node. The network cap is chain parameter ID 32 `max_node_count`, which acceptance bounds by `MAX_NODES` (DEC-228). Dominant RAM driver — see §3. |
 | `SNAKE_CHAIN_LENGTH_MAX` | 500 | **Capacity** of the active-chain window, not its length. The length in force, `W`, is chain configuration ([BC-FR56](./moonblokz-blockchain-prd.md)) and acceptance requires `W ≤ SNAKE_CHAIN_LENGTH_MAX`; a build whose capacity is below the chain's `W` cannot join. See D2 in §7. |
+| `MAX_BLOCK_SIZE` | 2016 | **Build tier feature**, not a const generic: the block capacity a `moonblokz-chain-types` size-tier feature selects (`block-size-2016` default, `block-size-65536`; DEC-220). Acceptance requires the chain's `block_size_limit` to fit it; a larger block is a local refusal, never evidence (DEC-225). See §4. |
 | `MAX_BLOCKS` | 600 | In-RAM block-table slots; 1:1 with RP2040 durable flash capacity (see §4). Chain-config acceptance also requires `W + 2·H ≤ MAX_BLOCKS` ([BC-FR8](./moonblokz-blockchain-prd.md), DEC-160). |
 | `MAX_BRANCH_COUNT` | 40 | Chain-heads table capacity; collecting-state branch headroom. |
-| `MEMPOOL_COMPACT_BYTES` | 20160 | Mempool compact buffer (~10 × `MAX_BLOCK_SIZE`). |
+| `MEMPOOL_COMPACT_BYTES` | 20160 | Mempool compact buffer (~10 × `MAX_BLOCK_SIZE`; at least `MAX_BLOCK_SIZE`, [BC-FR56](./moonblokz-blockchain-prd.md), DEC-223). |
 | `MEMPOOL_MAX_ENTRIES` | 128 | Mempool index capacity. |
 | `MAX_TX_PER_BLOCK` | ~64 | Derived; [BC-FR45](./moonblokz-blockchain-prd.md) included-keys gathering. |
 | `MAX_BLOCK_UTXO_OUTPUT` | 256 | Per-block available-UTXO bitfield width (ADR-016); also the Tier 1 UTXO-output cap before the durable lock ([BC-FR9](./moonblokz-blockchain-prd.md)). |
@@ -118,15 +119,15 @@ Authoritative source: [`moonblokz-blockchain-architecture.md`](./moonblokz-block
 | Structure | Schnorr | BLS | Driver |
 |---|---:|---:|---|
 | `NodeInfo` (SoA) | ~44 KB | ~108 KB | `MAX_NODES` × (`PUBLIC_KEY_SIZE` + 8 + 4) |
-| `BlockTable` | 45.6 KB | 45.6 KB | `MAX_BLOCKS` × 76 B |
+| `BlockTable` | 48 KB | 48 KB | `MAX_BLOCKS` × 80 B (`u32` block length, DEC-224) |
 | `ChainHeadsTable` | 2.88 KB | 2.88 KB | `MAX_BRANCH_COUNT` × 72 B (architecture §7.1; was listed here as 32 B) |
 | `ApprovalAccumulator` | ~3.4 KB | ~2 KB | Schnorr keeps every support's `r`, `s` and rank until emission (DEC-194, DEC-195); BLS a `MAX_BLOCK_SIZE` buffer |
 | Active-set counter, exclusion markers, circulating currency, requester LRU, non-conflict ring, support-relay LRU | ~4.3 KB | ~4.3 KB | DEC-185 (`MAX_NODES` × 2 B), FR72 / DEC-184 (1 bit per node), DEC-192 (u64), DEC-189 (~384 B, sized by 10.4), DEC-198 (16 × 13 B), DEC-199 (128 × 12 B) |
 | `EmitScratch` + scheduler + lifecycle + PRNG | ~2.1 KB | ~2.1 KB | `MAX_BLOCK_SIZE` buffer + small fields |
-| **`moonblokz-blockchain` subtotal** | **~101 KB** | **~163 KB** | matches architecture §7.1 / §7.2 (refreshed 2026-10-29) |
-| `Mempool` (sibling `moonblokz-mempool`) | ~23–25 KB | ~23–25 KB | `MEMPOOL_COMPACT_BYTES` + compact index including stored `transaction_fee` + small fields; authoritative layout in blockchain architecture §6.8 |
+| **`moonblokz-blockchain` subtotal** | **~103 KB** | **~166 KB** | matches architecture §7.1 / §7.2 (refreshed 2026-11-10) |
+| `Mempool` (sibling `moonblokz-mempool`) | ~24.3 KB | ~24.3 KB | `MEMPOOL_COMPACT_BYTES` + compact index (128 × 32 B, `u32` offsets, DEC-223) including stored `transaction_fee` + small fields; authoritative layout in blockchain architecture §6.8 |
 | `VoteEngine.accumulated_vote` (sibling `moonblokz-vote`) | ~4 KB | ~4 KB | `MAX_NODES` × 4 B |
-| **blockchain + mempool + vote** | **~128–130 KB** | **~191–193 KB** | carried into §3.2 |
+| **blockchain + mempool + vote** | **~131 KB** | **~194 KB** | carried into §3.2 |
 
 Raising `MAX_NODES` costs ~50 B/node (Schnorr) or ~114 B/node (BLS) across the node-id-indexed arrays (`NodeInfo` + `accumulated_vote`), derived from architecture §7.1 and corroborated by its §12.1 tuning levers. The default 1000-node cap already consumes most of the RP2040 budget, so caps an order of magnitude larger (for example a city-scale payment network) exceed RP2040 SRAM and require an MCU with substantially more RAM.
 
@@ -134,16 +135,16 @@ Raising `MAX_NODES` costs ~50 B/node (Schnorr) or ~114 B/node (BLS) across the n
 
 | Consumer | Schnorr | BLS |
 |---|---:|---:|
-| blockchain + mempool + vote | ~128 KB | ~191 KB |
+| blockchain + mempool + vote | ~131 KB | ~194 KB |
 | radio-lib (memory-config-medium) | ~60 KB | ~60 KB |
 | crypto-lib scratch | ~4 KB | ~4 KB |
 | storage page buffer | ~4 KB | ~4 KB |
 | Stacks: Core 1 (blockchain task) 24 KB + other tasks ~18 KB | ~42 KB | ~42 KB |
 | Embassy executor + statics | ~4 KB | ~4 KB |
-| **Subtotal allocated** | **~242 KB** | **~305 KB** |
-| **Margin (264 KB − allocated)** | **~22 KB (~8%)** ✅ | **~−41 KB (exceeds 264 KB)** ❌ |
+| **Subtotal allocated** | **~245 KB** | **~308 KB** |
+| **Margin (264 KB − allocated)** | **~19 KB (~7%)** ✅ | **~−44 KB (exceeds 264 KB)** ❌ |
 
-The radio figure is the **source-confirmed** `memory-config-medium = ~60 KB` (radio module `README.md` + `lib.rs` profile consts; see §6 and §7/D1), additive to the separately-counted Embassy task stacks. **Consequence:** at the default 1000-node profile the BLS backend **exceeds the 264 KB ceiling by ~41 KB** — const-generic tuning (e.g. `MAX_NODES 1000 → 500`, §3.4) is therefore **mandatory** for BLS, not optional. Schnorr keeps a ~22 KB (~8%) margin. The authoritative architecture §7.3/§7.4/§12 and the index have been updated to match this source-confirmed figure (radio = 60 KB).
+The radio figure is the **source-confirmed** `memory-config-medium = ~60 KB` (radio module `README.md` + `lib.rs` profile consts; see §6 and §7/D1), additive to the separately-counted Embassy task stacks. **Consequence:** at the default 1000-node profile the BLS backend **exceeds the 264 KB ceiling by ~44 KB** — const-generic tuning (e.g. `MAX_NODES 1000 → 500`, §3.4) is therefore **mandatory** for BLS, not optional. Schnorr keeps a ~19 KB (~7%) margin. The authoritative architecture §7.3/§7.4/§12 and the index have been updated to match this source-confirmed figure (radio = 60 KB).
 
 ### 3.3 Stack frames
 
@@ -156,11 +157,11 @@ Per-lever savings: [`moonblokz-blockchain-architecture.md`](./moonblokz-blockcha
 
 | Profile | `MAX_NODES` | `SNAKE_CHAIN_LENGTH_MAX` | BLS margin (radio = 60 KB) |
 |---|---:|---:|---:|
-| BLS-large (default) | 1000 | 500 | **~−41 KB (does not fit)** ❌ |
-| BLS-medium | 500 | 500 | ~18 KB ✅ |
-| BLS-small | 250 | 300 | ~52 KB ✅ |
+| BLS-large (default) | 1000 | 500 | **~−44 KB (does not fit)** ❌ |
+| BLS-medium | 500 | 500 | ~15 KB ✅ |
+| BLS-small | 250 | 300 | ~49 KB ✅ |
 
-Most impactful lever: `MAX_NODES 1000 → 500` saves ~57 KB (BLS) but halves the network-size cap — and is the minimum tuning needed to make BLS fit at all once the radio medium profile is counted at its real ~60 KB.
+Most impactful lever: `MAX_NODES 1000 → 500` saves ~57 KB (BLS) but halves the node capacity, so the build joins only chains with `max_node_count ≤ 500` — and is the minimum tuning needed to make BLS fit at all once the radio medium profile is counted at its real ~60 KB.
 
 ---
 
@@ -170,7 +171,7 @@ Authoritative sources: [`moonblokz-storage-algorythm.md`](./moonblokz-storage-al
 
 | Constant | Value | Note |
 |---|---:|---|
-| `MAX_BLOCK_SIZE` | 2016 B | Canonical max serialized block (chain-types). |
+| `MAX_BLOCK_SIZE` | 2016 B | The reference tier's block capacity (chain-types `block-size-2016`); the values below that derive from it are the reference tier's. |
 | `HEADER_SIZE` | 122 B | Implied: `MAX_BLOCK_SIZE − MAX_PAYLOAD_SIZE`. |
 | `MAX_PAYLOAD_SIZE` | 1894 B | `MAX_BLOCK_SIZE − HEADER_SIZE`. |
 | `HASH_SIZE` | 32 B | SHA-256 per-slot integrity hash. |
@@ -191,7 +192,7 @@ Authoritative sources: [`moonblokz-simulator-algorythm.md`](./moonblokz-simulato
 | Parameter | Value / rule | Note |
 |---|---|---|
 | Radio type | Direct LoRa (not LoRaWAN) | radio-concept. |
-| LoRa packet payload | ~255 B | Radio fragmentation unit; blocks (up to `MAX_BLOCK_SIZE = 2016 B`) are fragmented across packets. |
+| LoRa packet payload | ~255 B | Radio fragmentation unit; blocks (up to `MAX_BLOCK_SIZE = 2016 B` on the reference tier) are fragmented across packets. |
 | Airtime model | f(bandwidth, spreading factor, payload) | LoRa-style estimation. |
 | Spreading factor | `5..=12` | Validated range. |
 | Airtime payload clamp | payloads > 255 B clamped to 255 for estimation | Simulator airtime rule. |
