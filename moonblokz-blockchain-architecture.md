@@ -939,7 +939,7 @@ impl ActiveConfig<'_> {
     pub fn commitment(&self) -> Commitment;                        // Tentative | Durable
     pub fn inter_block_interval_ms(&self) -> u32;                  // FR45 (b), ms
     pub fn grace_period_window_ms(&self) -> u32;                   // FR47, ms
-    pub fn block_size_limit(&self) -> u16;
+    pub fn block_size_limit(&self) -> u32;
     pub fn max_utxo_outputs(&self) -> u16;   // u16: the ceiling is the build's available-UTXO bitfield width (256), which a byte cannot express
     pub fn mining_reward(&self) -> u32;                            // FR36 (a); FR6 `mined_amount` must equal it
     pub fn with_chain_info(self, source: &'a dyn ChainInfoSource) -> Self;  // spec §4.6

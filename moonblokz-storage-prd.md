@@ -14,7 +14,7 @@ When other storage knowledge-base files (concept, algorithm, implementation) cit
 - Frontmatter from the originating workflow output was stripped during import; the body below is otherwise byte-identical to the source artifact at import time.
 - The 2026-02-28 edit pass added control-plane management requirements (FR6–FR20), storage layout and capacity updates, explicit control-plane lifecycle mapping in the User Journeys, and a normalized capability-oriented phrasing style across the FR catalog.
 - **2026-10-12 update:** FR11 no longer returns the private key and FR54 adds `load_private_key()` for the node runtime → crypto path, so the blockchain module never receives the key (BC-FR68) *(Project Lead decision)*. Implementation is pending.
-- **2026-11-10 update:** the control-plane `max_block_size` field is `u32`, so a build block capacity above 65 535 B fits it; the control-plane version stays 1 and its layout is redefined in place, because no device holds a chain. A record in the other layout fails its CRC and loads as corrupted, and the node re-initializes destructively; no migration code (DEC-226, BC Story 6.15) *(Project Lead decision)*. Implementation is pending.
+- **2026-11-10 update:** the control-plane `max_block_size` field is `u32`, so a build block capacity above 65 535 B fits it; the control-plane version stays 1 and its layout is redefined in place, because no device holds a chain. A record in the other layout fails its CRC and loads as corrupted, and the node re-initializes destructively; no migration code (DEC-226, BC Story 6.15) *(Project Lead decision)*. Built in Story 6.15.
 
 ## Related Knowledge-Base Documents
 
