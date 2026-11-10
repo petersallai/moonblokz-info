@@ -648,7 +648,7 @@ This appendix defines architecture-level data structure contracts and ownership 
   - fixed-size header + variable-size payload
   - little-endian for multi-byte fields
   - payload structure depends on payload type
-- `MAX_BLOCK_SIZE` is a compile-time constant from `moonblokz-chain-types`.
+- `MAX_BLOCK_SIZE` is a compile-time constant from `moonblokz-chain-types`, selected by the build's size-tier feature (2016 B on the reference tier), which the storage crate forwards.
 
 **Header Fields (Part V):**
 - `version (u8)`
@@ -670,7 +670,7 @@ This appendix defines architecture-level data structure contracts and ownership 
   - `SLOT_HASH_OFFSET = MAX_BLOCK_SIZE`
   - `SLOT_SIZE_BYTES = MAX_BLOCK_SIZE + HASH_SIZE`
   - `BLOCKS_PER_PAGE = FLASH_PAGE_SIZE / SLOT_SIZE_BYTES` (floor)
-- `BLOCKS_PER_PAGE` must be `>= 1`, otherwise the compile-time guard in `backend_rp2040.rs` rejects the configuration.
+- `BLOCKS_PER_PAGE` must be `>= 1`, otherwise the compile-time guard in `backend_rp2040.rs` rejects the configuration. A second guard requires one control-plane replica, which embeds a `MAX_BLOCK_SIZE` chain-config block, to fit one page: `MAX_BLOCK_SIZE ≤ 3949`, so the 65536 tier does not compile on this backend.
 - Each slot stores the canonical block bytes followed by a per-slot integrity hash. The hash is computed over the fixed `MAX_BLOCK_SIZE` block region and stored at offset `SLOT_HASH_OFFSET` within the slot.
 - Mapping rules:
   - `page_index = storage_index / BLOCKS_PER_PAGE`
@@ -715,7 +715,7 @@ This appendix defines architecture-level data structure contracts and ownership 
 ### Evolution Rules
 
 - Additive changes to data structures require backward-compatibility review.
-- Breaking type/binary-layout changes require explicit versioning and migration strategy definition before release-phase publication.
+- Breaking type/binary-layout changes require explicit versioning and migration strategy definition before release-phase publication. Before that, a control-plane layout change may keep version 1 and rely on destructive re-initialization, as the `u32` `max_block_size` field did (DEC-226).
 - Architecture and docs must be updated before implementation diverges from this contract.
 
 ### AI Agent Implementation Guidance

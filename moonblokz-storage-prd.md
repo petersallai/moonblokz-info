@@ -14,6 +14,7 @@ When other storage knowledge-base files (concept, algorithm, implementation) cit
 - Frontmatter from the originating workflow output was stripped during import; the body below is otherwise byte-identical to the source artifact at import time.
 - The 2026-02-28 edit pass added control-plane management requirements (FR6–FR20), storage layout and capacity updates, explicit control-plane lifecycle mapping in the User Journeys, and a normalized capability-oriented phrasing style across the FR catalog.
 - **2026-10-12 update:** FR11 no longer returns the private key and FR54 adds `load_private_key()` for the node runtime → crypto path, so the blockchain module never receives the key (BC-FR68) *(Project Lead decision)*. Implementation is pending.
+- **2026-11-10 update:** the control-plane `max_block_size` field is `u32`, so a build block capacity above 65 535 B fits it; the control-plane version stays 1 and its layout is redefined in place, because no device holds a chain. A record in the other layout fails its CRC and loads as corrupted, and the node re-initializes destructively; no migration code (DEC-226, BC Story 6.15) *(Project Lead decision)*. Built in Story 6.15.
 
 ## Related Knowledge-Base Documents
 
@@ -192,11 +193,11 @@ The journeys reveal required capability areas:
 - Determinism constraints: synchronous `no_std` API, bounded operations, predictable failure behavior.
 - Integrity constraints: hash-verified reads only; never return data on hash mismatch.
 - Control-plane schema constraints: persisted control-plane layout is
-  `version:u8, private_key_size:u8, private_key:[u8;PRIVATE_KEY_SIZE], own_node_id:u32, init_params_size:u8, init_params:[u8;INIT_PARAMS_SIZE], max_block_size:u16, chain_config_block:[u8;MAX_BLOCK_SIZE], crc32:u32`.
+  `version:u8, private_key_size:u8, private_key:[u8;PRIVATE_KEY_SIZE], own_node_id:u32, init_params_size:u8, init_params:[u8;INIT_PARAMS_SIZE], max_block_size:u32, chain_config_block:[u8;MAX_BLOCK_SIZE], crc32:u32`.
 - Constant constraints: `INIT_PARAMS_SIZE = 100`; `PRIVATE_KEY_SIZE` is imported from `moonblokz-crypto-lib`.
 - Compatibility constraints: runtime constants from the binary must be checked against persisted size fields and return explicit errors on mismatch.
 - Layout constraints: control-plane replicas are stored at the beginning of storage space (`data_storage_start_address` onward), and block storage begins after reserved control-plane pages.
-- RP2040 fit constraint: control-plane data (including reserved chain-config block space) must fit in one flash page per replica with compile-time enforcement.
+- RP2040 fit constraint: control-plane data (including reserved chain-config block space) must fit in one flash page per replica with compile-time enforcement; the RP2040 backend therefore holds a block capacity of at most 3949 B, so a larger build tier does not compile on it.
 - Responsibility constraints: storage must not perform chain-policy actions (no implicit pruning/retention behavior).
 - Simplicity-first constraints: prefer the simplest implementation that satisfies the contract; avoid unnecessary abstractions, derives, defaults, helper layers, and optional features that increase CPU/RAM/flash usage.
 
@@ -255,6 +256,7 @@ MoonBlokz storage is a Rust `no_std` developer library consumed by MoonBlokz cha
 #### Migration Guide
 
 - No formal migration guide is required for MVP.
+- Until the first release a control-plane layout change keeps the version and relies on destructive re-initialization: a record in the other layout loads as corrupted (DEC-226).
 - Rationale: current state is no-storage baseline; integration proceeds as first-time adoption rather than framework migration.
 
 ### Implementation Considerations
@@ -338,7 +340,7 @@ With a 1-engineer MVP team, scope discipline is critical. Mitigate by excluding 
 - FR11: Storage can load the control-plane data through `load_control_data()` and return own node id, init parameters, and optional chain configuration block; it does not return the private key (see FR54).
 - FR54: Storage can return the persisted private key only through a separate `load_private_key()` call. The node runtime uses it to hand the key to the crypto module; the blockchain module, which calls `load_control_data()`, never receives the key ([BC-FR68](./moonblokz-blockchain-prd.md); Project Lead decision, 2026-10-12).
 - FR12: Storage can return an explicit error from `load_control_data()` when storage has not been initialized.
-- FR13: Storage can persist control-plane schema fields including version constant, persisted size fields, `max_block_size`, reserved `chain_config_block` space, and `crc32`.
+- FR13: Storage can persist control-plane schema fields including version constant, persisted size fields, `max_block_size` (`u32`), reserved `chain_config_block` space, and `crc32`.
 - FR14: Storage can validate persisted size fields against runtime constants from the binary and return an explicit error on mismatch.
 - FR15: Storage can reserve and persist chain-configuration block space during `init()` even when no chain configuration is set yet.
 - FR16: Storage can write control-plane data to `CONTROL_PLANE_COUNT` replicated instances on every modifying operation (`init`, `set_chain_configuration`).

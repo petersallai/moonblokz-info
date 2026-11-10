@@ -107,7 +107,7 @@ From an implementation perspective, the key consequence is that restart, persist
 
 The concrete in-memory layouts, field-by-field sizes, alignment, sentinels, and module-by-module owner of every authoritative and derived state category are defined in [`moonblokz-blockchain-architecture.md`](./moonblokz-blockchain-architecture.md):
 
-- **Block-tree metadata** → architecture §4.2 (`blocks.rs`) and §6.2 (`BlockEntry` 76 B padded × `MAX_BLOCKS`, co-located ADR-016 available-UTXO bitfield).
+- **Block-tree metadata** → architecture §4.2 (`blocks.rs`) and §6.2 (`BlockEntry` 80 B padded × `MAX_BLOCKS`, co-located ADR-016 available-UTXO bitfield).
 - **Active-chain window state** → architecture §4.2 (`snake_chain.rs`) and §6.4 (two `u32` fields directly on `Blockchain<...>`).
 - **Branch / chain-heads tracking** → architecture §4.2 (`chain_heads.rs`) and §6.3 (`ChainHeadEntry` 72 B padded × `MAX_BRANCH_COUNT`).
 - **Per-node SoA state (public keys, balances, FR50 seed-source projection, max_known_node_id)** → architecture §4.2 (`node_info.rs`) and §6.1.
@@ -290,7 +290,7 @@ Runtime-derived timing is a mechanism, not an open direction: any literal-or-byt
 Parts IV and V introduce or imply:
 
 - active chain length — chain configuration (ID 21) bounded by the compile-time `SNAKE_CHAIN_LENGTH_MAX`,
-- maximum block size — chain configuration `block_size_limit` (ID 3) bounded by the compile-time `MAX_BLOCK_SIZE`,
+- maximum block size — chain configuration `block_size_limit` (ID 3) bounded by the build's block capacity `MAX_BLOCK_SIZE`, a size tier,
 - radio packet size — a radio compile-time constant,
 - and no UTXO carry-forward lookahead: one carry-forward transaction per dropping block ([Blockchain PRD](./moonblokz-blockchain-prd.md) FR51; [Configuration Module Specification](./moonblokz-configuration-specification.md) §4.1, §6).
 

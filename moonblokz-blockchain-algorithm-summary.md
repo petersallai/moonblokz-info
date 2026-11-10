@@ -24,24 +24,24 @@ A compact, implementation-free restatement of the blockchain consensus and ledge
 
 ## 2. Data model (binary, little-endian)
 
-**Block** `b = (header, payload)`, `|b| ≤ L = block_size_limit ≤ 2016 B`.
+**Block** `b = (header, payload)`, `|b| ≤ L = block_size_limit ≤ MAX_BLOCK_SIZE`, the build's block capacity (2016 B on the reference tier) [DEC-220, DEC-227].
 Header: `version u8 (=1) | sequence u32 | creator u32 | mined_amount u32 | payload_type u8 | consumed_votes u32 | first_voted_node u32 | consumed_votes_from_first_voted_node u32 | previous_hash [32] | signature`.
 - `hash(b) = H(bytes(b))`, signature bytes included.
 - `signature = Sig_{sk(creator)}(header with the signature field zeroed ‖ H(payload))` [FR70].
 - `sequence(b) = sequence(parent) + 1`; `sequence = u32::MAX` is always invalid (no wrap in MVP) [FR53].
 - `payload_type ∈ {1 transaction, 2 balance, 3 chain-config, 4 approval evidence, 5 twin evidence}`.
 
-**Transaction block** (type 1): `count u16`, then transactions, each starting `type u8 | vote u32`. A transaction block never holds both a registration (T2) and a complex transaction (T3) [FR6, FR9 Tier 1].
+**Transaction block** (type 1): `count u16` (a protocol bound of 65 535 per block), then transactions, each starting `type u8 | vote u32`. A transaction block never holds both a registration (T2) and a complex transaction (T3) [FR6, FR9 Tier 1].
 
 - **T1 node transfer**: `anchor u32, initializer, receiver, amount u64, fee u32, comment u64, sig`; `sig = Sig_{sk(initializer)}(transaction bytes, sig zeroed)`, covering `type` and `vote`.
 - **T2 registration**: `initializer, new_node_id, registration_price u64, fee u64, new_pk, new_key_sig = Sig_{sk_new}(new_pk), sig = Sig_{sk(initializer)}(transaction bytes, sig zeroed, new_key_sig present)`. No anchor.
 - **T3 complex**: `in_count u8, out_count u8`, inputs, outputs (≥ 1 output; UTXO outputs per block ≤ `max_block_utxo_output`).
-  - UTXO input: `(q = block_sequence u32, i = output_index u8, a = amount u64, sig)`. `sig` is by the key equal to the referenced output's address, over the whole transaction with every input signature zeroed [DEC-196]. `i` = position in block `q`'s UTXO-output stream (UTXO outputs only, transaction order, output order) [ADR-016, DEC-131].
+  - UTXO input: `(q = block_sequence u32, i = output_index u16, a = amount u64, sig)`. `sig` is by the key equal to the referenced output's address, over the whole transaction with every input signature zeroed [DEC-196]. `i` = position in block `q`'s UTXO-output stream (UTXO outputs only, transaction order, output order) [ADR-016, DEC-131].
   - Balance input: `(anchor, initializer, amount, comment, sig)`, sig "over this input and all outputs".
   - UTXO output: `(address = owner pk [32], amount)`. Balance output: `(receiver u32, amount)`.
   - `fee = Σ in − Σ out ≥ 0`. Zero inputs ⇒ valid only as a `snake_chain` carry-forward (§10.3).
 
-**Balance block** (type 2): `count u16, max_node_id u32` (= the chain-global `M` at this sequence), entries `NodeInfo = (owner u32, balance u64, vote_count u32, public_key)` holding the owner's state at `sequence − 1`.
+**Balance block** (type 2): `count u32, max_node_id u32` (= the chain-global `M` at this sequence), entries `NodeInfo = (owner u32, balance u64, vote_count u32, public_key)` holding the owner's state at `sequence − 1`.
 
 **Chain-config block** (type 3): `count u16, {key u8, len u8, value}*, content_sig = Sig_{sk0}(content region)`. Key bit 7 = literal/bytecode, bits 0–6 = parameter id ∈ [1, 126]; content is an override set over code defaults; an unknown id ⇒ reject. Bytecode values run on a deterministic, fuel-bounded VM; failure falls back to default, then fallback literal. Configuration is immutable for the chain's lifetime and every chain-config block is byte-identical [FR7, FR8, FR17, config §3–§5].
 
@@ -84,7 +84,7 @@ Outcome ∈ {Accepted-new, Already-known, Invalid-evidence, Out-of-window, Defer
   - Header vote form: `first_voted_node = c` ⇒ `consumed_votes_from_first_voted_node = 0`; otherwise `consumed_votes ≤ consumed_votes_from_first_voted_node` [FR9].
   - For a ready direct head extension, also exact evidence: a non-proposer block above a deviation block; a carry-forward failing §10.3 (i)–(v).
 - **Tier 2** (Connected: ancestry reaches the active chain; lookups only): locked configuration at the block's sequence (fee policy, price, custodian fee, approval threshold); `mined_amount = mining_reward`; UTXO input `q` retained, `i` in range, declared `a` equals the output amount; `new_pk` unique; structural `snake_chain` checks (the `D − W` reference is retained for every switchable branch, FR58).
-- **Tier 3** (Active: replay of derived state, via the processing pass, chain-switch replay or a ready head extension): `consumed_votes`, `first_voted_node`, `consumed_votes_from_first_voted_node` match the projected vote state; creator credit; NodeInfo equals the state at `s − 1` and `max_node_id = M`; every rule of §6; `U_q[i] = 1`; carry-forward state; replay presence and order; evidence (subgroup membership, count ≥ `r_eff`, aggregate verifies, ≤ `MAX_AGG`, recomputed `supporter_vote_sum`); twin evidence (proof header, `s ≥ S_tail`, one per `(c, s)` in the window, verdict bitmap and aggregate) [FR71]; creator entitled — top, admitted fallback or proposer, never an FR72-excluded node [I-10].
+- **Tier 3** (Active: replay of derived state, via the processing pass, chain-switch replay or a ready head extension): `consumed_votes`, `first_voted_node`, `consumed_votes_from_first_voted_node` match the projected vote state; creator credit; NodeInfo equals the state at `s − 1`, `max_node_id = M` and `max_node_id < max_node_count` [DEC-228]; every rule of §6; `U_q[i] = 1`; carry-forward state; replay presence and order; evidence (subgroup membership, count ≥ `r_eff`, aggregate verifies, ≤ `MAX_AGG`, recomputed `supporter_vote_sum`); twin evidence (proof header, `s ≥ S_tail`, one per `(c, s)` in the window, verdict bitmap and aggregate) [FR71]; creator entitled — top, admitted fallback or proposer, never an FR72-excluded node [I-10].
 - **Pacing soft-fail** (ready intake, ordinary transaction blocks only): `fill(b) < θ·L` ∧ `arrival(b) − arrival(parent) < inter_block_interval` (local arrival times) ⇒ Deferred and re-evaluated after the remainder; not invalid.
 - Ready direct head extension: validated before storing; valid ⇒ Stored → Active and becomes the head; invalid ⇒ not stored. Stored children of the new head are then applied, lowest hash first ([Algorithm Model](./moonblokz-blockchain-algorythm.md) §Ready phase, FR16).
 - Invalid ⇒ the block and its descendants are deleted, only through a closed list of deletion paths [FR5, FR9, FR19].
@@ -94,7 +94,7 @@ Outcome ∈ {Accepted-new, Already-known, Invalid-evidence, Out-of-window, Defer
 Common: every referenced id (initializer, receiver, balance-input initializer, balance-output receiver, `vote`) lies in `[0, M]`. No-self-vote: `vote ≠ initializer` (T1, T2) and `vote ≠` any balance-input initializer (T3); permanent exemption `initializer = 0 ∧ vote = 0`; `vote = 0` is always a valid target; block #0 is exempt [FR6, FR37, FR54].
 
 - T1: `max(0, s − W) ≤ anchor < s`; `balance(init) ≥ amount + fee`; sig valid; key `(init, recv, amount, anchor, comment)` not already confirmed on the candidate chain; `min · size ≤ fee ≤ max · size` over the integers, `size` = serialized length in the payload [FR56, DEC-181].
-- T2: `balance(init) ≥ price + fee`; `new_node_id = M + 1`, strictly sequential within a block; `new_pk` unique on the chain; `new_key_sig` and sig valid. Effect: `M += 1`, bind `id → pk`, burn `price`.
+- T2: `balance(init) ≥ price + fee`; `new_node_id = M + 1`, strictly sequential within a block, and `< max_node_count` [DEC-228]; `new_pk` unique on the chain; `new_key_sig` and sig valid. Effect: `M += 1`, bind `id → pk`, burn `price`.
 - T3 with ≥ 1 input: each UTXO input `(q, i, a)` has block `q` on the active chain with `s − W + 1 ≤ q < s` [DEC-196], `U_q[i] = 1`, `a = amount(q, i)`; each balance input has `max(0, s − W) ≤ anchor < s` and sufficient balance; every sig valid; `Σ in ≥ Σ out`; no negative balance; the input set not already confirmed. Effect: clear `U_q[i]`; set the block's own output bits.
 - Mempool intake (ready only) [FR14]: `anchor ≥ S_tail` with no upper bound; UTXO `q > S_tail` [DEC-196]; unknown `vote` target ⇒ Deferred, never Rejected; competing spends admitted. Uniqueness keys: T1 tuple above; T2 `new_pk`; T3 full ordered input set. Its block-level counterpart is `anchor ≥ max(0, s − W)`, the parent's tail, so an admitted entry stays includable in the next block [DEC-174].
 
@@ -193,7 +193,7 @@ Block #0 (by node 0, `previous_hash = 0³²`): registration of node 0 (`new_node
 | id | parameter | default | | id | parameter | default |
 |---:|---|---|---|---:|---|---|
 | 1 | `inter_block_interval_ms` | 900 000 | | 20 | `block_fill_threshold_percent` (θ) | 80 |
-| 2 | `grace_period_window_ms` (g) | 30 000 | | 21 | `active_chain_length` (W) | 500 |
+| 2 | `grace_period_window_ms` (g) | 240 000 | | 21 | `active_chain_length` (W) | 500 |
 | 3 | `block_size_limit` (L) | 2016 | | 22 | `mempool_replenishment_interval_ms` | 500 000 |
 | 4 | `max_block_utxo_output` | 255 | | 23 | `custodian_fee` (c) | 1 |
 | 5 | `mining_reward` | 0 | | 24 | `registration_price` | 100 |
@@ -203,8 +203,10 @@ Block #0 (by node 0, `previous_hash = 0³²`): registration of node 0 (`new_node
 | 9 | `parent_recovery_min_emit_interval_ms` | 10 000 | | 28 | `replay_block_reward` | 100 |
 | 10 | `required_support` (r, cap of `r_eff`) | 40 (⇒ m = 79 once `\|A'\| ≥ 79`) | | 29 | VM fuel limit | its ceiling |
 | | | | | 30 | `verification_horizon` (Hv) | 50 |
+| | | | | 31 | `grace_period_step_ms` | 900 000 |
+| | | | | 32 | `max_node_count` | 1000 |
 
-Literal-only and bound-checked at acceptance: 3, 4, 10, 21, 30. The others may be bytecode programs reading other parameters and chain-info (today: the registered-node count). Acceptance also checks `1 ≤ r ≤ MAX_AGG`, `vs ≠ 0`, `W ≤` build capacity, `1 ≤ Hv ≤ W`, `W + 2·Hv ≤` block-storage capacity, `θ ≤ 100` and `fee_min ≤ fee_max` (literals only).
+Literal-only and bound-checked at acceptance: 3, 4, 10, 21, 30, 32. The others may be bytecode programs reading other parameters and chain-info (today: the registered-node count). Acceptance also checks `1 ≤ r ≤ MAX_AGG`, `vs ≠ 0`, `L ≤` build block capacity, `W ≤` build capacity, `1 ≤ Hv < W`, `W + 2·Hv ≤` block-storage capacity, `1 ≤ max_node_count ≤` build node capacity `MAX_NODES`, `θ ≤ 100` and `fee_min ≤ fee_max` (literals only).
 
 ## 15. Open specification gaps
 

@@ -177,7 +177,7 @@ It is now a versioned, compatibility-checked record with:
 - `CONTROL_PLANE_VERSION`,
 - persisted `PRIVATE_KEY_SIZE`,
 - persisted `INIT_PARAMS_SIZE`,
-- persisted `MAX_BLOCK_SIZE`,
+- persisted `MAX_BLOCK_SIZE` (`u32`, the build's block capacity),
 - the actual private key and node ID,
 - fixed-size init parameters,
 - optional chain configuration block payload space,

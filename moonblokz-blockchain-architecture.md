@@ -213,7 +213,7 @@ pub struct Blockchain<
     S: StorageTrait,
     X: ChainConfigTrait,
     const MAX_NODES: usize,                  // 1000
-    const SNAKE_CHAIN_LENGTH_MAX: usize,     // 500 — capacity; the active W is chain-config
+    const SNAKE_CHAIN_LENGTH_MAX: u32,       // 500 — capacity; the active W is chain-config
     const MAX_BLOCKS: usize,                 // 600
     const MAX_BRANCH_COUNT: usize,           // 40
     const MAX_BLOCK_UTXO_OUTPUT: usize,      // 256
@@ -552,7 +552,7 @@ The full per-module breakdown (processes / data structures / relationships / API
 |---|---|---|
 | `lifecycle.rs` | FR1-FR8, FR54, FR59 | `lifecycle_phase: LifecyclePhase` (1 B on Blockchain) |
 | `scheduler.rs` | FR46 | `SchedulerState` (~72 B) |
-| `blocks.rs` | FR18 | `BlockTable { blocks: [BlockEntry; 600] }` (45.6 KB) |
+| `blocks.rs` | FR18 | `BlockTable { blocks: [BlockEntry; 600] }` (48 KB) |
 | `chain_heads.rs` | FR19 | `ChainHeadsTable { heads: [ChainHeadEntry; 40] }` (2.88 KB — Story 4.4, §6.3) |
 | `snake_chain.rs` | FR48-FR53 | 2 u32 indices on Blockchain (8 B, §6.4); stateless tail-drop classification and binding |
 | `branch_value.rs` | FR21 | (stateless: the per-block value, the FR21 rank — value, tip size, tip hash — and operational admissibility; the values live in `Blockchain.active_branch_value` and the side heads' `ChainHeadEntry.branch_value`, DEC-144, DEC-154, DEC-155) |
@@ -576,12 +576,13 @@ As built (Story 6.0), the Tier 2 + Tier 3 per-block step and the Ready forward-e
 
 | Const generic | Default | Source / rationale |
 |---|---|---|
-| `MAX_NODES` | 1000 | user-set; **network-wide registered-node cap** — sizes all node-id-indexed arrays (`NodeInfo.public_keys`/`balances`/`seed_source_idx`, `VoteEngine.accumulated_vote`). Every node in the network holds an entry for every other registered node. See §12.1 for tuning trade-offs. |
+| `MAX_NODES` | 1000 | user-set; **the build's node capacity** — sizes all node-id-indexed arrays (`NodeInfo.public_keys`/`balances`/`seed_source_idx`, `VoteEngine.accumulated_vote`). Every node holds an entry for every registered node. The network's cap is chain parameter ID 32 `max_node_count`; acceptance requires `max_node_count ≤ MAX_NODES` (`BuildLimits::node_count_max`), and no validity rule reads `MAX_NODES` (DEC-228). See §12.1 for tuning trade-offs. |
 | `SNAKE_CHAIN_LENGTH_MAX` | 500 | user-set; **capacity** of the active-chain window. The window length actually in force, `W`, is chain configuration (FR56) and must satisfy `W ≤ SNAKE_CHAIN_LENGTH_MAX`, checked at chain-config acceptance per FR8. A node whose capacity is below the chain's `W` cannot participate; above it, the node uses only the first `W` entries. Same capacity-versus-requirement pattern as `UTXO_UNSPENT_BITS` and `max_block_UTXO_output`. |
 | `H` (verification horizon) | — | **Not a const generic.** Chain configuration since DEC-160 (`verification_horizon`, ID 30, literal-only, default 50): `1 ≤ H < W` (DEC-207, so every admitted switch has its common ancestor in the window), and chain-config acceptance requires `W + 2·H ≤ MAX_BLOCKS` (passed as `BuildLimits::max_blocks`), so the window, the horizon and one competing branch of depth `H` fit. FR58 also makes it the maximum chain-switch depth. Read from the held configuration at its point of use, never cached (Story 6.14; it replaced Story 6.3's seam returning the default 50, DEC-166, DEC-204). |
+| `MAX_BLOCK_SIZE` | 2016 | **Build tier feature, not a const generic**: `moonblokz-chain-types` selects it by exactly one size-tier feature (`block-size-2016`, the default, or `block-size-65536`), which every dependent forwards (DEC-220, DEC-221). The build's block capacity: it sizes every block buffer and storage slot, and acceptance requires the chain's `block_size_limit ≤ MAX_BLOCK_SIZE` (`BuildLimits::block_size_max`, DEC-227); a larger block is refused locally and is never evidence (DEC-225). The ~2 KB block-buffer figures in this document are the reference tier's. |
 | `MAX_BLOCKS` | 600 | RP2040 flash storage capacity 1:1; also the capacity that bounds `W + 2·H` at chain-config acceptance (`BuildLimits::max_blocks`, DEC-160) — the defaults 500 + 2 · 50 fill it exactly |
 | `MAX_BRANCH_COUNT` (chain_heads_max_capacity) | 40 | collecting-state branch headroom |
-| `MEMPOOL_COMPACT_BYTES` | 20160 | ~10 × MAX_BLOCK_SIZE |
+| `MEMPOOL_COMPACT_BYTES` | 20160 | ~10 × MAX_BLOCK_SIZE; at least `MAX_BLOCK_SIZE` (FR56, DEC-223) |
 | `MEMPOOL_MAX_ENTRIES` | 128 | conservative |
 | `MAX_TX_PER_BLOCK` | ~64 | derived; FR45 included_keys gathering |
 | `MAX_BLOCK_UTXO_OUTPUT` | 256 | FR56 chain-config-derived; per-block available-UTXO bitfield width, also the Tier 1 UTXO-output cap before the durable lock (FR9) |
@@ -595,7 +596,7 @@ As built (Story 6.0), the Tier 2 + Tier 3 per-block step and the Ready forward-e
 
 ### 6.1 `NodeInfo` — node-roster SoA state
 
-Each parallel array is indexed by **global node-id** and sized to `MAX_NODES` — the network-wide registered-node cap. Every node maintains an entry for every other registered node, because the consensus model and balance reconstruction require full roster knowledge (per [`moonblokz-blockchain-concept.md`](./moonblokz-blockchain-concept.md) and §12.1).
+Each parallel array is indexed by **global node-id** and sized to `MAX_NODES` — the build's node capacity, which is at least the chain's `max_node_count` (DEC-228). Every node maintains an entry for every other registered node, because the consensus model and balance reconstruction require full roster knowledge (per [`moonblokz-blockchain-concept.md`](./moonblokz-blockchain-concept.md) and §12.1).
 
 ```rust
 pub(crate) struct NodeInfo<const MAX_NODES: usize, const PUBLIC_KEY_SIZE: usize> {
@@ -618,9 +619,9 @@ pub(crate) struct BlockEntry {
     available_utxo: [u8; AVAILABLE_UTXO_BYTES],    // 32 B   ADR-016 co-located (see revision note)
     head_ref_count: u8,                            //  1 B   FR19 eviction
     flags: u8,                                     //  1 B   is_on_active_chain (bit 0) + status (bits 1-2, Stored/Connected/Active) + payload_type (bits 3-4; types 1–4 — type 5 needs a third bit, taken from the free bits 6-7 by Story 6.13) + signature verified (bit 5)
-    len: u16,                                      //  2 B   exact serialized length (FR6 byte-exact checks; fills the former tail padding)
+    len: u32,                                      //  4 B   exact serialized length (FR6 byte-exact checks); u32 on every tier (DEC-224)
 }
-// effective 76 B, aligned to 4 → 76 B; total 600 × 76 B = 45 600 B
+// 74 B of other fields + 4 B len, aligned to 4 → 80 B; total 600 × 80 B = 48 000 B
 ```
 
 **Key decisions** (Step 6):
@@ -631,7 +632,7 @@ pub(crate) struct BlockEntry {
 - Empty slot sentinel: `sequence == u32::MAX` (FR53 rejects u32::MAX-based chain extension in MVP)
 - Blocks off the derived chain (side branch, never derived) have `available_utxo` = all zeros, which reads as "nothing available" (~3 KB harmless waste, absorbed by Schnorr margin)
 
-**Story 4.1 revision (2026-07-04).** Three clarifications from implementation, none changing the 76 B / 45 600 B budget above:
+**Story 4.1 revision (2026-07-04).** Three clarifications from implementation, none changing the budget above (then 76 B / 45 600 B, with a 2-byte `len`; 80 B since DEC-224):
 - `available_utxo` is a fixed `AVAILABLE_UTXO_BYTES = 32` constant (named `spent_bits` / `SPENT_BITS_BYTES` until Story 6.11), not the generic expression `MAX_BLOCK_UTXO_OUTPUT / 8` shown in earlier drafts — sizing an array from a divided const-generic parameter requires the unstable `generic_const_exprs` feature, which this workspace does not enable (the same constraint already documented for `moonblokz-crypto-lib`'s fixed-size array API). The byte count is unchanged (256 / 8 = 32 at the architecture §5 default); Epic 7 resolves the generic-sizing question if `MAX_BLOCK_UTXO_OUTPUT` ever needs to vary per deployment.
 - `flags` bit assignment is now specified: bit 0 = `is_on_active_chain` (live in Story 4.1); bits 1-2 hold the FR9 status (`Stored`/`Connected`/`Active`, Story 4.2); bits 3-4 cache `payload_type` (below); bit 5 marks a creator signature verified against the block's own ancestry key, so the block is not verified again (RAM-only, cleared on slot reuse, not persisted; Story 6.2 D6, DEC-157); bits 6-7 are unused.
 - The FR18 chain-head arrival timestamp is **not** a `BlockEntry` field. FR18's actual requirement is "at least for every chain head block," and `BlockEntry`'s table has 600 entries at the default profile — adding a `u64` there would widen every entry to 88 B padded (+7.2 KB total), which is immaterial against the Schnorr backend's ~67-77 KB SRAM margin (§7.3) but eats meaningfully into the BLS backend's already-tight ~7-17 KB margin. `chain_heads.rs`'s `ChainHeadEntry` (§6.3, Story 4.4) has only 40 entries — the same field there costs ~320 B. Story 4.4 adds the arrival timestamp to `ChainHeadEntry` instead.
@@ -733,16 +734,16 @@ pub(crate) struct SchedulerState {
 ```rust
 pub struct Mempool<const COMPACT_BYTES: usize, const MAX_ENTRIES: usize> {
     compact_buffer: [u8; COMPACT_BYTES],                // 20 160 B default
-    index: [Option<IndexEntry>; MAX_ENTRIES],           // 128 × ~24-32 B ≈ ~3-4 KB straightforward layout
+    index: [Option<IndexEntry>; MAX_ENTRIES],           // 128 × 32 B = 4 KB (u32 start/length, DEC-223)
     prng: Xoshiro256PlusPlus,                            // 32 B inner state (seeded from 8 B u64 sub-seed)
-    byte_usage: u16,
+    byte_usage: u32,
     entry_count: u8,
     own_node_id: u32,                                    // local owner classification input for FR33
 }
-// total ~23-25 KB at the default profile before any later index bit-packing
+// total ~24.3 KB at the default profile before any later index bit-packing
 ```
 
-`IndexEntry` is private mempool storage metadata, not public API. It carries the FR30 storage fields (`start`, `length`, `hash_crc32`, `transaction_fee`) plus support fields for deferred eligibility, local own/non-own classification, and byte-local window-expiry metadata. `hash_crc32` is IEEE CRC32 over the canonical transaction hash; lookup uses it only as a prefilter before full-hash verification, while FR43 replenishment uses it as the compact exclusion identifier. `transaction_fee` is the already-resolved fee supplied by the blockchain validation path at mempool admission, avoiding repeated UTXO block lookups during priority iteration and block assembly. There is no getter/accessor surface for this internal struct; module-local code and unit tests use direct field access to keep the embedded API surface small. `expiry_sequence` is `NodeTransfer.anchor_sequence`, the minimum complex balance-input `anchor_sequence`, or `u32::MAX` when no byte-local sequence dependency is available (registration, UTXO-only complex, zero-input complex). Under ADR-016 a UTXO input's `block_sequence` is byte-local too, so it could feed `expiry_sequence` (FR14 freshness `block_sequence ≥ S_tail`); that is mempool eligibility behaviour, owned by Story 7.3, and the index does not use it yet. The FR33 ownership class is local: node-transfer and registration transactions are own when their initializer equals `own_node_id`; complex transactions are own when they have at least one input and either a balance input initializer or a balance output receiver equals `own_node_id`; UTXO-only and zero-input complex transactions are non-own. The current compact-buffer implementation constrains `COMPACT_BYTES` to `u16` offsets and `MAX_ENTRIES` to `u8` entry counts. `MAX_NODES` is intentionally not a mempool const generic: node-roster capacity belongs to `Blockchain` / `NodeInfo` and `VoteEngine`, while the mempool only needs the local `own_node_id` value to classify incoming transactions.
+`IndexEntry` is private mempool storage metadata, not public API. It carries the FR30 storage fields (`start`, `length`, `hash_crc32`, `transaction_fee`) plus support fields for deferred eligibility, local own/non-own classification, and byte-local window-expiry metadata. `hash_crc32` is IEEE CRC32 over the canonical transaction hash; lookup uses it only as a prefilter before full-hash verification, while FR43 replenishment uses it as the compact exclusion identifier. `transaction_fee` is the already-resolved fee supplied by the blockchain validation path at mempool admission, avoiding repeated UTXO block lookups during priority iteration and block assembly. There is no getter/accessor surface for this internal struct; module-local code and unit tests use direct field access to keep the embedded API surface small. `expiry_sequence` is `NodeTransfer.anchor_sequence`, the minimum complex balance-input `anchor_sequence`, or `u32::MAX` when no byte-local sequence dependency is available (registration, UTXO-only complex, zero-input complex). Under ADR-016 a UTXO input's `block_sequence` is byte-local too, so it could feed `expiry_sequence` (FR14 freshness `block_sequence ≥ S_tail`); that is mempool eligibility behaviour, owned by Story 7.3, and the index does not use it yet. The FR33 ownership class is local: node-transfer and registration transactions are own when their initializer equals `own_node_id`; complex transactions are own when they have at least one input and either a balance input initializer or a balance output receiver equals `own_node_id`; UTXO-only and zero-input complex transactions are non-own. Offsets and lengths are `u32` (DEC-223, Story 6.15), so `COMPACT_BYTES` must be at least `MAX_BLOCK_SIZE` (FR56) and fit `u32`; `MAX_ENTRIES` is bounded by the `u8` entry count. `MAX_NODES` is intentionally not a mempool const generic: node-roster capacity belongs to `Blockchain` / `NodeInfo` and `VoteEngine`, while the mempool only needs the local `own_node_id` value to classify incoming transactions.
 
 ### 6.9 Vote engine internals (recap)
 
@@ -760,7 +761,7 @@ pub struct VoteEngine<const MAX_NODES: usize> {
 
 ## 7. RAM budget verification (Steps 6 §4 + 7 §3)
 
-### 7.1 Chain-lib subtotal — Schnorr (default) — ~101 KB
+### 7.1 Chain-lib subtotal — Schnorr (default) — ~103 KB
 
 | Component | Calculation | Bytes |
 |---|---:|---:|
@@ -774,7 +775,7 @@ pub struct VoteEngine<const MAX_NODES: usize> {
 | Replenishment requester LRU (DEC-189) | ~32 × 12 B; sized by 10.4 | ~384 |
 | Non-conflict ring (DEC-198) | 16 × 13 B | 208 |
 | Support-relay dedupe LRU (DEC-199) | 128 × 12 B | 1 536 |
-| BlockTable | 600 × 76 B | 45 600 |
+| BlockTable | 600 × 80 B | 48 000 |
 | ChainHeadsTable | 40 × 72 B | 2 880 |
 | snake_chain fields | 2 × 4 B | 8 |
 | ApprovalAccumulator | 50 × (r 32 + s 32 + rank/id 4) B, kept until emission (DEC-194, DEC-195) | ~3 400 |
@@ -782,23 +783,23 @@ pub struct VoteEngine<const MAX_NODES: usize> {
 | lifecycle_phase | u8 | 1 |
 | SchedulerState | 4 × Option\<u64\> + u64 | 72 |
 | PRNG root | u64 | 8 |
-| **Subtotal (Schnorr)** | | **~100 634** |
+| **Subtotal (Schnorr)** | | **~103 034** |
 
-**Refreshed 2026-10-28.** Adds the DEC-185 active-set counter, the FR72 / DEC-184 exclusion markers, the circulating currency (DEC-192) and the DEC-189 requester LRU, and replaces the ApprovalAccumulator buffer with the DEC-195 per-support store: about +3.9 KB over the earlier ~95 KB. The marker and LRU sizes are estimates until Stories 6.13 and 10.4 fix them. **Refreshed 2026-10-29:** adds the DEC-198 non-conflict ring and the DEC-199 support-relay dedupe LRU, +1.7 KB.
+**Refreshed 2026-10-28.** Adds the DEC-185 active-set counter, the FR72 / DEC-184 exclusion markers, the circulating currency (DEC-192) and the DEC-189 requester LRU, and replaces the ApprovalAccumulator buffer with the DEC-195 per-support store: about +3.9 KB over the earlier ~95 KB. The marker and LRU sizes are estimates until Stories 6.13 and 10.4 fix them. **Refreshed 2026-10-29:** adds the DEC-198 non-conflict ring and the DEC-199 support-relay dedupe LRU, +1.7 KB. **Refreshed 2026-11-10:** `BlockEntry` 80 B (DEC-224, +2.4 KB) and the mempool's `u32` index (DEC-223, +1 KB in §7.3). Measured by Story 6.15 (`tools/footprint`, reference tier, against `main`): static RAM +2.4 KiB, flash +0.1 KiB, stack peaks unchanged; the mempool's +1 KB (32 B `Option<IndexEntry>`, measured with `size_of` on thumbv6m) shows once Epic 7 holds the mempool.
 
-### 7.2 Chain-lib subtotal — BLS — ~163 KB
+### 7.2 Chain-lib subtotal — BLS — ~166 KB
 
 | Component | Calculation | Bytes |
 |---|---:|---:|
 | NodeInfo.public_keys | 1000 × 96 B | 96 000 |
 | NodeInfo.balances + seed_source_idx + max_known | 12 004 | 12 004 |
 | Active-set counter + exclusion markers + circulating currency + requester LRU + non-conflict ring + support-relay LRU | 2 000 + ~125 + 8 + ~384 + 208 + 1 536 | ~4 261 |
-| BlockTable | 600 × 76 B | 45 600 |
+| BlockTable | 600 × 80 B | 48 000 |
 | ChainHeadsTable | 40 × 72 B | 2 880 |
 | snake_chain fields | 8 | 8 |
 | ApprovalAccumulator | MAX_BLOCK_SIZE buffer (crypto-agnostic) | ~2 048 |
 | EmitScratch + lifecycle + scheduler + PRNG | ~2 081 | 2 081 |
-| **Subtotal (BLS)** | | **~163 282** |
+| **Subtotal (BLS)** | | **~165 682** |
 
 **Note:** Earlier Step 7 validation incorrectly assumed BLS ApprovalAccumulator was ~6 KB (per-supporter signature × MAX_AGGREGATED_SIGNATURES). The correct model is: ApprovalAccumulator holds a fixed MAX_BLOCK_SIZE buffer (~2 KB) for in-place evidence-block construction. BLS aggregation packs more supporters into the same buffer (~4 B per supporter) than Schnorr (~36 B per supporter), so BLS is actually *more efficient* per supporter — but the allocated memory is identical.
 
@@ -806,21 +807,21 @@ pub struct VoteEngine<const MAX_NODES: usize> {
 
 | Consumer | Schnorr | BLS |
 |---|---:|---:|
-| moonblokz-blockchain + mempool + vote | ~128 KB | ~191 KB |
+| moonblokz-blockchain + mempool + vote | ~131 KB | ~194 KB |
 | moonblokz-radio-lib (memory-config-medium) | ~60 KB | ~60 KB |
 | moonblokz-crypto-lib scratch | ~4 KB | ~4 KB |
 | moonblokz-storage page buffer | ~4 KB | ~4 KB |
 | Stacks: Core 1 (blockchain task) 24 KB (DEC-137) + other tasks ~18 KB | ~42 KB | ~42 KB |
 | Embassy executor + statics | ~4 KB | ~4 KB |
-| **Subtotal allocated** | **~242 KB** | **~305 KB** |
-| **Margin** (264 KB − allocated) | **~22 KB** (~8%) ✅ | **~−41 KB** (exceeds 264 KB) ❌ |
+| **Subtotal allocated** | **~245 KB** | **~308 KB** |
+| **Margin** (264 KB − allocated) | **~19 KB** (~7%) ✅ | **~−44 KB** (exceeds 264 KB) ❌ |
 
 **Radio figure:** `memory-config-medium` is counted at its source-confirmed ~60 KB (`moonblokz-radio-lib` README + `lib.rs` profile consts); an earlier ~30-40 KB estimate under-counted it and made the BLS default appear feasible.
 
 ### 7.4 Verdict
 
 - **Schnorr build**: comfortable margin, MVP-ready.
-- **BLS build**: does **not** fit at the 1000-node default once the radio `memory-config-medium` profile is counted at its source-confirmed ~60 KB (README + `lib.rs`) instead of the earlier ~30-40 KB estimate — the full-system total is ~305 KB, ~41 KB over the 264 KB ceiling (the 24 KB Core 1 stack included, DEC-137). Const-generic tuning (see §12) is therefore **mandatory** for BLS: `MAX_NODES 1000 → 500` frees ~57 KB, yielding ~18 KB margin.
+- **BLS build**: does **not** fit at the 1000-node default once the radio `memory-config-medium` profile is counted at its source-confirmed ~60 KB (README + `lib.rs`) instead of the earlier ~30-40 KB estimate — the full-system total is ~308 KB, ~44 KB over the 264 KB ceiling (the 24 KB Core 1 stack included, DEC-137). Const-generic tuning (see §12) is therefore **mandatory** for BLS: `MAX_NODES 1000 → 500` frees ~57 KB, yielding ~15 KB margin.
 
 ---
 
@@ -938,7 +939,7 @@ impl ActiveConfig<'_> {
     pub fn commitment(&self) -> Commitment;                        // Tentative | Durable
     pub fn inter_block_interval_ms(&self) -> u32;                  // FR45 (b), ms
     pub fn grace_period_window_ms(&self) -> u32;                   // FR47, ms
-    pub fn block_size_limit(&self) -> u16;
+    pub fn block_size_limit(&self) -> u32;
     pub fn max_utxo_outputs(&self) -> u16;   // u16: the ceiling is the build's available-UTXO bitfield width (256), which a byte cannot express
     pub fn mining_reward(&self) -> u32;                            // FR36 (a); FR6 `mined_amount` must equal it
     pub fn with_chain_info(self, source: &'a dyn ChainInfoSource) -> Self;  // spec §4.6
@@ -962,13 +963,13 @@ Three items from the earlier sketch are deliberately absent. FR7 signature valid
 
 ## 12. BLS deployment-tuning recipe (Step 8 — new)
 
-When a deployment selects the BLS crypto backend, the default const-generic values (1000 nodes, 500 snake-chain window) **do not fit** the 264 KB SRAM ceiling once the radio `memory-config-medium` profile is counted at its source-confirmed ~60 KB (full-system ~305 KB, ~41 KB over). The blockchain code does NOT need to change — tuning happens at the deployment binary's const-generic instantiation site, and for BLS it is mandatory rather than optional.
+When a deployment selects the BLS crypto backend, the default const-generic values (1000 nodes, 500 snake-chain window) **do not fit** the 264 KB SRAM ceiling once the radio `memory-config-medium` profile is counted at its source-confirmed ~60 KB (full-system ~308 KB, ~44 KB over). The blockchain code does NOT need to change — tuning happens at the deployment binary's const-generic instantiation site, and for BLS it is mandatory rather than optional.
 
 ### 12.1 Tuning levers (most impactful first)
 
 | Lever | Default → Tuned | RAM saved | Functional impact |
 |---|---|---:|---|
-| `MAX_NODES` | 1000 → 500 | −57 KB | Halves node-roster capacity. Network size cap. |
+| `MAX_NODES` | 1000 → 500 | −57 KB | Halves node-roster capacity; the build joins only chains with `max_node_count ≤ 500` (DEC-228). |
 | `MAX_NODES` | 1000 → 250 | −86 KB | Quarter capacity. Suitable for small deployments. |
 | `SNAKE_CHAIN_LENGTH_MAX` | 500 → 300 | −6.4 KB (available-UTXO bits) | Caps the chain `W` this build can join. |
 | `MAX_BRANCH_COUNT` | 40 → 20 | −640 B | Less branch headroom; collecting-state may need quicker convergence. |
@@ -981,9 +982,9 @@ When a deployment selects the BLS crypto backend, the default const-generic valu
 
 | Profile | MAX_NODES | SNAKE_CHAIN | Margin (BLS, 264 KB) |
 |---|---:|---:|---:|
-| BLS-large | 1000 | 500 | ~−41 KB (default — does NOT fit) ❌ |
-| BLS-medium | 500 | 500 | ~18 KB ✅ |
-| BLS-small | 250 | 300 | ~52 KB ✅ |
+| BLS-large | 1000 | 500 | ~−44 KB (default — does NOT fit) ❌ |
+| BLS-medium | 500 | 500 | ~15 KB ✅ |
+| BLS-small | 250 | 300 | ~49 KB ✅ |
 
 ### 12.3 Future optimization (NOT MVP)
 
@@ -1047,7 +1048,7 @@ Selected high-impact decisions from the Step 5 + Step 6 + Step 7 iterations:
 
 | Risk | Severity | Mitigation |
 |---|---|---|
-| BLS does not fit at 1000-node default (~−41 KB) with the ~60 KB radio medium profile and the 24 KB Core 1 stack | Medium-High | §12 tuning; `MAX_NODES 1000→500` mandatory for BLS → ~18 KB margin |
+| BLS does not fit at 1000-node default (~−44 KB) with the ~60 KB radio medium profile and the 24 KB Core 1 stack | Medium-High | §12 tuning; `MAX_NODES 1000→500` mandatory for BLS → ~15 KB margin |
 | Blockchain still reads the fixed-value chain-config stub, not `moonblokz-configuration` | Medium | Both crates exist and carry the §11 surface; the blockchain's path-dep migration is its own change, held to a behaviour-neutrality bar |
 | Blockchain-task stack peak grows past the 24 KB Core 1 stack as Epics 6–10 deepen the call graph | Medium | §8: re-measure with the probe method on material call-graph changes (DEC-137) |
 | ~~`MAX_AGGREGATED_SIGNATURES` / `MULTI_SIGNATURE_SIZE` const values not yet ratified~~ **Resolved:** `moonblokz-crypto` fixes `MAX_AGGREGATED_SIGNATURES = 50` for every backend and `MULTI_SIGNATURE_SIZE` at 64 B (Schnorr) / 48 B (BLS); chain-config `required_support` is refused at acceptance above the backend limit ([Configuration Module Specification](./moonblokz-configuration-specification.md) §6 check 3) | — | — |
