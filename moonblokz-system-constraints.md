@@ -86,7 +86,7 @@ Global, all families:
 - `MAX_AGGREGATED_SIGNATURES = 50` (count cap).
 - Practical per-approval-block supporter capacity within a ~2 KB block budget (minus header + 4 B node-id/signer): **~50 supporters Schnorr**, **~450 supporters BLS**. The global cap of 50 currently matches the Schnorr ceiling; a BLS-centered deployment could carry more if the cap were raised.
 
-`MAX_AGGREGATED_SIGNATURES` is also the per-build bound `required_support` is checked against at chain acceptance: the parameter is literal-only and refused above it, never clamped — the chain-declared ceiling `max_aggregated_signatures` was retired on 2026-10-12 (DEC-197). See [Configuration Module Specification](./moonblokz-configuration-specification.md) §6 for why a per-build bound must be literal-only.
+`MAX_AGGREGATED_SIGNATURES` is also the per-build bound `required_support` is checked against at chain acceptance: the parameter is literal-only and refused above it, never clamped — the chain-declared ceiling `max_aggregated_signatures` was retired on 2026-10-12 (DEC-075). See [Configuration Module Specification](./moonblokz-configuration-specification.md) §6 for why a per-build bound must be literal-only.
 
 Cross-check: on BLS the `ApprovalAccumulator` costs ~4 B per supporter (`4 + 0`) inside a ~2 KB `MAX_BLOCK_SIZE` buffer, because the signature aggregates into one slot. On Schnorr it keeps each support's `r`, `s` and rank until emission — about 68 B per supporter, ~3.4 KB at 50 — because the DEC-194 weights need the complete signer set before `s` can be formed (DEC-195); see [`moonblokz-blockchain-architecture.md`](./moonblokz-blockchain-architecture.md) §6.5.
 
@@ -122,7 +122,7 @@ Authoritative source: [`moonblokz-blockchain-architecture.md`](./moonblokz-block
 | `BlockTable` | 48 KB | 48 KB | `MAX_BLOCKS` × 80 B (`u32` block length, DEC-224) |
 | `ChainHeadsTable` | 2.88 KB | 2.88 KB | `MAX_BRANCH_COUNT` × 72 B (architecture §7.1; was listed here as 32 B) |
 | `ApprovalAccumulator` | ~3.4 KB | ~2 KB | Schnorr keeps every support's `r`, `s` and rank until emission (DEC-194, DEC-195); BLS a `MAX_BLOCK_SIZE` buffer |
-| Active-set counter, exclusion markers, circulating currency, requester LRU, non-conflict ring, support-relay LRU | ~4.3 KB | ~4.3 KB | DEC-185 (`MAX_NODES` × 2 B), FR72 / DEC-184 (1 bit per node), DEC-192 (u64), DEC-189 (~384 B, sized by 10.4), DEC-198 (16 × 13 B), DEC-199 (128 × 12 B) |
+| Active-set counter, exclusion markers, circulating currency, requester LRU, non-conflict ring, support-relay LRU | ~4.3 KB | ~4.3 KB | DEC-185 / DEC-213 (`MAX_NODES` × 2 B + 4 B tail creator), FR72 / DEC-184 (1 bit per node), DEC-192 (u64), DEC-189 (~384 B, sized by 10.4), DEC-198 / DEC-219 (16 × 13 B + 4 B support floor), DEC-199 (128 × 12 B) |
 | `EmitScratch` + scheduler + lifecycle + PRNG | ~2.1 KB | ~2.1 KB | `MAX_BLOCK_SIZE` buffer + small fields |
 | **`moonblokz-blockchain` subtotal** | **~103 KB** | **~166 KB** | matches architecture §7.1 / §7.2 (refreshed 2026-11-10) |
 | `Mempool` (sibling `moonblokz-mempool`) | ~24.3 KB | ~24.3 KB | `MEMPOOL_COMPACT_BYTES` + compact index (128 × 32 B, `u32` offsets, DEC-223) including stored `transaction_fee` + small fields; authoritative layout in blockchain architecture §6.8 |
