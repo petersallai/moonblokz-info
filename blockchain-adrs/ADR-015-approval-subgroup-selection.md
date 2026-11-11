@@ -114,10 +114,6 @@ If an approval cannot collect `r_eff` signatures in time, the subgroup is **not*
 
 ### Follow-up implications
 
-This decision implies that later design work must define:
-
-- the exact binary serialization of the approval evidence payload (this ADR fixes the selection rule but not the byte layout),
-- the chain-config validator rule that enforces `required_support ≤ MAX_AGGREGATED_SIGNATURES(backend)`,
-- and the interaction between the subgroup rule and the detailed grace-period progression, particularly for back-to-back approvals under `snake_chain` precedence (Algorithm 18).
+This decision left three items to later design work. Two are settled: the approval evidence payload layout (DEC-195) and the chain-config check `required_support ≤ MAX_AGGREGATED_SIGNATURES(backend)` (§6 check 3, DEC-075, built in Story 6.4). Still open is the interaction between the subgroup rule and the detailed grace-period progression, particularly for back-to-back approvals under `snake_chain` precedence (Algorithm 18; Story 8.5).
 
 The BC-FR71 twin verdict reuses this selection with a domain-separated seed, `H("twin" ‖ s ‖ circulating_currency(P) ‖ c)` (DEC-192), over the active set at the twins' shared parent `P`, without the equivocating creator `c` (DEC-164). Because its signers are a bitmap over the subgroup positions, the active set must be bit-identical on every node; the evaluation point and membership rule above make it so (DEC-185).
