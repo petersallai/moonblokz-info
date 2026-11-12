@@ -42,7 +42,7 @@ Left sticky sidebar (file-grouped navigation with a scrollspy active-state) + a 
 
 1. **Header + stat chips** — story title, `BASE`/`HEAD`, and chips: files, +/− lines, test count (before → after), clippy (new warnings), new `unsafe`, gated/API count. A short "reading order that works" callout.
 2. **Node footprint panel — mandatory on every page.** A table from the footprint measurement (Step 1) with a *before*, an *after* and a *change* column for every row: estimated binary size (flash); estimated RAM without stack; stack — the Core 1 reservation and the blockchain's worst-case peak, plus one row per entry point. Show the change signed, tint growth with the warn colour and shrinkage with the ok colour, and say in one line what the estimate is made of and which build it measured. Present even when every change is `0`: an unchanged footprint is a result the reviewer should see.
-3. **Orientation diagrams** — a state machine and/or a control-flow diagram that captures the story's spine (see Step 5). Only include diagrams that encode something true about the change.
+3. **The essence — two orientation figures** chosen so the reader grasps *what this story is* fastest (see "Choosing the visualizations", Step 5). Mechanism-detail examples go lower, in a **Worked examples** section placed just before the per-file sections. Only include figures that encode something true about the change.
 4. **API surface table** — new/changed public methods: signature, return type, kind, what this story built vs deferred, owning epic.
 5. **AC ↔ code ↔ test table** — one row per Acceptance Criterion: what it requires, where it lives, which test covers it. This is the traceability spine of the review.
 6. **Code-review findings panel** — if an adversarial/code review ran: severity, finding, resolution (fixed / accepted / deferred).
@@ -123,7 +123,17 @@ Keep JS tiny and inline (self-contained; the CSP blocks external scripts).
 - **Tooltip** — one fixed `#tip` div; on `mouseover` of any `[data-tip]`, set its text and position it near the cursor (flip when it would overflow the viewport); hide on `mouseout`. Respect `prefers-reduced-motion`.
 - **Checklist** — toggle a strike-through class on the label when its checkbox changes (session-local; do not claim persistence).
 
-**Diagrams — mermaid, loaded from the CDN.** Keep each diagram as a `<pre class="mermaid">` block and load mermaid with one module import (`https://cdn.jsdelivr.net/npm/mermaid@11/dist/mermaid.esm.min.mjs`). The CDN is fine precisely *because* the page is not published: the Artifact CSP that would block it does not apply to a local file, and a `<pre>` block left to be rendered by a host renderer is not an option we depend on. Mermaid stays the authoring form, editable in place with no toolchain.
+**Choosing the visualizations.** Pick each figure for what the reader must understand, not for what is easy to draw:
+
+1. **Lead with the essence.** The two top figures answer "what does this story do?":
+   - the **end-to-end flow** the story takes part in — a timeline or swimlane of the actors (nodes, proposer, supporters, the bridge), what *this* story builds in the accent colour, earlier or later stories muted with their story number, and a note when a seam keeps the new behaviour off in production;
+   - the story's **core mechanism**, worked through on a real test fixture (for example, who signs: the active set, the voting set, the seed, the sorted node values, the cut).
+2. **Concrete worked examples, not abstract graphs.** Use real fixture values: sequence-numbered blocks coloured by zone (released / horizon / window / new head), before/after rows, per-node counts. Compute every number with the code's own functions (a hash-derived value, a rank) rather than inventing it, and say in the caption which fixture or test it comes from. Mark an invented example as such. A flowchart of function names explains nothing; put the function in each element's tooltip instead.
+3. **Form follows content.** A swimlane or timeline for a multi-actor protocol; a chain strip for windows, branches and sequences; a left-to-right pipeline of boxes for a computation; a small table for per-node or per-case values; a state diagram only for a real lifecycle. Build these as HTML/CSS from the page tokens, with a tooltip per element; use mermaid only where a genuine control or state flow is clearest.
+4. **Details below.** Shapes, correction arithmetic and data-structure states (a ring, a counter) are worked examples for the **Worked examples** section, near the code they explain, not the top of the page.
+5. **Precise labels.** Check every label against the real semantics (for example "binds #100", not "drops #100", when the tail does not move), and give each figure a caption that says what it encodes.
+
+**Diagrams — mermaid, when one is used, loaded from the CDN.** Keep each diagram as a `<pre class="mermaid">` block and load mermaid with one module import (`https://cdn.jsdelivr.net/npm/mermaid@11/dist/mermaid.esm.min.mjs`). The CDN is fine precisely *because* the page is not published: the Artifact CSP that would block it does not apply to a local file, and a `<pre>` block left to be rendered by a host renderer is not an option we depend on. Mermaid stays the authoring form, editable in place with no toolchain.
 
 Bind the diagrams to the page's design instead of accepting mermaid's default look:
 
@@ -135,7 +145,7 @@ If a page ever has to work with no network, the same sources can be pre-rendered
 
 Either way, verify by looking: screenshot the finished page in both themes (`--headless=new --screenshot --window-size=…`, `data-theme` forced) and actually view the images. A diagram is the one part of this page whose failure mode is silent — blank space or raw source, neither of which any text-level check catches.
 
-Use a diagram where the story has a real shape to show:
+Where mermaid fits (see "Choosing the visualizations"):
 
 - a `stateDiagram-v2` for a lifecycle/state-machine story (states, legal edges, and any init-vs-transition distinction);
 - a `flowchart TD` for a decision/gating story — the shared decision and its branches, including which branch *is* the story and where control leaves.
@@ -168,8 +178,9 @@ Finish by opening the file — screenshot it headless in both themes and look at
 
 - **Accuracy over polish** — every shown line must come from the real diff/source **verbatim**; a paraphrased or `/* … */`-summarized body is a defect. Drop only doc-comments (or, in a large method, repetitive non-load-bearing branches), always behind the visible `⋯` marker; never elide a changed line and never disguise an elision as source.
 - **Match density to the story** — a mechanical change needs fewer aids than a subsystem-spanning one; do not manufacture diagrams or findings that encode nothing.
+- **Essence first, true numbers** — the top two figures explain what the story is (its end-to-end flow and its core mechanism) as worked examples with computed values; mechanism details go to the Worked examples section (Step 5).
 - **One scrutiny callout per genuinely load-bearing change**, no more — over-flagging hides the real risks.
-- **One external dependency, deliberately** — the mermaid CDN import, and nothing else: no webfonts, no images, no other scripts. Everything else is inlined, and both themes stay legible (Step 5).
+- **At most one external dependency, deliberately** — the mermaid CDN import when a figure uses mermaid, and nothing else: no webfonts, no images, no other scripts. Everything else is inlined, and both themes stay legible (Step 5).
 - **Look at the diagrams** — screenshot both themes and view the images before handing the page over. Every other defect here shows up in text; a diagram fails silently, as blank space or as raw source.
 - **Never upload the page** — it is internal working material and the deliverable is the file path (Purpose, Step 6).
 - **Always carry the footprint panel** — binary size, RAM without stack, and stack, each with before, after and change, measured by the tool rather than estimated by hand (Step 1, Step 2 item 2).
