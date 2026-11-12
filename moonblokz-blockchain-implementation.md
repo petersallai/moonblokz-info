@@ -360,7 +360,7 @@ Partly resolved. Per [ADR-015](./blockchain-adrs/ADR-015-approval-subgroup-selec
 
 ### 3. Random subgroup selection
 
-Resolved by [ADR-015](./blockchain-adrs/ADR-015-approval-subgroup-selection.md). The subgroup is derived by a deterministic rendezvous-hash ordering seeded by the snake-chain tail hash, the proposer node identity, and the proposed sequence.
+Resolved by [ADR-015](./blockchain-adrs/ADR-015-approval-subgroup-selection.md). The subgroup is derived by a deterministic rendezvous-hash ordering seeded by the proposed sequence, the circulating currency after its parent block, and the proposer node identity (DEC-192).
 
 ### 4. Active-node-window semantics
 

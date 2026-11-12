@@ -304,7 +304,7 @@ Carries:
 
 ### Specified changes, not yet implemented
 
-- `Support` (0x09) gains the proposer and the deviation block hash: header (type, sender, sequence, supporter; 13 B) ‖ proposer `u32` ‖ `deviation_block_hash` 32 B ‖ signature over `"MBSUP" ‖ proposer ‖ deviation_sequence ‖ deviation_block_hash`, 113 B with Schnorr (DEC-187; Story 6.5).
+- `Support` (0x09) gains the proposer and the deviation block hash: header (type, sender, sequence, supporter; 13 B) ‖ proposer `u32` ‖ `deviation_block_hash` 32 B ‖ signature over `"MBSUP" ‖ proposer ‖ deviation_sequence ‖ deviation_block_hash` (45 B signed content: little-endian `u32` proposer and sequence, [ADR-015](./blockchain-adrs/ADR-015-approval-subgroup-selection.md) §Encodings, DEC-218), 113 B with Schnorr (DEC-187; Story 6.5).
 - `TwinVote` (0x0A) carries an FR71 twin vote: the same 13 B header (type, sender, `s`, voter) ‖ `c` `u32` ‖ `hash(P)` 32 B ‖ `hash(chosen twin)` 32 B ‖ signature, 145 B with Schnorr, one packet; relayed like `Support` (DEC-202; Story 6.13).
 
 ## C6. Message reply relationships currently implemented

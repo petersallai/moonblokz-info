@@ -21,7 +21,7 @@ Approval subgroup selection uses a deterministic, seed-derived rendezvous-hash o
 
 A node is **active** at an evaluation point if, within that point's active window, it created at least one block (of any payload type) or is a signer listed in an approval evidence block or a twin verdict bitmap. Transaction initiation alone does not count (Project Lead, 2026-10-28; DEC-185): sleeping senders cannot sign and so cost approval liveness (AR-008), and an identity could join `A` for one transaction fee. The evaluation point is the deviation's parent `p − 1` for an approval and the twins' shared parent `P` for a verdict, so every node derives the same set (O-030 closed). With `vote_interest = 50` creation rotates, so for `N ≤ W` every voted node creates within the window and `A` covers the network; for `N > W` it is a sample of about `W` creators in which a coalition keeps about its population share.
 
-The active set `A` is therefore derivable from active-chain state per ADR-003 and ADR-008, bounded by the `snake_chain` length, and does not require separately persisted membership state.
+The active set `A` is therefore derivable from active-chain state per ADR-003 and ADR-008, bounded by the `snake_chain` length, and does not require separately persisted membership state. It is kept as a per-node appearance counter, maintained as blocks enter and leave the window (Project Lead, 2026-11-10; DEC-213); Story 6.4 counts block creators only, and evidence and verdict signers (Stories 6.6, 6.7, 6.13; O-037) and the exclusions below (6.13, 6.7, 7.2) follow.
 
 A node under a BC-FR72 equivocation exclusion is not in `A` while the exclusion lasts (Project Lead, 2026-10-22; DEC-165), nor is a node under a late-node exclusion (BC-FR37, DEC-184, DEC-185).
 
@@ -38,6 +38,7 @@ seed = H( "MBSEED"  ‖  proposed_sequence  ‖  circulating_currency(p − 1)  
 - The seed is known only once `p − 1` is fixed, where the tail hash was known `W` blocks ahead.
 - `proposed_sequence` keeps proposals at different positions apart; `proposer_node_id` binds the seed to the proposer; the domain tag separates it from the twin verdict seed.
 - On a window-anchored FR3 candidate the total is not served before the pass has covered the window, so subgroup checks of evidence blocks whose evaluation point lies in the segment's first `W` positions are trusted there, like other pre-window state (DEC-107).
+- Until Story 7.6 the code takes the total from a stub that returns one fixed value, the same on every node, so the seed varies only with `p` and the proposer until then; 7.6 lands before Story 8.5 enables production emission (DEC-212).
 
 #### Subgroup selection
 
@@ -62,6 +63,18 @@ m     = min( 2 · r_eff − 1 ,  |A'| )
 - `r_eff` is a strict majority of the subgroup at every size, so two quorums for conflicting outcomes always share a member.
 - In a large network `r_eff = required_support`, which is therefore a cap; in a shrunken network the subgroup becomes the whole voting set and the approval needs its simple majority. Before 2026-10-27 the threshold stayed `required_support` while `m` was capped at `|A|`, so no approval could form when `|A| < required_support`, and between `required_support` and `2·required_support − 1` it was a supermajority (DEC-172).
 
+#### Encodings
+
+`H` is SHA-256. Integers inside a preimage are little-endian, ASCII tags carry no terminator, and `H(…) mod 2³²` reads the digest as a big-endian unsigned integer, so it is the digest's last 4 bytes, big-endian — the knowledge base's single rule for a digest as a number (Project Lead, 2026-11-11; DEC-218):
+
+| Preimage | Layout | Bytes |
+|---|---|---|
+| seed | `"MBSEED"` ‖ `proposed_sequence` u32 ‖ `circulating_currency(p − 1)` u64 ‖ `proposer_node_id` u32 | 22 |
+| `node_value` hash input | `seed` (32 B) ‖ `node_id` u32 | 36 |
+| signed support content (BC-FR12, BC-FR26) | `"MBSUP"` ‖ `proposer` u32 ‖ `deviation_sequence` u32 ‖ `deviation_block_hash` (32 B) | 45 |
+
+The twin verdict seed follows the same rules.
+
 #### Chain-config invariant
 
 Only the supporters that actually sign are written into the approval evidence, so the crypto aggregation ceiling constrains `required_support`, not `m`:
@@ -80,7 +93,7 @@ If an approval cannot collect `r_eff` signatures in time, the subgroup is **not*
 
 #### Positive
 - Deterministic and verifiable from active-chain state alone, without persisted membership or external randomness.
-- No grindable inputs: neither the proposer nor any single past creator can bias the subgroup.
+- No cheaply grindable inputs: the proposer cannot bias the subgroup, and a creator moves the seed's currency only through the registrations it includes, whose price is burned (DEC-192; AR-013).
 - Self-capping for small networks: `m = |A'|` and a simple-majority threshold when the voting set is below the normal subgroup size.
 - Monotonic in `m`, which keeps this ADR compatible with any future mechanism that needs to widen a deterministic ordering.
 - Aligns with ADR-003 (authoritative vs. derived state), ADR-005 (Chain Knowledge Core orchestration), PRD FR55 (vote module scope vs. external `scoring_module`), and ADR-008 (active-chain-centered local queries).
@@ -89,7 +102,7 @@ If an approval cannot collect `r_eff` signatures in time, the subgroup is **not*
 #### Trade-offs
 - The "active node" definition is per-branch, so in rare multi-branch situations each branch computes its own subgroup. This is consistent with the active-chain-centered model but must be remembered when reasoning about reorgs.
 - Chain-config validation must know the active crypto backend in order to reject `required_support` values that exceed that backend's `MAX_AGGREGATED_SIGNATURES`.
-- A newly registered node becomes "active" as soon as its first transaction enters the active chain; this is intentional and interacts with the existing registration economics (Algorithm 14) rather than with the subgroup rule itself.
+- A newly registered node becomes "active" only once it creates a block within the window or is a listed signer; its registration and transactions alone do not count (DEC-185).
 
 ### Alternatives considered
 
@@ -101,10 +114,6 @@ If an approval cannot collect `r_eff` signatures in time, the subgroup is **not*
 
 ### Follow-up implications
 
-This decision implies that later design work must define:
-
-- the exact binary serialization of the approval evidence payload (this ADR fixes the selection rule but not the byte layout),
-- the chain-config validator rule that enforces `required_support ≤ MAX_AGGREGATED_SIGNATURES(backend)`,
-- and the interaction between the subgroup rule and the detailed grace-period progression, particularly for back-to-back approvals under `snake_chain` precedence (Algorithm 18).
+This decision left three items to later design work. Two are settled: the approval evidence payload layout (DEC-195) and the chain-config check `required_support ≤ MAX_AGGREGATED_SIGNATURES(backend)` (§6 check 3, DEC-075, built in Story 6.4). Still open is the interaction between the subgroup rule and the detailed grace-period progression, particularly for back-to-back approvals under `snake_chain` precedence (Algorithm 18; Story 8.5).
 
 The BC-FR71 twin verdict reuses this selection with a domain-separated seed, `H("twin" ‖ s ‖ circulating_currency(P) ‖ c)` (DEC-192), over the active set at the twins' shared parent `P`, without the equivocating creator `c` (DEC-164). Because its signers are a bitmap over the subgroup positions, the active set must be bit-identical on every node; the evaluation point and membership rule above make it so (DEC-185).

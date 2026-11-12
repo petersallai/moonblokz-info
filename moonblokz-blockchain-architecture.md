@@ -328,11 +328,11 @@ pub enum NextCall {
     Idle,                 // nothing scheduled
 }
 
-pub enum ReceiveBlockOutcome<'a> {
+pub enum ReceiveBlockOutcome {
     DuplicateKnown,                                                   // FR11
     Rejected(RejectReason),                                           // FR10 Invalid-evidence / Out-of-window — names the outcome, never a cause (cause → FR64 log)
     AcceptedSilently,                                                 // FR16 storage-only
-    AcceptedAndSendSupport(SupportView<'a>),                          // FR12 deviance support (Epic 6)
+    AcceptedAndSendSupport(SupportMessage),                           // FR12 deviance support (Story 6.4) — owned, no lifetime (DEC-215)
     // FR19 parent-recovery is NOT a ReceiveBlockOutcome (revised 2026-07-12,
     // Story 4.4): it is scheduler-driven, not a reaction to the just-received
     // block — it is emitted from on_tick as TickOutcome::SendParentRecoveryRequest,
@@ -351,6 +351,8 @@ pub enum ReceiveBlockOutcome<'a> {
 // (Genesis Block #1 is no longer a tick effect — both genesis blocks are
 // produced by `process_genesis`; see §3.6 and decision row 19.)
 ```
+
+`SupportMessage` (Story 6.4, DEC-215) is an owned value with public fields — `supporter_node_id`, `proposer_node_id`, `deviation_sequence: u32`, `deviation_block_hash: [u8; HASH_SIZE]` and `support_signature: [u8; MULTI_SIGNATURE_SIZE]`, the backend's serialized multi-signature — about 108 B with Schnorr, carried on the stack only by `receive_block`'s return; the bridge frames it into the 113 B radio `Support`. It replaces a borrowed `SupportView<'a>`, which would have needed a 113 B static scratch buffer and a lifetime on every caller; `SupportView` names only the inbound borrowed view of `receive_support` (§3.1, Story 6.5). Support is decided once, at the end of `receive_block`, so the FR2 gates still see `AcceptedSilently`. The DEC-203 re-evaluation at a grace expiry emits its support from `on_tick`, through a `TickOutcome` variant that Story 8.5 adds.
 
 ### 3.3 Mempool sub-crate API (10 method-groups)
 
@@ -562,7 +564,7 @@ The full per-module breakdown (processes / data structures / relationships / API
 | `node_info.rs` | FR6, FR50, FR67/FR69 | 4 parallel arrays SoA (~44 KB Schnorr / ~108 KB BLS) |
 | `available_utxo.rs` | ADR-016, FR3, FR51 | (operates on `BlockEntry.available_utxo` co-located) |
 | `creator.rs` | FR44/FR45/FR47 | (stateless; uses `bc.crypto.sign`) |
-| `approval.rs` | FR12/FR15/FR27/FR71 | `ApprovalAccumulator` (~3.4 KB Schnorr per-support store / ~2 KB BLS buffer, DEC-195) |
+| `approval.rs` | FR12/FR15/FR27/FR71 | `ApprovalAccumulator` (~3.4 KB Schnorr per-support store / ~2 KB BLS buffer, DEC-195); from Story 6.4 the ADR-015 subgroup math (seed, `node_value`, `r_eff` / `m`, rank-counting membership; encodings DEC-218), `SupportMessage` and the 45 B signed support content, and the `NonConflictRing` (16 entries, ~208–256 B) with the support floor `F` (DEC-219); the active-set counter (DEC-213) is a `Blockchain` field |
 | `queries.rs` | FR40-FR43 | (stateless) |
 
 Twin handling (FR70–FR72; Stories 6.12, 6.13) adds no module: conflict detection runs at intake against the stored children of the shared parent, the FR70 hold sits in the FR22 comparison before `switch_toward`, the creator's own-child check runs in `creator.rs`, twin votes and the twin evidence block reuse `approval.rs` and its `ApprovalAccumulator`, the FR71 validity rules are a `staged_validation.rs` Tier 3 cluster, the FR72 exclusion is applied where the creator order and the active set are derived, and `queries.rs` adds the FR40 disputed flag.
@@ -769,11 +771,11 @@ pub struct VoteEngine<const MAX_NODES: usize> {
 | NodeInfo.balances | 1000 × 8 B | 8 000 |
 | NodeInfo.seed_source_idx | 1000 × 4 B | 4 000 |
 | NodeInfo.max_known_node_id | 4 B | 4 |
-| Active-set membership counter (DEC-185) | 1000 × 2 B | 2 000 |
+| Active-set membership counter (DEC-185, DEC-213) + tail creator | 1000 × 2 B + 4 B | 2 004 |
 | Exclusion markers (FR72, DEC-184) | 1000 bits; sized by 6.13 | ~125 |
 | Circulating currency (7.6, DEC-192) | u64 | 8 |
 | Replenishment requester LRU (DEC-189) | ~32 × 12 B; sized by 10.4 | ~384 |
-| Non-conflict ring (DEC-198) | 16 × 13 B | 208 |
+| Non-conflict ring (DEC-198, DEC-219) + support floor `F` | 16 × 13 B (256 B if padded) + 4 B | 212 |
 | Support-relay dedupe LRU (DEC-199) | 128 × 12 B | 1 536 |
 | BlockTable | 600 × 80 B | 48 000 |
 | ChainHeadsTable | 40 × 72 B | 2 880 |
@@ -783,9 +785,9 @@ pub struct VoteEngine<const MAX_NODES: usize> {
 | lifecycle_phase | u8 | 1 |
 | SchedulerState | 4 × Option\<u64\> + u64 | 72 |
 | PRNG root | u64 | 8 |
-| **Subtotal (Schnorr)** | | **~103 034** |
+| **Subtotal (Schnorr)** | | **~103 042** |
 
-**Refreshed 2026-10-28.** Adds the DEC-185 active-set counter, the FR72 / DEC-184 exclusion markers, the circulating currency (DEC-192) and the DEC-189 requester LRU, and replaces the ApprovalAccumulator buffer with the DEC-195 per-support store: about +3.9 KB over the earlier ~95 KB. The marker and LRU sizes are estimates until Stories 6.13 and 10.4 fix them. **Refreshed 2026-10-29:** adds the DEC-198 non-conflict ring and the DEC-199 support-relay dedupe LRU, +1.7 KB. **Refreshed 2026-11-10:** `BlockEntry` 80 B (DEC-224, +2.4 KB) and the mempool's `u32` index (DEC-223, +1 KB in §7.3). Measured by Story 6.15 (`tools/footprint`, reference tier, against `main`): static RAM +2.4 KiB, flash +0.1 KiB, stack peaks unchanged; the mempool's +1 KB (32 B `Option<IndexEntry>`, measured with `size_of` on thumbv6m) shows once Epic 7 holds the mempool.
+**Refreshed 2026-10-28.** Adds the DEC-185 active-set counter, the FR72 / DEC-184 exclusion markers, the circulating currency (DEC-192) and the DEC-189 requester LRU, and replaces the ApprovalAccumulator buffer with the DEC-195 per-support store: about +3.9 KB over the earlier ~95 KB. The marker and LRU sizes are estimates until Stories 6.13 and 10.4 fix them. **Refreshed 2026-10-29:** adds the DEC-198 non-conflict ring and the DEC-199 support-relay dedupe LRU, +1.7 KB. **Refreshed 2026-11-10:** `BlockEntry` 80 B (DEC-224, +2.4 KB) and the mempool's `u32` index (DEC-223, +1 KB in §7.3). Measured by Story 6.15 (`tools/footprint`, reference tier, against `main`): static RAM +2.4 KiB, flash +0.1 KiB, stack peaks unchanged; the mempool's +1 KB (32 B `Option<IndexEntry>`, measured with `size_of` on thumbv6m) shows once Epic 7 holds the mempool. **Refreshed 2026-11-11 (Story 6.4 ratification):** the active-set counter keeps the creator of the window tail for its next decrement (DEC-213) and the ring a monotone support floor `F` (DEC-219), +8 B; the ring is 208 B with 13 B entries or 256 B padded, which Story 6.4 measures. Measured by Story 6.4 (`tools/footprint`, reference tier, against `main`): static RAM +2216 B — the counter 2000 B and its tail creator 4 B, the packed ring 208 B and `F` 4 B — flash +1.7 KiB (53 248 B after the code-review fixes), `receive_block` stack 12.1 KB (+144 B; the evaluation's transient 1 KB returning-creator flags lie off the deepest path), `initialize_from_storage` 15.9 KB (+32 B), the `process_genesis` peak unchanged at 19.2 KB.
 
 ### 7.2 Chain-lib subtotal — BLS — ~166 KB
 
@@ -793,13 +795,13 @@ pub struct VoteEngine<const MAX_NODES: usize> {
 |---|---:|---:|
 | NodeInfo.public_keys | 1000 × 96 B | 96 000 |
 | NodeInfo.balances + seed_source_idx + max_known | 12 004 | 12 004 |
-| Active-set counter + exclusion markers + circulating currency + requester LRU + non-conflict ring + support-relay LRU | 2 000 + ~125 + 8 + ~384 + 208 + 1 536 | ~4 261 |
+| Active-set counter + exclusion markers + circulating currency + requester LRU + non-conflict ring + support-relay LRU | 2 004 + ~125 + 8 + ~384 + 212 + 1 536 | ~4 269 |
 | BlockTable | 600 × 80 B | 48 000 |
 | ChainHeadsTable | 40 × 72 B | 2 880 |
 | snake_chain fields | 8 | 8 |
 | ApprovalAccumulator | MAX_BLOCK_SIZE buffer (crypto-agnostic) | ~2 048 |
 | EmitScratch + lifecycle + scheduler + PRNG | ~2 081 | 2 081 |
-| **Subtotal (BLS)** | | **~165 682** |
+| **Subtotal (BLS)** | | **~165 690** |
 
 **Note:** Earlier Step 7 validation incorrectly assumed BLS ApprovalAccumulator was ~6 KB (per-supporter signature × MAX_AGGREGATED_SIGNATURES). The correct model is: ApprovalAccumulator holds a fixed MAX_BLOCK_SIZE buffer (~2 KB) for in-place evidence-block construction. BLS aggregation packs more supporters into the same buffer (~4 B per supporter) than Schnorr (~36 B per supporter), so BLS is actually *more efficient* per supporter — but the allocated memory is identical.
 
@@ -836,7 +838,7 @@ pub struct VoteEngine<const MAX_NODES: usize> {
 | (5) FR23 forward walk peak | `switch_toward` → `apply_stored_child` (2 KB read) → `judge_head_extension` → `derive_block` → preimage / `utxo_output_of` frames | the head-extension path's depth; `receive_block` measured 12.0 KB, worst case `process_genesis` 19.2 KB of the 24 KB Core 1 stack (Story 6.3) | the Story 7.4 mempool calls will add their own frame |
 | (6) FR59 restart | api.initialize_from_storage → rebuild scan → run_processing_pass loop | ~3 KB | same iter pattern as FR23. As built (Story 5.10) the spine lives in `api.rs`, not in `lifecycle.rs`/`reconciliation.rs`: it drives `run_processing_pass` / `recover_from_failed_pass`, which are `api.rs` methods over private fields, so reaching them from another module would mean widening the field surface for no gain. One caller-owned read buffer per scan, reused across slots (`read_block_into`, DEC-136). |
 
-**Measured (2026-10-18, DEC-136).** A thumbv6m probe binary at the §5 defaults (node release profile: LTO, `opt-level = "z"`; frames read from prologues and summed along the deepest call path; indirect calls not followed) gave worst-case blockchain-task stacks of `receive_block` 11.5 KB, `initialize_from_storage` 15.5 KB, `process_genesis` 19.2 KB and `on_tick` 1.0 KB, after reads were moved into one caller-owned buffer (`read_block_into`) and the block-sized buffers given their own frames (before: 27.9 / 25.9 / 25.6 KB — LTO merged them). The deepest path is the FR3 pass: `marked` (2.4 KB) + read buffer (2 KB) + creator-signature preimage (2 KB) + Schnorr verify (~3.9 KB). These exceed the original 6 KB budget, so the stack is sized to the measured peak (DEC-137, below). Re-measured 2026-11-07 after the Story 6.3 chain switch and DEC-205: `receive_block` 12.0 KB, `initialize_from_storage` 15.9 KB, `process_genesis` 19.2 KB, `on_tick` 1.0 KB. The switch's read frames never nest with each other; the growth (+344 B and +352 B) is the re-entry after a restore failure, which runs the acquisition spine inside the FR22 comparison.
+**Measured (2026-10-18, DEC-136).** A thumbv6m probe binary at the §5 defaults (node release profile: LTO, `opt-level = "z"`; frames read from prologues and summed along the deepest call path; indirect calls not followed) gave worst-case blockchain-task stacks of `receive_block` 11.5 KB, `initialize_from_storage` 15.5 KB, `process_genesis` 19.2 KB and `on_tick` 1.0 KB, after reads were moved into one caller-owned buffer (`read_block_into`) and the block-sized buffers given their own frames (before: 27.9 / 25.9 / 25.6 KB — LTO merged them). The deepest path is the FR3 pass: `marked` (2.4 KB) + read buffer (2 KB) + creator-signature preimage (2 KB) + Schnorr verify (~3.9 KB). These exceed the original 6 KB budget, so the stack is sized to the measured peak (DEC-137, below). Re-measured 2026-11-07 after the Story 6.3 chain switch and DEC-205: `receive_block` 12.0 KB, `initialize_from_storage` 15.9 KB, `process_genesis` 19.2 KB, `on_tick` 1.0 KB; after Story 6.4's support evaluation (its reads and the multi-signature in their own frames) `receive_block` 12.1 KB and `initialize_from_storage` 15.9 KB, the peak unchanged. The switch's read frames never nest with each other; the growth (+344 B and +352 B) is the re-entry after a restore failure, which runs the acquisition spine inside the FR22 comparison.
 
 **Decision (DEC-137, supersedes the 6 KB figure):** the blockchain task runs on Core 1 (§2), and Embassy tasks are stackless futures that share their core's stack, so its stack is the **Core 1 stack: 24 KB** — the 19.2 KB measured peak (`process_genesis`) plus ~25% for what the measurement does not follow (indirect calls, executor and interrupt frames). Re-measure when the call graph changes materially. Other embassy tasks (radio, USB console) can remain 4 KB.
 
