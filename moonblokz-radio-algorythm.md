@@ -197,7 +197,7 @@ All messages begin with:
 Some message types also carry:
 
 - bytes 5..9: sequence or anchor sequence
-- bytes 9..13: payload checksum or sender-specific extra field depending on type
+- bytes 9..13: payload checksum or sender-specific extra field depending on type (for `Support`, the supporter node ID; `Support` has no payload checksum)
 
 ## C3. Packet header rules
 
@@ -304,7 +304,8 @@ Carries:
 
 ### Specified changes, not yet implemented
 
-- `Support` (0x09) gains the proposer and the deviation block hash: header (type, sender, sequence, supporter; 13 B) ‖ proposer `u32` ‖ `deviation_block_hash` 32 B ‖ signature over `"MBSUP" ‖ proposer ‖ deviation_sequence ‖ deviation_block_hash` (45 B signed content: little-endian `u32` proposer and sequence, [ADR-015](./blockchain-adrs/ADR-015-approval-subgroup-selection.md) §Encodings, DEC-218), 113 B with Schnorr (DEC-187; Story 6.5).
+- `Support` (0x09) gains the proposer and the deviation block hash: header (type, sender, sequence, supporter; 13 B) ‖ proposer `u32` ‖ `deviation_block_hash` 32 B ‖ signature over `"MBSUP" ‖ proposer ‖ deviation_sequence ‖ deviation_block_hash` (45 B signed content: little-endian `u32` proposer and sequence, [ADR-015](./blockchain-adrs/ADR-015-approval-subgroup-selection.md) §Encodings, DEC-218), 113 B with Schnorr and 97 B with BLS (DEC-187; Story 6.5). A signature that would make the message exceed one packet is refused. Bytes `[5..len)` (sequence, supporter, proposer, hash, signature) are the hop-invariant body the bridge passes to the blockchain's `receive_support` (DEC-229).
+- The wait pool matches a `Support` by full equality of its bytes after the relay sender, not by `(type, sequence, checksum)`: supports for one sequence from different supporters stay separate items, and a forged copy never shadows the real message (DEC-234; Story 6.5).
 - `TwinVote` (0x0A) carries an FR71 twin vote: the same 13 B header (type, sender, `s`, voter) ‖ `c` `u32` ‖ `hash(P)` 32 B ‖ `hash(chosen twin)` 32 B ‖ signature, 145 B with Schnorr, one packet; relayed like `Support` (DEC-202; Story 6.13).
 
 ## C6. Message reply relationships currently implemented
@@ -648,8 +649,8 @@ When handling `RequestEcho`:
    - update sender→self and target→sender qualities,
 4. if `EchoResult`:
    - integrate listed bidirectional qualities and add new nodes if there is room,
-5. if the message is one of the relay-relevant types and already exists in wait pool or as a reply relation:
-   - update its wait-pool scoring,
+5. if the message is one of the relay-relevant types and already exists in wait pool (by full equality) or as a reply relation:
+   - update its wait-pool scoring (the item is found by H7's matching rule),
    - return `AlreadyHaveMessage`,
 6. otherwise return `None`.
 
@@ -734,6 +735,8 @@ To add a new message:
 9. otherwise replace the currently weakest-scoring item only if the new message scores higher.
 
 ## H7. Updating an existing wait-pool message
+
+An item is the same message when its type, sequence and payload checksum match. A type without a payload checksum, such as `Support`, currently matches any item of the same type and sequence, so a second support for that sequence updates the first item instead of being added, and its score update credits that item; §C5 specifies the full-equality match for `Support` (DEC-234).
 
 When a message already in the pool is seen again:
 

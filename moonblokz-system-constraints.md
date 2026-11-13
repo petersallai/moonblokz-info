@@ -94,7 +94,7 @@ Cross-check: on BLS the `ApprovalAccumulator` costs ~4 B per supporter (`4 + 0`)
 
 Authoritative source: [`moonblokz-crypto-implementation.md`](./moonblokz-crypto-implementation.md) §Measured timings on the reference hardware (DEC-180). The current build is `schnorr-malachite` with `opt-level = "z"`: about 0.9 s to sign, 1.9 s to verify one signature, and 2.9 s per signer to verify an aggregate. The `"s"` profile is about 25 % faster.
 
-A node relays a block or support message only after accepting it, so each relay hop adds the verification time. The costs below are derived, not measured: they assume about 3 hops to the median node, on top of the measured unsigned-block `t₅₀` of 33 s at 100 nodes.
+A node relays a block or support message only after accepting it, so each relay hop adds the verification time. The exception is a support whose deviation is not on the receiver's active chain and whose supporter key the receiver cannot derive: it is accepted and relayed unverified ([BC-FR26](./moonblokz-blockchain-prd.md), DEC-232, AR-023). The costs below are derived, not measured: they assume about 3 hops to the median node, on top of the measured unsigned-block `t₅₀` of 33 s at 100 nodes.
 
 | Work | Verification per node | Remark |
 |---|---:|---|
@@ -122,7 +122,7 @@ Authoritative source: [`moonblokz-blockchain-architecture.md`](./moonblokz-block
 | `BlockTable` | 48 KB | 48 KB | `MAX_BLOCKS` × 80 B (`u32` block length, DEC-224) |
 | `ChainHeadsTable` | 2.88 KB | 2.88 KB | `MAX_BRANCH_COUNT` × 72 B (architecture §7.1; was listed here as 32 B) |
 | `ApprovalAccumulator` | ~3.4 KB | ~2 KB | Schnorr keeps every support's `r`, `s` and rank until emission (DEC-194, DEC-195); BLS a `MAX_BLOCK_SIZE` buffer |
-| Active-set counter, exclusion markers, circulating currency, requester LRU, non-conflict ring, support-relay LRU | ~4.3 KB | ~4.3 KB | DEC-185 / DEC-213 (`MAX_NODES` × 2 B + 4 B tail creator), FR72 / DEC-184 (1 bit per node), DEC-192 (u64), DEC-189 (~384 B, sized by 10.4), DEC-198 / DEC-219 (16 × 13 B + 4 B support floor), DEC-199 (128 × 12 B) |
+| Active-set counter, exclusion markers, circulating currency, requester LRU, non-conflict ring, support-relay FIFO | ~4.3 KB | ~4.3 KB | DEC-185 / DEC-213 (`MAX_NODES` × 2 B + 4 B tail creator), FR72 / DEC-184 (1 bit per node), DEC-192 (u64), DEC-189 (~384 B, sized by 10.4), DEC-198 / DEC-219 (16 × 13 B + 4 B support floor), DEC-199 / DEC-231 (128 × 12 B + 1 B cursor) |
 | `EmitScratch` + scheduler + lifecycle + PRNG | ~2.1 KB | ~2.1 KB | `MAX_BLOCK_SIZE` buffer + small fields |
 | **`moonblokz-blockchain` subtotal** | **~103 KB** | **~166 KB** | matches architecture §7.1 / §7.2 (refreshed 2026-11-10) |
 | `Mempool` (sibling `moonblokz-mempool`) | ~24.3 KB | ~24.3 KB | `MEMPOOL_COMPACT_BYTES` + compact index (128 × 32 B, `u32` offsets, DEC-223) including stored `transaction_fee` + small fields; authoritative layout in blockchain architecture §6.8 |
