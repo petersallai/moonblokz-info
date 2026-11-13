@@ -295,17 +295,10 @@ The constructor is currently named `get_mempool_state_with`, even though the mes
 
 ### `Support`
 
-Carries:
-
-- sender node ID
-- sequence
-- supporter node ID
-- signature bytes
+Carries the header (type, sender, sequence, supporter; 13 B) ‖ proposer `u32` ‖ `deviation_block_hash` 32 B ‖ signature over `"MBSUP" ‖ proposer ‖ deviation_sequence ‖ deviation_block_hash` (45 B signed content: little-endian `u32` proposer and sequence, [ADR-015](./blockchain-adrs/ADR-015-approval-subgroup-selection.md) §Encodings, DEC-218), 113 B with Schnorr and 97 B with BLS (DEC-187, built in Story 6.5). The constructor `support_with` refuses a signature that would make the message exceed one packet (`MessageError::MessageSizeOverflow`). Bytes `[5..len)` (sequence, supporter, proposer, hash, signature) are the hop-invariant body, served by `support_body()`, that the bridge passes to the blockchain's `receive_support` (DEC-229).
 
 ### Specified changes, not yet implemented
 
-- `Support` (0x09) gains the proposer and the deviation block hash: header (type, sender, sequence, supporter; 13 B) ‖ proposer `u32` ‖ `deviation_block_hash` 32 B ‖ signature over `"MBSUP" ‖ proposer ‖ deviation_sequence ‖ deviation_block_hash` (45 B signed content: little-endian `u32` proposer and sequence, [ADR-015](./blockchain-adrs/ADR-015-approval-subgroup-selection.md) §Encodings, DEC-218), 113 B with Schnorr and 97 B with BLS (DEC-187; Story 6.5). A signature that would make the message exceed one packet is refused. Bytes `[5..len)` (sequence, supporter, proposer, hash, signature) are the hop-invariant body the bridge passes to the blockchain's `receive_support` (DEC-229).
-- The wait pool matches a `Support` by full equality of its bytes after the relay sender, not by `(type, sequence, checksum)`: supports for one sequence from different supporters stay separate items, and a forged copy never shadows the real message (DEC-234; Story 6.5).
 - `TwinVote` (0x0A) carries an FR71 twin vote: the same 13 B header (type, sender, `s`, voter) ‖ `c` `u32` ‖ `hash(P)` 32 B ‖ `hash(chosen twin)` 32 B ‖ signature, 145 B with Schnorr, one packet; relayed like `Support` (DEC-202; Story 6.13).
 
 ## C6. Message reply relationships currently implemented
@@ -736,7 +729,7 @@ To add a new message:
 
 ## H7. Updating an existing wait-pool message
 
-An item is the same message when its type, sequence and payload checksum match. A type without a payload checksum, such as `Support`, currently matches any item of the same type and sequence, so a second support for that sequence updates the first item instead of being added, and its score update credits that item; §C5 specifies the full-equality match for `Support` (DEC-234).
+An item is the same message when its type, sequence and payload checksum match. A `Support`, which has no payload checksum, matches only by full equality of its bytes after the relay sender, so supports for one sequence from different supporters stay separate items, each scored on its own, and a forged copy never shadows the real message (DEC-234, built in Story 6.5).
 
 When a message already in the pool is seen again:
 
