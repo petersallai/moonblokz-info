@@ -171,7 +171,7 @@ Both are specified in [Configuration Module Specification](./moonblokz-configura
 
 ### 2.2 Three-type model (Owned + View + Builder)
 
-For every wire-format payload (Block, Transaction, Support, … ) `moonblokz-chain-types` exposes:
+For every on-chain wire-format payload (Block, Transaction, … ) `moonblokz-chain-types` exposes:
 
 | Type | Purpose | Lifetime | Size |
 |---|---|---|---|
@@ -180,6 +180,8 @@ For every wire-format payload (Block, Transaction, Support, … ) `moonblokz-cha
 | `BlockBuilder` | Mutation surface for block construction (FR45 creator) | scope of construction | ~2 KB internal buffer |
 
 Outcomes use `BlockView<'_>` to keep enum variants small (~16 B borrow), not 2 KB owned. The `emit_scratch.block_buffer` in blockchain state owns the bytes; the view borrows them.
+
+Support messages are off-chain and have no chain-types type: the inbound `SupportView<'a>` and the outbound `SupportMessage` are the blockchain's own, in `approval.rs` (DEC-229, DEC-215; §3.1, §3.2).
 
 ### 2.3 PRNG sub-seed derivation hierarchy (FR33)
 
@@ -318,6 +320,8 @@ impl<...> Blockchain<...> {
 }
 ```
 
+`receive_support` takes the radio `Support` message's hop-invariant body, bytes `[5..len)`: `deviation_sequence u32 ‖ supporter_node_id u32 ‖ proposer_node_id u32 ‖ deviation_block_hash [32] ‖ support_signature`, little-endian, 108 B with Schnorr. The bridge builds the `SupportView` with `SupportView::from_bytes`, the FR26 (i) length check, and drops a `None` without relay; the type byte and the relay sender are not part of the body (DEC-229, Story 6.5).
+
 ### 3.2 Outcome enums (single-outcome pattern)
 
 Every state-changing method returns `CallResult<OutcomeEnum>` where `CallResult<T> = (T, NextCall)`. Each outcome enum has at most ONE variant active per call:
@@ -345,7 +349,12 @@ pub enum ReceiveBlockOutcome {
     // ... one per FR-defined effect, exactly one variant per call
 }
 
-// Similar for ReceiveTransactionOutcome, ReceiveSupportOutcome, InitOutcome.
+pub enum ReceiveSupportOutcome {                                   // FR26 (Story 6.5, DEC-229) — no payload (FR10 minimal response)
+    Accepted,                                                         // relay: the bridge reports NewSupportAdded to the radio layer
+    Rejected,                                                         // drop, no relay (also a SupportView::from_bytes None)
+}
+
+// Similar for ReceiveTransactionOutcome, InitOutcome.
 // TickOutcome carries the scheduler-driven effects, e.g.
 // SendParentRecoveryRequest(ParentRecoveryRequest) (FR19, Story 4.4).
 // (Genesis Block #1 is no longer a tick effect — both genesis blocks are
@@ -475,7 +484,7 @@ Note (post-genesis-redesign): construction itself is now unified in the single `
 | # | Question | Decision | Rationale |
 |---|---|---|---|
 | 1 | Should `node_zero_pk` be a parameter to every init method? | **Yes** — it is an `init` parameter, so every boot path has it | Code-level bootstrap-of-trust protection: during stored-chain validation, `node_zero_pk` must come from an out-of-band trusted source (for example, baked into firmware); otherwise corrupted storage could provide a false trust anchor. |
-| 2 | Entropy-source trait or simple `prng_seed: u64`? | **`prng_seed: u64`** | The bridge layer is responsible for producing a meaningful seed (RP2040 ROSC jitter, `own_node_id × restart_count` hash, etc.). The blockchain simply accepts the `u64`. |
+| 2 | Entropy-source trait or simple `prng_seed: u64`? | **`prng_seed: u64`** | The bridge layer is responsible for producing a meaningful seed (RP2040 ROSC jitter, `own_node_id × restart_count` hash, etc.). The blockchain simply accepts the `u64`. **Since Story 6.5 the seed must be unpredictable** (hardware entropy such as ROSC jitter, not a function of the node id or the restart count alone): the FR26 relay-dedupe salt is derived from it (DEC-230). |
 | 3 | Should `own_node_id` be a parameter to the genesis bootstrap? | **Implicit 0** — `process_genesis` requires the instance's `local_node_id == 0` (else `LocalNodeIdNotZero`), rather than taking a separate id | The genesis context is by definition “I am node #0”. The trust anchor (`node_zero_public_key`) is supplied once at `init`. |
 | 4 | What is the state of `chain_config: X` at genesis? | **Empty-state implementor**; `initial_chain_config_bytes` is retained during `process_genesis` and emitted as Block #1 in the same call | The `chain_config` becomes authoritative content when Block #1 is built. Durable-lock semantics land in Story 5.6. |
 | 5 | `storage: S` preconditions in the 3 cases | genesis: **empty**; join: **empty**; restart: **non-empty + well-formed** | The init method returns a `Rejected` outcome if the precondition is not met; it does not panic. |
@@ -558,13 +567,13 @@ The full per-module breakdown (processes / data structures / relationships / API
 | `chain_heads.rs` | FR19 | `ChainHeadsTable { heads: [ChainHeadEntry; 40] }` (2.88 KB — Story 4.4, §6.3) |
 | `snake_chain.rs` | FR48-FR53 | 2 u32 indices on Blockchain (8 B, §6.4); stateless tail-drop classification and binding |
 | `branch_value.rs` | FR21 | (stateless: the per-block value, the FR21 rank — value, tip size, tip hash — and operational admissibility; the values live in `Blockchain.active_branch_value` and the side heads' `ChainHeadEntry.branch_value`, DEC-144, DEC-154, DEC-155) |
-| `intake.rs` | FR10/FR14/FR16/FR26 | (stateless dispatcher) |
+| `intake.rs` | FR10/FR14/FR16 | (stateless dispatcher; FR26 support intake is `receive_support` in `api.rs` over `approval.rs`, Story 6.5) |
 | `staged_validation.rs` | FR9 | (stateless tier 1/2/3 checks) |
 | `reconciliation.rs` | FR23, FR58 | (stateless: the switch admission rule — FR58's bound and the DEC-204 evaluability condition, against the tail and the horizon root (Story 6.14; no completeness horizon, DEC-211); the walk itself is private `Blockchain` methods in `api.rs`, because the state it rewrites is private there — `switch_toward`, `undo_active_head` / `undo_committed_block`, the replay through the shared step against a virtual tail, `commit_switch`, `restore_original`; DEC-171) |
 | `node_info.rs` | FR6, FR50, FR67/FR69 | 4 parallel arrays SoA (~44 KB Schnorr / ~108 KB BLS) |
 | `available_utxo.rs` | ADR-016, FR3, FR51 | (operates on `BlockEntry.available_utxo` co-located) |
 | `creator.rs` | FR44/FR45/FR47 | (stateless; uses `bc.crypto.sign`) |
-| `approval.rs` | FR12/FR15/FR27/FR71 | `ApprovalAccumulator` (~3.4 KB Schnorr per-support store / ~2 KB BLS buffer, DEC-195); from Story 6.4 the ADR-015 subgroup math (seed, `node_value`, `r_eff` / `m`, rank-counting membership; encodings DEC-218), `SupportMessage` and the 45 B signed support content, and the `NonConflictRing` (16 entries, ~208–256 B) with the support floor `F` (DEC-219); the active-set counter (DEC-213) is a `Blockchain` field |
+| `approval.rs` | FR12/FR15/FR27/FR71 | `ApprovalAccumulator` (~3.4 KB Schnorr per-support store / ~2 KB BLS buffer, DEC-195); from Story 6.4 the ADR-015 subgroup math (seed, `node_value`, `r_eff` / `m`, rank-counting membership; encodings DEC-218), `SupportMessage` and the 45 B signed support content, and the `NonConflictRing` (16 entries, ~208–256 B) with the support floor `F` (DEC-219); from Story 6.5 the inbound `SupportView` and its parse (DEC-229), the `SupportDedupe` FIFO (128 × 12 B + 1 B cursor, DEC-230, DEC-231) and the FR26 intake checks; the active-set counter (DEC-213) and the dedupe cache are `Blockchain` fields |
 | `queries.rs` | FR40-FR43 | (stateless) |
 
 Twin handling (FR70–FR72; Stories 6.12, 6.13) adds no module: conflict detection runs at intake against the stored children of the shared parent, the FR70 hold sits in the FR22 comparison before `switch_toward`, the creator's own-child check runs in `creator.rs`, twin votes and the twin evidence block reuse `approval.rs` and its `ApprovalAccumulator`, the FR71 validity rules are a `staged_validation.rs` Tier 3 cluster, the FR72 exclusion is applied where the creator order and the active set are derived, and `queries.rs` adds the FR40 disputed flag.
@@ -776,7 +785,7 @@ pub struct VoteEngine<const MAX_NODES: usize> {
 | Circulating currency (7.6, DEC-192) | u64 | 8 |
 | Replenishment requester LRU (DEC-189) | ~32 × 12 B; sized by 10.4 | ~384 |
 | Non-conflict ring (DEC-198, DEC-219) + support floor `F` | 16 × 13 B (256 B if padded) + 4 B | 212 |
-| Support-relay dedupe LRU (DEC-199) | 128 × 12 B | 1 536 |
+| Support-relay dedupe FIFO (DEC-199, DEC-231, DEC-230 salt) | 128 × 12 B + 1 B cursor + 8 B salt | 1 545 |
 | BlockTable | 600 × 80 B | 48 000 |
 | ChainHeadsTable | 40 × 72 B | 2 880 |
 | snake_chain fields | 2 × 4 B | 8 |
@@ -787,7 +796,7 @@ pub struct VoteEngine<const MAX_NODES: usize> {
 | PRNG root | u64 | 8 |
 | **Subtotal (Schnorr)** | | **~103 042** |
 
-**Refreshed 2026-10-28.** Adds the DEC-185 active-set counter, the FR72 / DEC-184 exclusion markers, the circulating currency (DEC-192) and the DEC-189 requester LRU, and replaces the ApprovalAccumulator buffer with the DEC-195 per-support store: about +3.9 KB over the earlier ~95 KB. The marker and LRU sizes are estimates until Stories 6.13 and 10.4 fix them. **Refreshed 2026-10-29:** adds the DEC-198 non-conflict ring and the DEC-199 support-relay dedupe LRU, +1.7 KB. **Refreshed 2026-11-10:** `BlockEntry` 80 B (DEC-224, +2.4 KB) and the mempool's `u32` index (DEC-223, +1 KB in §7.3). Measured by Story 6.15 (`tools/footprint`, reference tier, against `main`): static RAM +2.4 KiB, flash +0.1 KiB, stack peaks unchanged; the mempool's +1 KB (32 B `Option<IndexEntry>`, measured with `size_of` on thumbv6m) shows once Epic 7 holds the mempool. **Refreshed 2026-11-11 (Story 6.4 ratification):** the active-set counter keeps the creator of the window tail for its next decrement (DEC-213) and the ring a monotone support floor `F` (DEC-219), +8 B; the ring is 208 B with 13 B entries or 256 B padded, which Story 6.4 measures. Measured by Story 6.4 (`tools/footprint`, reference tier, against `main`): static RAM +2216 B — the counter 2000 B and its tail creator 4 B, the packed ring 208 B and `F` 4 B — flash +1.7 KiB (53 248 B after the code-review fixes), `receive_block` stack 12.1 KB (+144 B; the evaluation's transient 1 KB returning-creator flags lie off the deepest path), `initialize_from_storage` 15.9 KB (+32 B), the `process_genesis` peak unchanged at 19.2 KB.
+**Refreshed 2026-10-28.** Adds the DEC-185 active-set counter, the FR72 / DEC-184 exclusion markers, the circulating currency (DEC-192) and the DEC-189 requester LRU, and replaces the ApprovalAccumulator buffer with the DEC-195 per-support store: about +3.9 KB over the earlier ~95 KB. The marker and LRU sizes are estimates until Stories 6.13 and 10.4 fix them. **Refreshed 2026-10-29:** adds the DEC-198 non-conflict ring and the DEC-199 support-relay dedupe LRU, +1.7 KB. **Refreshed 2026-11-10:** `BlockEntry` 80 B (DEC-224, +2.4 KB) and the mempool's `u32` index (DEC-223, +1 KB in §7.3). Measured by Story 6.15 (`tools/footprint`, reference tier, against `main`): static RAM +2.4 KiB, flash +0.1 KiB, stack peaks unchanged; the mempool's +1 KB (32 B `Option<IndexEntry>`, measured with `size_of` on thumbv6m) shows once Epic 7 holds the mempool. **Refreshed 2026-11-11 (Story 6.4 ratification):** the active-set counter keeps the creator of the window tail for its next decrement (DEC-213) and the ring a monotone support floor `F` (DEC-219), +8 B; the ring is 208 B with 13 B entries or 256 B padded, which Story 6.4 measures. Measured by Story 6.4 (`tools/footprint`, reference tier, against `main`): static RAM +2216 B — the counter 2000 B and its tail creator 4 B, the packed ring 208 B and `F` 4 B — flash +1.7 KiB (53 248 B after the code-review fixes), `receive_block` stack 12.1 KB (+144 B; the evaluation's transient 1 KB returning-creator flags lie off the deepest path), `initialize_from_storage` 15.9 KB (+32 B), the `process_genesis` peak unchanged at 19.2 KB. **Refreshed 2026-11-13 (Story 6.5 ratification):** the support-relay dedupe is a FIFO with a 1 B cursor (DEC-231), +1 B. Measured by Story 6.5 (`tools/footprint`, reference tier, against `main`): static RAM +1 536 B (103 432 → 104 968 B; the cursor falls into padding), flash +3.3 KB with `receive_support` linked (it pulls in the multi-signature verification), `receive_support` stack 3 920 B, the `process_genesis` peak unchanged at 19 264 B. The flash growth, about ten times the story's estimate, was accepted by the Project Lead at the 6.5 code review (2026-11-13): FR26 (ii) needs the multi-signature verification, and Stories 6.6 / 6.7 use it anyway. The code review added the 8 B dedupe salt (DEC-230).
 
 ### 7.2 Chain-lib subtotal — BLS — ~166 KB
 
@@ -795,7 +804,7 @@ pub struct VoteEngine<const MAX_NODES: usize> {
 |---|---:|---:|
 | NodeInfo.public_keys | 1000 × 96 B | 96 000 |
 | NodeInfo.balances + seed_source_idx + max_known | 12 004 | 12 004 |
-| Active-set counter + exclusion markers + circulating currency + requester LRU + non-conflict ring + support-relay LRU | 2 004 + ~125 + 8 + ~384 + 212 + 1 536 | ~4 269 |
+| Active-set counter + exclusion markers + circulating currency + requester LRU + non-conflict ring + support-relay FIFO | 2 004 + ~125 + 8 + ~384 + 212 + 1 537 | ~4 270 |
 | BlockTable | 600 × 80 B | 48 000 |
 | ChainHeadsTable | 40 × 72 B | 2 880 |
 | snake_chain fields | 8 | 8 |
@@ -838,7 +847,7 @@ pub struct VoteEngine<const MAX_NODES: usize> {
 | (5) FR23 forward walk peak | `switch_toward` → `apply_stored_child` (2 KB read) → `judge_head_extension` → `derive_block` → preimage / `utxo_output_of` frames | the head-extension path's depth; `receive_block` measured 12.0 KB, worst case `process_genesis` 19.2 KB of the 24 KB Core 1 stack (Story 6.3) | the Story 7.4 mempool calls will add their own frame |
 | (6) FR59 restart | api.initialize_from_storage → rebuild scan → run_processing_pass loop | ~3 KB | same iter pattern as FR23. As built (Story 5.10) the spine lives in `api.rs`, not in `lifecycle.rs`/`reconciliation.rs`: it drives `run_processing_pass` / `recover_from_failed_pass`, which are `api.rs` methods over private fields, so reaching them from another module would mean widening the field surface for no gain. One caller-owned read buffer per scan, reused across slots (`read_block_into`, DEC-136). |
 
-**Measured (2026-10-18, DEC-136).** A thumbv6m probe binary at the §5 defaults (node release profile: LTO, `opt-level = "z"`; frames read from prologues and summed along the deepest call path; indirect calls not followed) gave worst-case blockchain-task stacks of `receive_block` 11.5 KB, `initialize_from_storage` 15.5 KB, `process_genesis` 19.2 KB and `on_tick` 1.0 KB, after reads were moved into one caller-owned buffer (`read_block_into`) and the block-sized buffers given their own frames (before: 27.9 / 25.9 / 25.6 KB — LTO merged them). The deepest path is the FR3 pass: `marked` (2.4 KB) + read buffer (2 KB) + creator-signature preimage (2 KB) + Schnorr verify (~3.9 KB). These exceed the original 6 KB budget, so the stack is sized to the measured peak (DEC-137, below). Re-measured 2026-11-07 after the Story 6.3 chain switch and DEC-205: `receive_block` 12.0 KB, `initialize_from_storage` 15.9 KB, `process_genesis` 19.2 KB, `on_tick` 1.0 KB; after Story 6.4's support evaluation (its reads and the multi-signature in their own frames) `receive_block` 12.1 KB and `initialize_from_storage` 15.9 KB, the peak unchanged. The switch's read frames never nest with each other; the growth (+344 B and +352 B) is the re-entry after a restore failure, which runs the acquisition spine inside the FR22 comparison.
+**Measured (2026-10-18, DEC-136).** A thumbv6m probe binary at the §5 defaults (node release profile: LTO, `opt-level = "z"`; frames read from prologues and summed along the deepest call path; indirect calls not followed) gave worst-case blockchain-task stacks of `receive_block` 11.5 KB, `initialize_from_storage` 15.5 KB, `process_genesis` 19.2 KB and `on_tick` 1.0 KB, after reads were moved into one caller-owned buffer (`read_block_into`) and the block-sized buffers given their own frames (before: 27.9 / 25.9 / 25.6 KB — LTO merged them). The deepest path is the FR3 pass: `marked` (2.4 KB) + read buffer (2 KB) + creator-signature preimage (2 KB) + Schnorr verify (~3.9 KB). These exceed the original 6 KB budget, so the stack is sized to the measured peak (DEC-137, below). Re-measured 2026-11-07 after the Story 6.3 chain switch and DEC-205: `receive_block` 12.0 KB, `initialize_from_storage` 15.9 KB, `process_genesis` 19.2 KB, `on_tick` 1.0 KB; after Story 6.4's support evaluation (its reads and the multi-signature in their own frames) `receive_block` 12.1 KB and `initialize_from_storage` 15.9 KB, the peak unchanged; Story 6.5's `receive_support` 3.9 KB, the peak unchanged. The switch's read frames never nest with each other; the growth (+344 B and +352 B) is the re-entry after a restore failure, which runs the acquisition spine inside the FR22 comparison.
 
 **Decision (DEC-137, supersedes the 6 KB figure):** the blockchain task runs on Core 1 (§2), and Embassy tasks are stackless futures that share their core's stack, so its stack is the **Core 1 stack: 24 KB** — the 19.2 KB measured peak (`process_genesis`) plus ~25% for what the measurement does not follow (indirect calls, executor and interrupt frames). Re-measure when the call graph changes materially. Other embassy tasks (radio, USB console) can remain 4 KB.
 
