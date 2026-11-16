@@ -245,7 +245,7 @@ Ratified encoding (DEC-235):
 
 Ratified encoding (DEC-247):
 
-- 2-byte count (byte order not fixed by Story 6.16)
+- 2-byte count, big-endian (as in the Schnorr aggregate)
 - the aggregated signature: 48 B (`bls-min-sig`) or 96 B (`bls-min-pk`)
 
 ### Practical consequence
