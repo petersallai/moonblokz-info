@@ -311,7 +311,7 @@ So the Schnorr aggregate artifact is not order-free: signer position is part of 
 
 Built in Story 6.16 (DEC-248). `prove_possession` returns a `Signature` (`SIGNATURE_SIZE` bytes), so the registration's `new_key_signature` keeps its size per backend; `verify_possession` checks it against a parsed `PublicKey`.
 
-- **Schnorr:** a BIP-340 signature by the key's owner over `"MoonBlokz/pop" ‖ public key (32 B)`, the ASCII tag unterminated; verification is BIP-340 verification of that message. The tag keeps proofs and ordinary signatures in separate domains: no ordinary signature over 32 B of data serves as a proof, and no proof as an ordinary signature.
+- **Schnorr:** a BIP-340 signature by the key's owner over `"MoonBlokz/pop" ‖ public key (32 B)`, the ASCII tag unterminated; verification is BIP-340 verification of that message. The tag keeps proofs and ordinary signatures in separate domains: no ordinary signature over 32 B of data serves as a proof, and no proof as an ordinary signature. The separation is by message, not by challenge tag, so an ordinary signature over exactly `"MoonBlokz/pop" ‖ key` (45 B) is a proof too; no MoonBlokz message has that form (transactions start with their type byte, blocks with the version, supports with `MBSUP`, chain configurations with their entry count), and Schnorr aggregation does not rely on the proof (code review, 2026-11-16).
 - **BLS (both variants):** the suite's `PopProve` / `PopVerify` with its proof-of-possession DST (`BLS_POP_BLS12381G1_XMD:SHA-256_SSWU_RO_POP_` for `bls-min-sig`, `BLS_POP_BLS12381G2_XMD:SHA-256_SSWU_RO_POP_` for `bls-min-pk`): the proof is `sk · H_pop(serialized public key)` in the signature group; verification runs KeyValidate on the key and the pairing check.
 
 The registration transaction carries this proof ([Blockchain Algorithm Model](./moonblokz-blockchain-algorythm.md) §5 Registration Transaction Structure).
@@ -430,7 +430,7 @@ Built in Story 6.16; they replace the `schnorr-crypto-bigint` regression vector:
 
 - `schnorr`: all 19 official BIP-340 vectors — signing through the trait for vectors 0 and 15–18 (`aux_rand = 0`), verification for 0–18 with a parse failure counting as invalid — plus pinned DEC-194 aggregate vectors;
 - `bls-min-sig`: RFC 9380 Appendix J.9.1 (hash to G1) plus signature vectors pinned once after an out-of-band cross-check against an independent implementation;
-- `bls-min-pk`: RFC 9380 Appendix J.10.1 (hash to G2) and the Ethereum consensus-spec BLS tests (min-pk, POP DST).
+- `bls-min-pk`: RFC 9380 Appendix J.10.1 (hash to G2) and the Ethereum consensus-spec BLS tests (min-pk, POP DST): all `sign`, `verify` and `fast_aggregate_verify` cases of `ethereum/bls12-381-tests` v0.1.2 (commit `89ff3a8`), vendored in `src/bls_eth_vectors.rs`; its `deserialization_G1` / `G2` cases run under both variants (the identity is refused by KeyValidate).
 
 The story's negative tests add the aggregate refusals above (`count = 0`, the negated point, `s ≥ q`, an unliftable `r`, swapped key or signature order, a dropped signer) and the proof-of-possession refusals (another key's proof, an ordinary signature over the key bytes).
 
