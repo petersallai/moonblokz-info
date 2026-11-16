@@ -4,7 +4,7 @@
 
 This document captures implementation-facing implications of the MoonBlokz cryptographic design in `moonblokz-crypto-lib`.
 
-**Status (2026-11-16): ratified, being built in Story 6.16.** Sections so marked describe the ratified target (DEC-235, DEC-244..250); `moonblokz-crypto-lib` `367c5e1` still carries the four earlier backends until the story lands.
+**Status (2026-11-16): built in Story 6.16.** Sections so marked describe the built crate (DEC-235, DEC-244..250); the four earlier backends are removed.
 
 It complements the conceptual and algorithm documents by identifying:
 
@@ -125,7 +125,7 @@ If a future backend is added, it should preserve this same pattern unless there 
 
 ## Backend Inventory and Engineering Meaning
 
-Ratified, being built in Story 6.16. Only libraries that build and run as `no_std` **without an allocator** qualify (Project Lead, 2026-11-14), so the crate keeps two backends behind three scheme features (DEC-245, DEC-246):
+Built in Story 6.16. Only libraries that build and run as `no_std` **without an allocator** qualify (Project Lead, 2026-11-14), so the crate keeps two backends behind three scheme features (DEC-245, DEC-246):
 
 | Module | Features | Library | Notes |
 |---|---|---|---|
@@ -149,7 +149,7 @@ This boundary discipline is one of the most important implementation properties 
 
 The `Cargo.toml` feature design has real engineering consequences.
 
-Ratified, being built in Story 6.16 (DEC-246).
+Built in Story 6.16 (DEC-246).
 
 ### Scheme features
 
@@ -188,7 +188,7 @@ That is consistent with microcontroller-friendly design. In the ratified backend
 
 ## Schnorr Backend Engineering Implications
 
-Ratified, being built in Story 6.16 (DEC-235, DEC-244).
+Built in Story 6.16 (DEC-235, DEC-244).
 
 ### One implementation, the library's
 
@@ -262,7 +262,7 @@ This design is compact, but public-key parsing includes curve reconstruction and
 
 ## BLS Backend Engineering Implications
 
-Ratified, being built in Story 6.16 (DEC-247, DEC-248). The BLS backend behaves differently enough from Schnorr that engineers should avoid over-generalizing.
+Built in Story 6.16 (DEC-247, DEC-248). The BLS backend behaves differently enough from Schnorr that engineers should avoid over-generalizing.
 
 ### One generic core
 
@@ -284,7 +284,7 @@ Tests and documentation describe family-specific behavior rather than pretending
 
 ## Unsafe and Low-Level Code Cautions
 
-Ratified, being built in Story 6.16: neither backend has `unsafe` code (the earlier BLS backend's `MaybeUninit` aggregation goes), so the crate takes `#![forbid(unsafe_code)]` and its Miri script is removed.
+Built in Story 6.16: neither backend has `unsafe` code (the earlier BLS backend's `MaybeUninit` aggregation goes), so the crate takes `#![forbid(unsafe_code)]` and its Miri script is removed.
 
 ## Dependency and Supply-Chain Implications
 
@@ -337,7 +337,7 @@ Because only one backend is active at a time and the default is `schnorr`, a pla
 
 ### Byte-level vectors
 
-Ratified, being built in Story 6.16: official BIP-340 vectors and pinned DEC-194 aggregate vectors for `schnorr`, RFC 9380 hash-to-curve vectors plus pinned or Ethereum consensus-spec signature vectors for the BLS variants ([Crypto Algorithm Model](./moonblokz-crypto-algorythm.md) §Byte-level vectors). They replace the `schnorr-crypto-bigint` regression vector.
+Built in Story 6.16: official BIP-340 vectors and pinned DEC-194 aggregate vectors for `schnorr`, RFC 9380 hash-to-curve vectors plus pinned or Ethereum consensus-spec signature vectors for the BLS variants ([Crypto Algorithm Model](./moonblokz-crypto-algorythm.md) §Byte-level vectors). They replace the `schnorr-crypto-bigint` regression vector.
 
 ### Engineering consequence
 
@@ -349,23 +349,24 @@ The current knowledge-base update is based on the codebase rather than benchmark
 
 ### What can be stated safely from the code
 
-- the default scheme is `schnorr` (ratified, being built in Story 6.16)
+- the default scheme is `schnorr` (built in Story 6.16)
 - BLS remains supported but optional, in two variants
 
 ### What should not be overstated from code alone
 
 The codebase by itself does not prove benchmark rankings. Any claim about one backend being faster must be backed by measurements; repeat them when a backend, its arithmetic library or the build profile changes.
 
-### Estimates for the ratified backends (QEMU, until the hardware run)
+### Estimates for the built backends (QEMU, until the hardware run)
 
-Instruction counts under QEMU (`mps2-an385 -icount shift=0`), thumbv6m firmware linked without an allocator, with painted stack high-water marks (Story 6.16 evaluation). The RP2040 times are **estimates** (instructions × 1.2–3 cycles at 125–133 MHz) until DEC-249's hardware run replaces them.
+Instruction counts under QEMU (`mps2-an385 -icount shift=0`) of the built `moonblokz-crypto` trait, one thumbv6m firmware per scheme linked without an allocator, with painted stack high-water marks (Story 6.16 AC6; `6-16-crypto-eval/final/`). Flash is the `test_crypto` link proof exercising every trait item. The RP2040 times are **estimates** (instructions × 1.2–3 cycles at 125 MHz) until DEC-249's hardware run (the `test_crypto` `crypto_timing` UF2s) replaces them.
 
-| Backend | Flash | Sign | Verify | 40-signer aggregate verify |
-|---|---:|---|---|---|
-| `schnorr` (`k256` 0.14, BIP-340) | about 40 KB | 12.1 M, 5.9 KB stack; about 0.1–0.3 s | 14.9 M, 10.0 KB stack; about 0.15–0.35 s | about 980 M, 6.3 KB stack (DEC-244); about 10–25 s |
-| `bls-min-sig` (zkcrypto `bls12_381` 0.9.2) | about 100 KB | 79 M | 772 M, 22.4 KB stack | about 3.6 G, 25.6 KB stack (keys decompressed per use) |
+| Scheme | Flash | Sign | Verify | Key decompress | 40-signer aggregate | 40-signer aggregate verify |
+|---|---:|---|---|---|---|---|
+| `schnorr` (`k256` 0.14, BIP-340) | 41 KB | 12.1 M, 5.9 KB stack; about 0.1–0.3 s | 15.9 M, 10.1 KB; about 0.15–0.4 s | 1.0 M, 1.6 KB | 1.5 M, 1.1 KB | 1.02 G, 6.1 KB (DEC-244); about 10–25 s |
+| `bls-min-sig` (zkcrypto `bls12_381` 0.9.2) | 98 KB | 79 M, 14.5 KB; about 0.8–1.9 s | 772 M, 22.5 KB; about 7–19 s | 71 M, 22.2 KB | 1.06 G, 9.8 KB | 3.56 G, 26.0 KB (keys decompressed per use); about 34–85 s |
+| `bls-min-pk` (zkcrypto `bls12_381` 0.9.2) | 100 KB | 299 M, 41.3 KB; about 3–7 s | 895 M, 33.6 KB; about 9–21 s | 26 M, 9.8 KB | 2.86 G, 22.7 KB | 1.93 G, 35.6 KB; about 19–46 s |
 
-`bls-min-pk` is measured in Story 6.16.
+The proof of possession costs a signature to make and a verification to check. `bls-min-pk` moves hash-to-curve into G2, so signing and its stack grow about 4× and 3× against `bls-min-sig`; its 33–41 KB stacks are what Story 6.17's BLS RP2040 profiles size Core 1 against.
 
 ### Measured timings on the reference hardware
 

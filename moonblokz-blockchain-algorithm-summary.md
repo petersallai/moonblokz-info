@@ -13,7 +13,7 @@ A compact, implementation-free restatement of the blockchain consensus and ledge
 ## 1. Notation and primitives
 
 - `H` = SHA-256. Hash order in tie-breaks: digest as big-endian unsigned integer.
-- `Sig` = one build-time backend (ratified, being built in Story 6.16): Schnorr = BIP-340 over secp256k1 (pk = 32 B x-only, even-y; sig = `r ‖ s`, 64 B, big-endian) or BLS12-381 in the IETF proof-of-possession suite, `bls-min-sig` (pk 96 B, sig 48 B) or `bls-min-pk` (pk 48 B, sig 96 B); BLS on the chain is Story 6.17. `MAX_AGG = 50` aggregated signatures [crypto, DEC-235, DEC-247].
+- `Sig` = one build-time backend (built in Story 6.16): Schnorr = BIP-340 over secp256k1 (pk = 32 B x-only, even-y; sig = `r ‖ s`, 64 B, big-endian) or BLS12-381 in the IETF proof-of-possession suite, `bls-min-sig` (pk 96 B, sig 48 B) or `bls-min-pk` (pk 48 B, sig 96 B); BLS on the chain is Story 6.17. `MAX_AGG = 50` aggregated signatures [crypto, DEC-235, DEC-247].
   - Schnorr sign: BIP-340 with `aux_rand = 0` (deterministic), `e = H_tag("BIP0340/challenge", r ‖ pk ‖ m) mod q`, `s = k + e·sk mod q`. Verify: BIP-340 (`R = sG − eP` not the identity, even y, `x(R) = r`).
   - Schnorr aggregate (one message `m` for all signers): `seed = H_tag("MoonBlokz/aggregate", r_1 ‖ … ‖ r_k ‖ P_1 ‖ … ‖ P_k ‖ m)`; `w_i = (H_tag("MoonBlokz/weight", seed ‖ i u32) mod (q − 1)) + 1`; `s* = Σ w_i s_i mod q`; artifact `(count u16 BE, s*, r_1..r_k)`, `34 + 32k` B, `count ≥ 1`. Verify the full point equation `s*G = Σ w_i R_i + Σ w_i e_i P_i`; signer order is part of the artifact [DEC-194, DEC-235].
   - BLS aggregate: `σ = Σ σ_i`, verified against `Σ P_i` (FastAggregateVerify), constant 50 B (min-sig) or 98 B (min-pk); rogue-key safe only with a verified proof of possession per key [DEC-248].
