@@ -2,7 +2,9 @@
 
 ## Purpose of This Document
 
-This document captures implementation-facing implications of the current MoonBlokz cryptographic design as implemented in `moonblokz-crypto-lib`.
+This document captures implementation-facing implications of the MoonBlokz cryptographic design in `moonblokz-crypto-lib`.
+
+**Status (2026-11-16): ratified, being built in Story 6.16.** Sections so marked describe the ratified target (DEC-235, DEC-244..250); `moonblokz-crypto-lib` `367c5e1` still carries the four earlier backends until the story lands.
 
 It complements the conceptual and algorithm documents by identifying:
 
@@ -18,16 +20,10 @@ It complements the conceptual and algorithm documents by identifying:
 
 ## Source Basis
 
-This document is based on the current contents of:
+This document is based on:
 
-- `moonblokz-crypto-lib/Cargo.toml`
-- `moonblokz-crypto-lib/src/lib.rs`
-- `moonblokz-crypto-lib/src/schnorr_malachite_signer.rs`
-- `moonblokz-crypto-lib/src/schnorr_num_bigint_dig_signer.rs`
-- `moonblokz-crypto-lib/src/schnorr_crypto_bigint_signer.rs`
-- `moonblokz-crypto-lib/src/bls_bls12_381_bls_signer.rs`
-- `moonblokz-crypto-lib/README.md`
-- `moonblokz-crypto-lib/run_tests.sh` as referenced by the repository guidance
+- `moonblokz-crypto-lib/Cargo.toml`, `src/lib.rs`, `README.md` and `run_tests.sh`
+- the ratified Story 6.16 decisions (`_bmad-output/implementation-artifacts/6-16-*.md`, D1–D8) and their evaluation measurements (QEMU `mps2-an385 -icount`, thumbv6m firmware linked without an allocator, `6-16-crypto-eval/`)
 - the Project Lead's reference-hardware measurements in the series article *MoonBlokz series part VI — Crypto Algorithms* (2025-05-26), named the current reference on 2026-10-28 (DEC-180)
 
 ## Scope and Intent
@@ -42,7 +38,7 @@ To stay aligned with the companion crypto files, this document uses the followin
 - **Aggregation-ready signature** — the single-signer artifact represented by `MultiSignature`, intended to be combined later.
 - **Aggregated signature** — the combined evidence artifact represented by `AggregatedSignature`.
 - **Algorithm family** — Schnorr or BLS.
-- **Backend** — one concrete compile-time-selected implementation.
+- **Backend** — one concrete compile-time-selected implementation, named by its scheme feature.
 
 When discussing exact public code constructs, this document still uses the type names `Signature`, `MultiSignature`, and `AggregatedSignature` directly.
 
@@ -65,8 +61,8 @@ From a delivery perspective, the current implementation provides a usable crypto
 - aggregation-ready signer contributions,
 - aggregated multi-party evidence,
 - bounded aggregated-signature payloads,
-- multiple backend options,
-- and `no_std` compatibility.
+- a build-time Schnorr / BLS choice,
+- and `no_std` compatibility without an allocator.
 
 It also makes one important product-level promise: the surrounding MoonBlokz code can switch crypto backends without changing the high-level application API.
 
@@ -129,40 +125,23 @@ If a future backend is added, it should preserve this same pattern unless there 
 
 ## Backend Inventory and Engineering Meaning
 
-The current crate contains four concrete backends.
+Ratified, being built in Story 6.16. Only libraries that build and run as `no_std` **without an allocator** qualify (Project Lead, 2026-11-14), so the crate keeps two backends behind three scheme features (DEC-245, DEC-246):
 
-### `schnorr-malachite`
+| Module | Features | Library | Notes |
+|---|---|---|---|
+| `src/schnorr_k256_signer.rs` | `schnorr` (default) | `k256` 0.14 | BIP-340 through `k256::schnorr` (DEC-235); constant-time, NCC-reviewed (2023), no C code; `precomputed-tables` off (31.7 KB of RAM). Our own code is the DEC-194 aggregate only. |
+| `src/bls_zkcrypto_signer.rs` | `bls-min-sig`, `bls-min-pk` | zkcrypto `bls12_381` 0.9.2 | The IETF proof-of-possession suite, one generic core for both variants (DEC-247); `sqrt-table` off (it pulls `alloc`). |
 
-- default backend
-- big-integer implementation using `malachite-base` and `malachite-nz`
-- closely mirrors the general Schnorr implementation model used by the older backends
-
-### `schnorr-num-bigint-dig`
-
-- alternate big-integer Schnorr implementation
-- depends on a git source rather than only registry crates
-- preserves the same public behavior with different arithmetic machinery
-
-### `schnorr-crypto-bigint`
-
-- fixed-width arithmetic Schnorr implementation using `crypto-bigint`
-- now present in the codebase and must be treated as a real supported backend
-- includes backend-specific regression vectors in the root test module
-
-### `bls-bls12_381-bls`
-
-- wrapper-style BLS backend
-- delegates the core signature math to the external BLS ecosystem
-- uses much thinner backend code than the Schnorr implementations
+Removed: `schnorr-malachite` and `schnorr-num-bigint-dig` (they allocate on every operation; malachite was the crate default), `schnorr-crypto-bigint` (minutes per operation on an RP2040 and not constant-time, DEC-245), and `bls-bls12_381-bls` (forgeable, see the [Crypto Algorithm Model](./moonblokz-crypto-algorythm.md) §BLS Algorithm Family Model), with their dependencies (`malachite-*`, the `num-bigint-dig` git fork, `num-traits`, `crypto-bigint`, `bls12_381-bls`, `dusk-bls12_381`, `dusk-bytes`).
 
 ## Architect View: Boundary Discipline in the Current Code
 
 Architecturally, the code separates concerns cleanly into these boundaries:
 
 1. **crate root** — traits, constants, compile-time guards, re-exports, and root tests
-2. **Schnorr backends** — curve arithmetic, deterministic signing, aggregation logic, serialization
-3. **BLS backend** — wrapper logic, public-key aggregation, serialization
-4. **Cargo feature layer** — exactly-one-backend selection
+2. **Schnorr backend** — BIP-340 through `k256`, the DEC-194 aggregate, serialization
+3. **BLS backend** — the generic suite core instantiated per variant, serialization
+4. **Cargo feature layer** — exactly-one-scheme selection
 
 This boundary discipline is one of the most important implementation properties to preserve.
 
@@ -170,25 +149,21 @@ This boundary discipline is one of the most important implementation properties 
 
 The `Cargo.toml` feature design has real engineering consequences.
 
-### Internal family features
+Ratified, being built in Story 6.16 (DEC-246).
 
-- `schnorr`
-- `bls`
+### Scheme features
 
-These let the crate root define family-level constants and conditional exports.
+- `schnorr` (default)
+- `bls-min-sig`
+- `bls-min-pk`
 
-### Concrete backend features
-
-- `schnorr-malachite`
-- `schnorr-num-bigint-dig`
-- `schnorr-crypto-bigint`
-- `bls-bls12_381-bls`
+The constants are gated per selected feature. A private `bls` helper feature, enabled by both BLS variants, may gate their shared code; Cargo features are public, so the guards also refuse `bls` without a variant.
 
 ### Practical consequences
 
-- CI must test more than the default feature
-- downstream users must disable default features when selecting a non-default backend
-- docs and examples should keep reminding readers that exactly one backend feature is required
+- tests must run under all three features, not only the default
+- downstream users must disable default features when selecting a BLS variant
+- every forwarding crate (chain-types, storage, configuration, vote, mempool, blockchain, the node) forwards the same three names; chain-types refuses the BLS variants until Story 6.17
 
 ## `#![no_std]` and Allocation Discipline
 
@@ -209,52 +184,33 @@ It also uses:
 - fixed upper bounds for aggregate counts,
 - and output-buffer-based serialization for aggregated signatures.
 
-That is consistent with microcontroller-friendly design.
+That is consistent with microcontroller-friendly design. In the ratified backends no operation allocates, and BLS verification uses two `pairing()` calls because `multi_miller_loop` and `G2Prepared` are `alloc`-gated in `bls12_381`.
 
 ## Schnorr Backend Engineering Implications
 
-The three Schnorr backends are structurally similar but not identical.
+Ratified, being built in Story 6.16 (DEC-235, DEC-244).
 
-### Shared engineering behavior
+### One implementation, the library's
 
-All current Schnorr backends implement:
+Single signatures use `k256`'s BIP-340 path (`sign_prehash` with `aux_rand = 0`, `verify_raw`), not a re-implementation, and the official BIP-340 vectors check it. The earlier three Schnorr backends claimed equivalent behavior but differed in trimming, index encoding and verification; with one backend there is nothing to keep in parallel.
 
-- secp256k1-style point arithmetic,
-- `x`-only public-key serialization,
-- deterministic nonce derivation via tagged SHA-256,
-- identical public trait behavior,
-- and the same deterministically weighted aggregation scheme.
+### Byte representations
 
-### Important code-maintenance consequence
+`PublicKey`, `Signature` and `MultiSignature` keep only their bytes (32 / 64 B), validated in `new` and re-parsed where used (about 1 M instructions, about 7 % of a verify), so a 40-signer `&[&PublicKey]` stays about 1.3 KB.
 
-If one Schnorr backend changes behavior and the others do not, the stable public API alone will not protect semantic consistency. Future changes should therefore treat the three Schnorr backends as one behavioral family that needs parallel maintenance.
+### The aggregate is our own code
+
+`k256` keeps its `r` / `s` accessors and its tagged hash private, so the module has its own tagged hash and reads `sᵢ` from the signature bytes. The weight reduction `mod (q − 1)`, then `+ 1`, is one conditional subtraction on the 256-bit integer (`2²⁵⁶ < 2(q − 1)`), isolated in a helper with boundary tests at `q − 2`, `q − 1`, `q` and `2²⁵⁶ − 1`, since hashing practically never reaches the subtraction branch.
 
 ## Deterministic Nonce Implementation Cautions
 
-The Schnorr backends all derive nonces from:
-
-- tag,
-- private key bytes,
-- message,
-- counter.
+BIP-340 with `aux_rand = 0³²` derives the nonce from the private key and the message only (DEC-235, FR63).
 
 ### Why this matters in implementation work
 
-Any change to:
+Any change to the auxiliary randomness, the tagged-hash conventions or the endianness changes signature outputs and breaks the BIP-340 vectors and the pinned aggregate vectors. Nothing of the earlier little-endian convention survives in the new module: keys, `r`, `s` and the aggregate `count` are big-endian.
 
-- hash input order,
-- tag bytes,
-- byte trimming behavior,
-- endianness,
-- or zero-retry logic
-
-would change signature outputs and potentially break compatibility or regression expectations.
-
-### Additional caution
-
-The `schnorr-crypto-bigint` backend trims some little-endian byte slices before challenge and aggregation hashing, while the older big-integer backends naturally derive variable-length byte arrays from their integer types.
-
-This means byte-level compatibility between Schnorr backends should never be assumed without explicit tests.
+`k256`'s `sign_raw` re-verifies under `debug_assertions`, so timing is measured in release builds only.
 
 ## Aggregation Engineering Implications
 
@@ -266,8 +222,8 @@ The current aggregation model is more constrained and stateful than a simplistic
 - aggregate verification expects matching public-key order
 - aggregation depends on the message
 - Schnorr aggregation stores all `r` components explicitly
-- aggregation is rejected when empty
-- aggregation is rejected above 50 inputs
+- aggregation is rejected when empty, above 50 inputs, or when the signature and key counts differ
+- a `count = 0` aggregate is refused at parse (the earlier backends verified an empty aggregate as true)
 
 ### Engineering consequence
 
@@ -279,18 +235,18 @@ The library makes serialization formats protocol-visible.
 
 ### Schnorr aggregated signatures
 
-Current encoding is:
+Ratified encoding (DEC-235):
 
-- 2-byte little-endian count
-- 32-byte combined `s`
+- 2-byte big-endian count
+- 32-byte big-endian combined `s`
 - `count * 32` bytes of `r`
 
 ### BLS aggregated signatures
 
-Current encoding is:
+Ratified encoding (DEC-247):
 
-- 2-byte little-endian count
-- 48-byte aggregated signature
+- 2-byte count (byte order not fixed by Story 6.16)
+- the aggregated signature: 48 B (`bls-min-sig`) or 96 B (`bls-min-pk`)
 
 ### Practical consequence
 
@@ -302,50 +258,33 @@ Schnorr public keys are reconstructed from `x` only.
 
 ### Engineering consequence
 
-This design is compact, but it means public-key parsing includes curve reconstruction logic and validation.
-
-Future changes must preserve:
-
-- modulus checks,
-- curve-membership checks,
-- and even-`y` normalization behavior,
-
-or else deserialization and verification semantics may drift.
+This design is compact, but public-key parsing includes curve reconstruction and validation. In the ratified backend it is `k256`'s BIP-340 `lift_x` (`VerifyingKey::from_bytes`: modulus check, curve membership, even `y`), so the semantics are BIP-340's. An all-zero key, which the blockchain uses to mean "absent", stays safe: `x = 0` is not on secp256k1, and an all-zero BLS key lacks the compression flag.
 
 ## BLS Backend Engineering Implications
 
-The BLS backend behaves differently enough from Schnorr that engineers should avoid over-generalizing.
+Ratified, being built in Story 6.16 (DEC-247, DEC-248). The BLS backend behaves differently enough from Schnorr that engineers should avoid over-generalizing.
 
-### Thinner implementation
+### One generic core
 
-Most of the complex mathematics are delegated to external library types.
+A private trait (or a small set of type parameters) names the signature group, the key group, the DST and the pairing argument order; hashing, KeyValidate, signing, aggregation and the pairing check are written once. Only the groups, the DSTs and the sizes differ between `bls-min-sig` and `bls-min-pk`.
 
-### Different role mapping in implementation terms
+### Encoding details
 
-In BLS:
+- The private key is big-endian (the suite's I2OSP form), while zkcrypto's `Scalar::from_bytes` is little-endian, so the bytes are reversed.
+- `from_compressed` performs the subgroup check but accepts the infinity encoding, so KeyValidate adds an explicit identity rejection.
+- Hash-to-curve uses `bls12_381`'s `experimental` RFC 9380 implementation; hash-to-G2 works without `alloc` (only `ExpandMsgXmd::into_vec` needs it).
 
-- `Signature` and `MultiSignature` are genuinely different wrapper types
-- `AggregatedSignature` stores a BLS multisignature internally
+### Key-validation cost
 
-### Verification model
-
-Aggregated verification depends on public-key aggregation through `MultisigPublicKey::aggregate`.
+Decompressing and subgroup-checking a G2 key (min-sig) costs about 50–89 M instructions, paid on every verify that parses a key: a 40-key aggregate check is about 41 s with per-use validation against about 9 s with pre-validated keys (QEMU-based estimates). An LRU cache of validated keys ([Blockchain Architecture](./moonblokz-blockchain-architecture.md) §12.3) is the remedy if it binds; it matters once the chain uses BLS (Story 6.17).
 
 ### Practical consequence
 
-If BLS remains supported, tests and documentation must continue to describe family-specific behavior rather than pretending every backend behaves identically internally.
+Tests and documentation describe family-specific behavior rather than pretending every backend behaves identically internally.
 
 ## Unsafe and Low-Level Code Cautions
 
-The BLS backend uses `MaybeUninit` plus raw-slice reconstruction to aggregate signatures and public keys without heap allocations.
-
-### Engineering consequence
-
-This is efficient and compatible with the crate’s bounded-memory goals, but it means future modifications in those areas require extra care.
-
-### Specific caution
-
-Any change to the initialization logic or slice length calculations in those `MaybeUninit` paths should be reviewed carefully because mistakes there would create memory-safety risks even inside an otherwise safe Rust crate.
+Ratified, being built in Story 6.16: neither backend has `unsafe` code (the earlier BLS backend's `MaybeUninit` aggregation goes), so the crate takes `#![forbid(unsafe_code)]` and its Miri script is removed.
 
 ## Dependency and Supply-Chain Implications
 
@@ -355,24 +294,13 @@ The current `Cargo.toml` reveals a few practical maintenance facts.
 
 All crypto backends are behind optional dependencies. This is good for binary minimization and backend isolation.
 
-### Git dependency
+### Ratified dependency set (Story 6.16, DEC-250)
 
-`schnorr-num-bigint-dig` depends on:
+- `k256` 0.14 (`default-features = false`, `arithmetic`, `schnorr`); `schnorr` pulls `signature` 3 and, through `digest`, the optional `ecdsa` / `der` crates, which LTO strips from the firmware.
+- zkcrypto `bls12_381` 0.9.2 (`default-features = false`, `groups`, `pairings`, `experimental`).
+- SHA-256: the Schnorr backend hashes with `k256`'s re-exported `sha2` 0.11, and the workspace moves to `sha2` 0.11; `sha2` 0.10 is an optional dependency enabled only by the BLS variants, because `bls12_381`'s `ExpandMsgXmd` is bound to `digest` 0.10.
 
-- `num-bigint-dig = { git = "https://github.com/petersallai/num-bigint.git", ... }`
-
-This introduces a stronger maintenance and reproducibility dependency than pure crates.io sourcing.
-
-### Mixed ecosystem surface
-
-The crate spans multiple arithmetic ecosystems:
-
-- Malachite
-- num-bigint-dig
-- crypto-bigint
-- bls12_381-bls and dusk libraries
-
-That increases replaceability, but also increases maintenance surface area.
+All sources are crates.io; the `num-bigint-dig` git fork goes. `Cargo.lock` stays untracked.
 
 ## Documentation and Metadata Caveat
 
@@ -384,7 +312,7 @@ The current codebase contains a notable inconsistency that should be treated exp
 
 - crate license: `MIT`
 
-but repository guidance and older article-oriented documentation discuss licensing concerns around dependent libraries, especially in the Malachite path.
+but repository guidance and older article-oriented documentation discuss licensing concerns around dependent libraries, especially in the Malachite path, which Story 6.16 removes.
 
 ### Resolution guidance
 
@@ -405,15 +333,15 @@ Most tests are written against the common public API and therefore apply to whic
 
 ### Default `cargo test` is not enough
 
-Because only one backend is active at a time and the default is `schnorr-malachite`, a plain `cargo test` does not validate the non-default backends.
+Because only one backend is active at a time and the default is `schnorr`, a plain `cargo test` does not validate the BLS variants.
 
-### `schnorr-crypto-bigint` has extra regression coverage
+### Byte-level vectors
 
-That backend currently has explicit expected-byte regression vectors for signatures and aggregates.
+Ratified, being built in Story 6.16: official BIP-340 vectors and pinned DEC-194 aggregate vectors for `schnorr`, RFC 9380 hash-to-curve vectors plus pinned or Ethereum consensus-spec signature vectors for the BLS variants ([Crypto Algorithm Model](./moonblokz-crypto-algorythm.md) §Byte-level vectors). They replace the `schnorr-crypto-bigint` regression vector.
 
 ### Engineering consequence
 
-Future CI or release validation should include all supported backend feature combinations, not just the default backend.
+`run_tests.sh` runs the three scheme features, with clippy (`--all-targets -D warnings`) and `cargo fmt --check` per feature; crypto-lib has no CI of its own.
 
 ## Performance and Benchmark Interpretation Caution
 
@@ -421,15 +349,27 @@ The current knowledge-base update is based on the codebase rather than benchmark
 
 ### What can be stated safely from the code
 
-- the default backend is `schnorr-malachite`
-- BLS remains supported but optional
-- multiple Schnorr arithmetic backends are maintained
+- the default scheme is `schnorr` (ratified, being built in Story 6.16)
+- BLS remains supported but optional, in two variants
 
 ### What should not be overstated from code alone
 
-The current codebase by itself does not prove fresh benchmark rankings for all backends. Any claim about one backend being faster today must be backed by measurements. The Project Lead's measurements below are the current reference (DEC-180); repeat them when a backend, its arithmetic library or the build profile changes.
+The codebase by itself does not prove benchmark rankings. Any claim about one backend being faster must be backed by measurements; repeat them when a backend, its arithmetic library or the build profile changes.
+
+### Estimates for the ratified backends (QEMU, until the hardware run)
+
+Instruction counts under QEMU (`mps2-an385 -icount shift=0`), thumbv6m firmware linked without an allocator, with painted stack high-water marks (Story 6.16 evaluation). The RP2040 times are **estimates** (instructions × 1.2–3 cycles at 125–133 MHz) until DEC-249's hardware run replaces them.
+
+| Backend | Flash | Sign | Verify | 40-signer aggregate verify |
+|---|---:|---|---|---|
+| `schnorr` (`k256` 0.14, BIP-340) | about 40 KB | 12.1 M, 5.9 KB stack; about 0.1–0.3 s | 14.9 M, 10.0 KB stack; about 0.15–0.35 s | about 980 M, 6.3 KB stack (DEC-244); about 10–25 s |
+| `bls-min-sig` (zkcrypto `bls12_381` 0.9.2) | about 100 KB | 79 M | 772 M, 22.4 KB stack | about 3.6 G, 25.6 KB stack (keys decompressed per use) |
+
+`bls-min-pk` is measured in Story 6.16.
 
 ### Measured timings on the reference hardware
+
+These are DEC-180's figures: the earlier backends, measured with an allocator. No node build uses them (every firmware build links without an allocator, and the node never ran malachite); they are superseded once DEC-249's hardware run measures the ratified backends.
 
 The Project Lead measured the backends on the reference hardware and published the results in the series article *MoonBlokz series part VI — Crypto Algorithms* (2025-05-26). On 2026-10-28 the Project Lead named these the current reference (DEC-180). Hardware: Waveshare RP2040-LoRa (Raspberry Pi Pico 1 class, dual-core 133 MHz, 264 KB SRAM). Test project: Embassy firmware, 10 signers, SHA-256, message `"Hello, world!"`. "Aggregate" is the aggregation of 10 multi-signatures, and "Verify aggregated" is the verification of that aggregate.
 
@@ -445,16 +385,12 @@ The Project Lead measured the backends on the reference hardware and published t
 | `schnorr-malachite` (`"s"`, 576 KB) | 0.7 s | 1.4 s | 0.7 s | 0 s | 22 s |
 | `schnorr-malachite` (`3`, 1,124 KB) | 1 s | 2.1 s | 1 s | 0 s | 33 s |
 
-What follows for the current build:
+What followed from them:
 
-- **Which row applies.** The default backend is `schnorr-malachite`, and `moonblokz-node` builds with `opt-level = "z"`, so a single verification costs about 1.9 s and an aggregate costs about 2.9 s per signer. The `"s"` profile is about 25 % faster.
-- **Aggregation saves space, not time.** The Schnorr half-aggregate is slower to verify per signer than separate verifications (2.9 s against 1.9 s).
-- **BLS is out of reach on this hardware.** A single verification takes 13–20 s, and the article estimates about 2.5 minutes for a block.
-- **Not measured:** the `schnorr-crypto-bigint` backend.
+- **The KB's derived limits use the `schnorr-malachite` `"z"` row** (DEC-180): about 1.9 s per verification and 2.9 s per signer for an aggregate (system constraints §2.1). The `"s"` profile is about 25 % faster.
+- **Aggregation saved space, not time** on that backend (2.9 s against 1.9 s per signer).
+- **The `bls12_381-bls` rows are of the forgeable backend** that Story 6.16 removes.
 - **Acceleration is deferred to a later development phase (O-032).**
-
-
-This matters because the code now includes a `schnorr-crypto-bigint` backend that earlier documentation did not cover.
 
 ## Feasibility Boundaries for Future Change
 
@@ -462,7 +398,7 @@ This matters because the code now includes a `schnorr-crypto-bigint` backend tha
 
 - adding more tests for existing semantics
 - improving internal arithmetic performance without changing external behavior
-- adding a new backend while preserving the public surface
+- adding a new backend while preserving the public surface and the no-allocator rule
 - tightening validation where it does not alter valid serialized artifacts
 
 ### High-risk kinds of future change
@@ -472,7 +408,7 @@ This matters because the code now includes a `schnorr-crypto-bigint` backend tha
 - changing signer-order sensitivity in aggregation
 - removing the aggregate bound without redesigning memory expectations
 - introducing `std` assumptions into the core crate
-- drifting the three Schnorr backends into semantically different behaviors
+- a Schnorr implementation beside `k256`'s BIP-340 path (DEC-245)
 
 ## Related Documents
 

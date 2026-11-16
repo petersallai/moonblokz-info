@@ -13,10 +13,10 @@ A compact, implementation-free restatement of the blockchain consensus and ledge
 ## 1. Notation and primitives
 
 - `H` = SHA-256. Hash order in tie-breaks: digest as big-endian unsigned integer.
-- `Sig` = one build-time backend: Schnorr over secp256k1 (pk = 32 B x-only, even-y; sig = `(r, s)`, 64 B) or BLS12-381 (pk 96 B, sig 48 B). `MAX_AGG = 50` aggregated signatures [crypto].
-  - Schnorr sign: `k = H_tag("nonce", sk ‖ m ‖ ctr)` (deterministic), `R = kG` normalized to even y, `e = H_tag("challenge", r ‖ pk ‖ m) mod n`, `s = k + e·sk mod n`. Verify: `r < p`, `s < n`, `x(sG − eP) = r`.
-  - Schnorr aggregate (one message `m` for all signers): `r_sum = Σ r_i mod p`; `seed = H_tag("aggregate", r_sum ‖ r_sum ‖ m)`; `w_i = H_tag("rand", seed ‖ i) ∈ [1, n−1]`; `s* = Σ w_i s_i mod n`; artifact `(count, s*, r_1..r_k)`, `34 + 32k` B. Verify `x(s*G − Σ w_i e_i P_i) = x(Σ w_i R_i)`; signer order is part of the artifact.
-  - BLS aggregate: library multisignature aggregation, constant 50 B.
+- `Sig` = one build-time backend (ratified, being built in Story 6.16): Schnorr = BIP-340 over secp256k1 (pk = 32 B x-only, even-y; sig = `r ‖ s`, 64 B, big-endian) or BLS12-381 in the IETF proof-of-possession suite, `bls-min-sig` (pk 96 B, sig 48 B) or `bls-min-pk` (pk 48 B, sig 96 B); BLS on the chain is Story 6.17. `MAX_AGG = 50` aggregated signatures [crypto, DEC-235, DEC-247].
+  - Schnorr sign: BIP-340 with `aux_rand = 0` (deterministic), `e = H_tag("BIP0340/challenge", r ‖ pk ‖ m) mod q`, `s = k + e·sk mod q`. Verify: BIP-340 (`R = sG − eP` not the identity, even y, `x(R) = r`).
+  - Schnorr aggregate (one message `m` for all signers): `seed = H_tag("MoonBlokz/aggregate", r_1 ‖ … ‖ r_k ‖ P_1 ‖ … ‖ P_k ‖ m)`; `w_i = (H_tag("MoonBlokz/weight", seed ‖ i u32) mod (q − 1)) + 1`; `s* = Σ w_i s_i mod q`; artifact `(count u16 BE, s*, r_1..r_k)`, `34 + 32k` B, `count ≥ 1`. Verify the full point equation `s*G = Σ w_i R_i + Σ w_i e_i P_i`; signer order is part of the artifact [DEC-194, DEC-235].
+  - BLS aggregate: `σ = Σ σ_i`, verified against `Σ P_i` (FastAggregateVerify), constant 50 B (min-sig) or 98 B (min-pk); rogue-key safe only with a verified proof of possession per key [DEC-248].
 - `S_head`, `S_tail` (oldest active block; `0` until the chain reaches length `W`); `W` = window length (chain-config); `Hv ∈ [1, W − 1]` = verification horizon and maximum switch depth, chain-config `verification_horizon` (default 50), identical on every node (named `H` in the PRD and [Glossary](./moonblokz-glossary.md)); horizon blocks keep the active-path flag but lie outside the window [FR48, FR58, DEC-160, DEC-206, DEC-207].
 - `M` = `max_known_node_id` watermark; node `n` exists ⇔ `n ∈ [0, M]`.
 - `av(n)` = accumulated vote (u32, checked arithmetic); `vs` = `vote_scale`, `vi` = `vote_interest`.
@@ -34,7 +34,7 @@ Header: `version u8 (=1) | sequence u32 | creator u32 | mined_amount u32 | paylo
 **Transaction block** (type 1): `count u16` (a protocol bound of 65 535 per block), then transactions, each starting `type u8 | vote u32`. A transaction block never holds both a registration (T2) and a complex transaction (T3) [FR6, FR9 Tier 1].
 
 - **T1 node transfer**: `anchor u32, initializer, receiver, amount u64, fee u32, comment u64, sig`; `sig = Sig_{sk(initializer)}(transaction bytes, sig zeroed)`, covering `type` and `vote`.
-- **T2 registration**: `initializer, new_node_id, registration_price u64, fee u64, new_pk, new_key_sig = Sig_{sk_new}(new_pk), sig = Sig_{sk(initializer)}(transaction bytes, sig zeroed, new_key_sig present)`. No anchor.
+- **T2 registration**: `initializer, new_node_id, registration_price u64, fee u64, new_pk, new_key_sig = Pop_{sk_new}(new_pk), sig = Sig_{sk(initializer)}(transaction bytes, sig zeroed, new_key_sig present)`, `Pop` the proof of possession [DEC-248]. No anchor.
 - **T3 complex**: `in_count u8, out_count u8`, inputs, outputs (≥ 1 output; UTXO outputs per block ≤ `max_block_utxo_output`).
   - UTXO input: `(q = block_sequence u32, i = output_index u16, a = amount u64, sig)`. `sig` is by the key equal to the referenced output's address, over the whole transaction with every input signature zeroed [DEC-196]. `i` = position in block `q`'s UTXO-output stream (UTXO outputs only, transaction order, output order) [ADR-016, DEC-131].
   - Balance input: `(anchor, initializer, amount, comment, sig)`, sig "over this input and all outputs".
@@ -225,7 +225,7 @@ Each entry is defined in the [Open Gaps Register](./moonblokz-open-gaps-register
 5. Support non-conflict is scoped to `(proposer, sequence)`, so one node may support deviations by different proposers at the same sequence. `A` and the seed are evaluated per branch on the supporter's local chain.
 6. The approval threshold is `r_eff = min(r, ⌊|A'|/2⌋ + 1)`, a strict majority of the subgroup at every size, so evidence can form whenever a majority of the subgroup signs; a small voting set approves by simple majority (DEC-172). The seed depends on `p`, `x` and the money on the chain after `p − 1`; a creator moves that total only through the registrations it includes, whose price is burned, so grinding it is costly [DEC-192].
 7. `supporter_vote_sum` is a closed form of chain state, not of the signer set.
-8. Schnorr aggregate weights depend on `(Σ r_i mod p, m, i)` only, not on the public keys. Registration requires proof of possession `new_key_sig = Sig_{sk_new}(new_pk)` (ordinary signature type).
+8. Schnorr aggregate weights depend on every `(r_i, P_i)` in order, the message and `i` [DEC-194, DEC-235]. Registration requires proof of possession `new_key_sig = Pop_{sk_new}(new_pk)`: for Schnorr a BIP-340 signature over `"MoonBlokz/pop" ‖ new_pk`, a domain no ordinary signature shares; for BLS the suite's `PopProve` [DEC-248].
 9. `hash(b)` covers the signature; the block signature covers the header with the signature field zeroed and `H(payload)` [FR70].
 10. Block-level rules for T1 and balance inputs are `max(0, s − W) ≤ anchor < s` plus no duplicate within the retained candidate chain. An earlier inclusion lies above the anchor and so inside the window: the duplicate check is complete, and a transaction cannot be included again after its block leaves the window [FR6, FR9, FR14, DEC-174].
 11. UTXO references `(q, i)` are branch-relative: after a reorg the same pair may name a different output, and spends of outputs re-included at another position become invalid [ADR-016].

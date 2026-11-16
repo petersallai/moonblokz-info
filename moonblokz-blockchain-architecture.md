@@ -999,7 +999,7 @@ When a deployment selects the BLS crypto backend, the default const-generic valu
 
 ### 12.3 Future optimization (NOT MVP)
 
-A future architectural enhancement: **LRU public key cache**. Hot nodes' public keys stay in a small RAM cache (e.g. 100-200 slots = ~10-20 KB BLS), cold nodes only hold a reference to the block where the key lives. Storage read on cache miss. Could save ~70-80 KB on BLS deployments. Tracked as a follow-up, not in MVP.
+A future architectural enhancement: **LRU public key cache**. Hot nodes' public keys stay in a small RAM cache (e.g. 100-200 slots = ~10-20 KB BLS), cold nodes only hold a reference to the block where the key lives. Storage read on cache miss. Could save ~70-80 KB on BLS deployments. Tracked as a follow-up, not in MVP. It is the key-RAM lever of a `bls-min-sig` build (96 B keys; `bls-min-pk` halves the array instead, DEC-247), and a cache of already validated keys also removes the per-use decompression and subgroup check: about 9 s instead of about 41 s for a 40-key aggregate check (QEMU-based estimate, DEC-248).
 
 ---
 

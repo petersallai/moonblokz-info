@@ -92,7 +92,9 @@ Cross-check: on BLS the `ApprovalAccumulator` costs ~4 B per supporter (`4 + 0`)
 
 ### 2.1 Measured crypto timings (RP2040) and what they cost
 
-Authoritative source: [`moonblokz-crypto-implementation.md`](./moonblokz-crypto-implementation.md) §Measured timings on the reference hardware (DEC-180). The current build is `schnorr-malachite` with `opt-level = "z"`: about 0.9 s to sign, 1.9 s to verify one signature, and 2.9 s per signer to verify an aggregate. The `"s"` profile is about 25 % faster.
+Authoritative source: [`moonblokz-crypto-implementation.md`](./moonblokz-crypto-implementation.md) §Measured timings on the reference hardware (DEC-180). The figures below are DEC-180's `schnorr-malachite` measurements at `opt-level = "z"`, taken with an allocator — not the node build: about 0.9 s to sign, 1.9 s to verify one signature, and 2.9 s per signer to verify an aggregate. The `"s"` profile is about 25 % faster.
+
+The ratified `schnorr` backend (`k256`, DEC-235; being built in Story 6.16) has only QEMU-based **estimates** until DEC-249's hardware run: sign about 12 M and verify about 15 M instructions, a 40-signer aggregate check about 980 M (DEC-244), so roughly 0.1–0.3 s to sign, 0.15–0.35 s to verify and 10–25 s per 40-signer aggregate on an RP2040 ([`moonblokz-crypto-implementation.md`](./moonblokz-crypto-implementation.md) §Estimates for the ratified backends). The derived costs below are recomputed from the measured numbers once they exist.
 
 A node relays a block or support message only after accepting it, so each relay hop adds the verification time. The exception is a support whose deviation is not on the receiver's active chain and whose supporter key the receiver cannot derive: it is accepted and relayed unverified ([BC-FR26](./moonblokz-blockchain-prd.md), DEC-232, AR-023). The costs below are derived, not measured: they assume about 3 hops to the median node, on top of the measured unsigned-block `t₅₀` of 33 s at 100 nodes.
 
@@ -162,6 +164,8 @@ Per-lever savings: [`moonblokz-blockchain-architecture.md`](./moonblokz-blockcha
 | BLS-small | 250 | 300 | ~49 KB ✅ |
 
 Most impactful lever: `MAX_NODES 1000 → 500` saves ~57 KB (BLS) but halves the node capacity, so the build joins only chains with `max_node_count ≤ 500` — and is the minimum tuning needed to make BLS fit at all once the radio medium profile is counted at its real ~60 KB.
+
+The figures above are `bls-min-sig` (96 B keys). Two levers relieve the key array without cutting capacity: `bls-min-pk` halves it (48 B keys, DEC-247), and the LRU public-key cache of architecture §12.3 keeps only hot keys in RAM (not MVP).
 
 ---
 

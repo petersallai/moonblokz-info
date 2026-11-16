@@ -91,9 +91,10 @@ This has several engineering consequences:
 The crate currently defaults to:
 
 - `backend-memory`
-- `schnorr`
+- `schnorr` (ratified, being built in Story 6.16; until then `schnorr-crypto-bigint`)
+- `block-size-2016`
 
-The `schnorr` feature enables `moonblokz-crypto/schnorr-crypto-bigint`.
+The scheme feature (`schnorr`, `bls-min-sig` or `bls-min-pk`, DEC-246) is a pure forward to chain-types and the crypto crate; no storage source gates on it.
 
 This means the storage crate’s default development posture is a host-friendly memory backend rather than embedded flash.
 

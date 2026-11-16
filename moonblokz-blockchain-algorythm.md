@@ -356,7 +356,7 @@ Registration adds a new node identifier and public key to the network.
    Public key of the new node. It must be globally unique.
 
 6. **`new_key_signature: [u8;64]`**  
-   Proof that the registering party possesses the corresponding private key. Part V describes this as a Schnorr-compatible signature of the public key itself.
+   Proof that the registering party possesses the corresponding private key: the crypto library's `prove_possession` by the new key (DEC-248; ratified, being built in Story 6.16). For Schnorr it is a BIP-340 signature over `"MoonBlokz/pop" ‖ new_public_key`, so it is not an ordinary signature of the key itself as in Part V; see [Crypto Algorithm Model](./moonblokz-crypto-algorythm.md) §Proof of Possession.
 
 7. **`signature: [u8;64]`**  
    Signature over the full transaction content by the initializer.
@@ -882,7 +882,7 @@ A registration transaction is valid only if:
 - the initializer can pay registration price plus fee,
 - `new_node_id` equals `max_known_node_id + 1` at its intra-block position ([Blockchain PRD](./moonblokz-blockchain-prd.md) FR6),
 - the public key is unique,
-- the `new_key_signature` proves possession of the corresponding private key,
+- the `new_key_signature` proves possession of the corresponding private key (`verify_possession`, DEC-248),
 - and the initializer signature is valid.
 
 ### Complex transaction validity
