@@ -18,7 +18,7 @@ Its purpose is to capture:
 
 This file is the **primary knowledge-base document for the formal crypto model**.
 
-**Status (2026-11-16): built in Story 6.16.** The backends, features, encodings and proof-of-possession methods below are built (DEC-235, DEC-244..248); the four earlier backends (`schnorr-malachite`, `schnorr-num-bigint-dig`, `schnorr-crypto-bigint`, `bls-bls12_381-bls`) are removed. BLS on the chain is Story 6.17; the sections marked ratified (`SIGNATURE_SCHEME`, DEC-252; BLS aggregation without the repeated subgroup check, AC0) are being built there.
+**Status (2026-11-17): built in Stories 6.16 and 6.17.** The backends, features, encodings and proof-of-possession methods below are built (DEC-235, DEC-244..248); the four earlier backends (`schnorr-malachite`, `schnorr-num-bigint-dig`, `schnorr-crypto-bigint`, `bls-bls12_381-bls`) are removed. BLS on the chain, `SIGNATURE_SCHEME` (DEC-252) and BLS aggregation without the repeated subgroup check (AC0) are built in Story 6.17.
 
 - Use [moonblokz-crypto-concept.md](./moonblokz-crypto-concept.md) for the higher-level explanation of design goals and trade-offs.
 - Use [moonblokz-crypto-implementation.md](./moonblokz-crypto-implementation.md) for engineering implications, compatibility cautions, and maintenance guidance.
@@ -108,7 +108,7 @@ Built in Story 6.16 (DEC-246). The feature names the scheme, not the implementat
 | `bls-min-sig` | zkcrypto `bls12_381` 0.9.2 (`groups`, `pairings`, `experimental`; no `sqrt-table`) | IETF `BLS_SIG_BLS12381G1_XMD:SHA-256_SSWU_RO_POP_` |
 | `bls-min-pk` | zkcrypto `bls12_381` 0.9.2 | IETF `BLS_SIG_BLS12381G2_XMD:SHA-256_SSWU_RO_POP_` |
 
-A private `bls` helper feature, enabled by both BLS variants, may gate their shared code; the guards also refuse it without a variant. Every crate that forwards a backend forwards these three names, `default` containing `schnorr`; chain-types refuses both BLS features until Story 6.17.
+A private `bls` helper feature, enabled by both BLS variants, may gate their shared code; the guards also refuse it without a variant. Every crate that forwards a backend forwards these three names, `default` containing `schnorr`, and builds under each (chain-types since Story 6.17).
 
 ## Public API Re-Export Model
 
@@ -226,7 +226,7 @@ Across all families, the library currently uses:
 
 This gives the library a compile-time upper bound for serialized aggregated-signature storage.
 
-Ratified, being built in Story 6.17 (DEC-252): `SIGNATURE_SCHEME: u8`, gated per feature — 0 `schnorr`, 1 `bls-min-sig`, 2 `bls-min-pk` — the build's scheme code that the blockchain and `config-encoder` pass to configuration acceptance as `BuildLimits::signature_scheme`.
+Since Story 6.17 (DEC-252): `SIGNATURE_SCHEME: u8`, gated per feature — 0 `schnorr`, 1 `bls-min-sig`, 2 `bls-min-pk` — the build's scheme code that the blockchain and `config-encoder` pass to configuration acceptance as `BuildLimits::signature_scheme`.
 
 The **practical per-backend ceiling** for how many supporters fit into one approval evidence block differs because `AGGREGATED_SIGNATURE_VARIABLE_SIZE` differs between backends. With a roughly 2 KB block-size budget, minus headers and a 4-byte node-id per signer, the resulting capacities are approximately 50 supporters for Schnorr (`VARIABLE_SIZE = 32`) and approximately 450 supporters for BLS (`VARIABLE_SIZE = 0`). The current global cap of 50 therefore matches the Schnorr capacity today; a BLS-centered deployment could carry more supporters per approval evidence block if the global cap were raised.
 
@@ -331,7 +331,7 @@ Built in Story 6.16 (DEC-247): zkcrypto `bls12_381` 0.9.2, the IETF proof-of-pos
 | Public keys (key aggregation) | G2, 96 B | G1, 48 B |
 | Aggregate | 50 B | 98 B |
 
-Min-sig keeps wire artifacts small; min-pk halves the `MAX_NODES` key array.
+Min-sig keeps wire artifacts small; min-pk halves the `MAX_NODES` key array, but its hash-to-G2 signing needs the larger stack, so on the RP2040 it fits fewer nodes than min-sig ([System Constraints](./moonblokz-system-constraints.md) §3.4).
 
 ### Keys
 
@@ -349,7 +349,7 @@ Min-sig keeps wire artifacts small; min-pk halves the `MAX_NODES` key array.
 
 ### BLS aggregate creation
 
-Same message for every signer: `σ = Σ σᵢ`, with no per-signer coefficients. The input checks are the trait's (empty input, more than `MAX_AGGREGATED_SIGNATURES`, length mismatch); the key bytes are taken and ignored. Ratified, being built in Story 6.17 (AC0, O-040): the contributions are decompressed without the subgroup check (`from_compressed_unchecked`), relying on the type invariant that a `MultiSignature` is a validated point (every constructor validates; the field is private); a sum that is the identity is still refused.
+Same message for every signer: `σ = Σ σᵢ`, with no per-signer coefficients. The input checks are the trait's (empty input, more than `MAX_AGGREGATED_SIGNATURES`, length mismatch); the key bytes are taken and ignored. Since Story 6.17 (AC0, O-040) the contributions are decompressed without the subgroup check (`from_compressed_unchecked`), relying on the type invariant that a `MultiSignature` is a validated point (every constructor validates; the field is private); a sum that is the identity is still refused.
 
 ### BLS aggregate verification
 

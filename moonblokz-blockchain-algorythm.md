@@ -169,7 +169,7 @@ The fundamental data structure is the block. Every block has two parts:
 
 ### Block header fields
 
-The header has ten fields. Signature- and key-sized fields take the build's crypto sizes, and every layout after them is derived from those (DEC-251; ratified, being built in Story 6.17). Sizes below are given as Schnorr / `bls-min-sig` / `bls-min-pk`: `SIGNATURE_SIZE` 64 / 48 / 96 B, `PUBLIC_KEY_SIZE` 32 / 96 / 48 B; the header is `58 + SIGNATURE_SIZE` = 122 / 106 / 154 B, leaving a `MAX_PAYLOAD_SIZE` of 1 894 / 1 910 / 1 862 B on the 2016 B tier.
+The header has ten fields. Signature- and key-sized fields take the build's crypto sizes, and every layout after them is derived from those (DEC-251; built in Story 6.17). Sizes below are given as Schnorr / `bls-min-sig` / `bls-min-pk`: `SIGNATURE_SIZE` 64 / 48 / 96 B, `PUBLIC_KEY_SIZE` 32 / 96 / 48 B; the header is `58 + SIGNATURE_SIZE` = 122 / 106 / 154 B, leaving a `MAX_PAYLOAD_SIZE` of 1 894 / 1 910 / 1 862 B on the 2016 B tier.
 
 1. **`version: u8`**  
    Protocol version number. Part V states the current fixed value is `1`, but the field exists for forward compatibility.
