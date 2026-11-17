@@ -112,7 +112,7 @@ The concrete in-memory layouts, field-by-field sizes, alignment, sentinels, and 
 - **Branch / chain-heads tracking** → architecture §4.2 (`chain_heads.rs`) and §6.3 (`ChainHeadEntry` 72 B padded × `MAX_BRANCH_COUNT`).
 - **Per-node SoA state (public keys, balances, FR50 seed-source projection, max_known_node_id)** → architecture §4.2 (`node_info.rs`) and §6.1.
 - **Available-UTXO projection** → architecture §4.2 (`available_utxo.rs`) and §6.2 (co-located in `BlockEntry`).
-- **Approval evidence accumulation** → architecture §4.2 (`approval.rs`) and §6.5 (`ApprovalAccumulator`: ~3.4 KB per-support store on Schnorr, ~2 KB buffer on BLS; DEC-195).
+- **Approval evidence accumulation** → architecture §4.2 (`approval.rs`) and §6.5 (`ApprovalAccumulator`: the ranked subgroup and the serialized supports, ~3.7 KB on Schnorr; DEC-236).
 - **Mempool** → architecture §3.3 (sub-crate API) and §6.8 (internals).
 - **Vote engine** → architecture §3.4 (sub-crate API) and §6.9 (internals).
 - **Scheduler / `NextCall` deadlines** → architecture §4.2 (`scheduler.rs`) and §6.7 (`SchedulerState` ~72 B with `Option<u64>` deadlines).
@@ -356,7 +356,7 @@ Resolved by the radio message model ([`moonblokz-radio-algorythm.md`](./moonblok
 
 ### 2. Multi-signature or evidence efficiency
 
-Partly resolved. Per [ADR-015](./blockchain-adrs/ADR-015-approval-subgroup-selection.md), `MAX_AGGREGATED_SIGNATURES = 50` is the backend constant (`moonblokz-crypto`, every backend), and the chain-config `required_support` is refused at acceptance above it ([Configuration Module Specification](./moonblokz-configuration-specification.md) §6 check 3). Per [`moonblokz-blockchain-architecture.md`](./moonblokz-blockchain-architecture.md) §6.5, the `ApprovalAccumulator` allocates a fixed `MAX_BLOCK_SIZE` buffer (~2 KB) that is crypto-agnostic; BLS aggregation packs roughly 5-10× more supporters into the same buffer than Schnorr (per-supporter cost ~4 B with BLS vs ~36 B with Schnorr). What remains open is whether future crypto backends introduce new aggregation primitives that change this tradeoff.
+Partly resolved. Per [ADR-015](./blockchain-adrs/ADR-015-approval-subgroup-selection.md), `MAX_AGGREGATED_SIGNATURES = 50` is the backend constant (`moonblokz-crypto`, every backend), and the chain-config `required_support` is refused at acceptance above it ([Configuration Module Specification](./moonblokz-configuration-specification.md) §6 check 3). Per [`moonblokz-blockchain-architecture.md`](./moonblokz-blockchain-architecture.md) §6.5, the `ApprovalAccumulator` keeps every held support's serialized multi-signature until the evidence block is built, so it scales with `MULTI_SIGNATURE_SIZE` on every scheme (DEC-236), while the evidence block's aggregate is constant-size on BLS. What remains open is whether future crypto backends introduce new aggregation primitives that change this tradeoff.
 
 ### 3. Random subgroup selection
 
@@ -364,7 +364,7 @@ Resolved by [ADR-015](./blockchain-adrs/ADR-015-approval-subgroup-selection.md).
 
 ### 4. Active-node-window semantics
 
-Resolved by [ADR-015](./blockchain-adrs/ADR-015-approval-subgroup-selection.md). A node is active if, within the window of the evaluation point (`p − 1` for an approval, `P` for a twin verdict), it created a block or signed an evidence block or verdict; transaction senders do not count, and FR72- or late-node-excluded nodes are left out (DEC-185).
+Resolved by [ADR-015](./blockchain-adrs/ADR-015-approval-subgroup-selection.md). A node is active if, within the window of the evaluation point (`p − 1` for an approval, `P` for a twin verdict), it created a block; transaction senders and evidence or verdict signers do not count, and FR72- or late-node-excluded nodes are left out (DEC-185, DEC-241).
 
 ### 5. Mutable configuration support
 
