@@ -342,7 +342,7 @@ This document explains:
 - what implementation responsibilities follow from the current crypto design,
 - why compile-time backend selection and stable re-exports are important,
 - how the chosen library structure avoids excessive generics, trait-object complexity, and unnecessary heap dependence,
-- how backend choice affects maintenance, compatibility, low-level safety, and dependency risk, and what the built backends cost (measured on the RP2040, DEC-249, beside DEC-180's superseded earlier measurements; Story 6.17's cheaper BLS aggregation measured in QEMU, hardware re-run pending),
+- how backend choice affects maintenance, compatibility, low-level safety, and dependency risk, and what the built backends cost (measured on the RP2040, DEC-249, beside DEC-180's superseded earlier measurements; Story 6.17's cheaper BLS aggregation: `bls-min-sig` 5.85 s for 40 on the RP2040, `bls-min-pk` re-run pending),
 - why bounded aggregation, buffer-based serialization, and multi-feature testing must be preserved,
 - and which kinds of crypto evolution remain feasible versus compatibility-sensitive.
 
