@@ -169,7 +169,7 @@ The fundamental data structure is the block. Every block has two parts:
 
 ### Block header fields
 
-The header has ten fields.
+The header has ten fields. Signature- and key-sized fields take the build's crypto sizes, and every layout after them is derived from those (DEC-251; ratified, being built in Story 6.17). Sizes below are given as Schnorr / `bls-min-sig` / `bls-min-pk`: `SIGNATURE_SIZE` 64 / 48 / 96 B, `PUBLIC_KEY_SIZE` 32 / 96 / 48 B; the header is `58 + SIGNATURE_SIZE` = 122 / 106 / 154 B, leaving a `MAX_PAYLOAD_SIZE` of 1 894 / 1 910 / 1 862 B on the 2016 B tier.
 
 1. **`version: u8`**  
    Protocol version number. Part V states the current fixed value is `1`, but the field exists for forward compatibility.
@@ -202,7 +202,7 @@ The header has ten fields.
 9. **`previous_hash: [u8;32]`**  
    Hash of the previous block, covering both header and payload.
 
-10. **`signature: [u8;64]`**  
+10. **`signature: [u8; SIGNATURE_SIZE]`**  
     Block creator signature for the entire block.
 
 ### Algorithmic meaning of the block header
@@ -250,7 +250,7 @@ A transaction block begins with:
 - **`transaction_count: u16`**
 - followed by a list of transactions.
 
-The count is a protocol bound of `65535` transactions per block (DEC-222); it limits the count, not the block, since a signed transaction is at least 101 B. On the reference build `block_size_limit` is the real limiting factor.
+The count is a protocol bound of `65535` transactions per block (DEC-222); it limits the count, not the block, since a signed transaction is at least a node transfer, 101 / 85 / 133 B. On the reference build `block_size_limit` is the real limiting factor.
 
 Each transaction starts with a fixed mini-header:
 
@@ -294,7 +294,7 @@ This means the transaction format itself participates in consensus state updates
 
 ## 4. Node Transfer Transaction Structure
 
-A node transfer is the minimal balance-to-balance transaction between nodes. Part V states that it has **fixed size: 96 bytes**.
+A node transfer is the minimal balance-to-balance transaction between nodes. Part V states that it has **fixed size: 96 bytes**; with the `type` and `vote` mini-header it is `37 + SIGNATURE_SIZE` = 101 / 85 / 133 B (18 / 22 / 13 per block).
 
 ### Fields
 
@@ -316,7 +316,7 @@ A node transfer is the minimal balance-to-balance transaction between nodes. Par
 6. **`comment: u64`**  
    Free-form caller-controlled field used for reference numbers, counters, or other distinguishing data.
 
-7. **`signature: [u8;64]`**  
+7. **`signature: [u8; SIGNATURE_SIZE]`**  
    Initializer signature over the whole transaction content.
 
 ### Algorithmic role of `anchor_sequence`
@@ -352,14 +352,16 @@ Registration adds a new node identifier and public key to the network.
 4. **`fee: u64`**  
    Regular transaction fee.
 
-5. **`new_public_key: [u8;32]`**  
+5. **`new_public_key: [u8; PUBLIC_KEY_SIZE]`**  
    Public key of the new node. It must be globally unique.
 
-6. **`new_key_signature: [u8;64]`**  
+6. **`new_key_signature: [u8; SIGNATURE_SIZE]`**  
    Proof that the registering party possesses the corresponding private key: the crypto library's `prove_possession` by the new key (DEC-248; built in Story 6.16). For Schnorr it is a BIP-340 signature over `"MoonBlokz/pop" ‖ new_public_key`, so it is not an ordinary signature of the key itself as in Part V; see [Crypto Algorithm Model](./moonblokz-crypto-algorythm.md) §Proof of Possession.
 
-7. **`signature: [u8;64]`**  
+7. **`signature: [u8; SIGNATURE_SIZE]`**  
    Signature over the full transaction content by the initializer.
+
+The registration is `29 + PUBLIC_KEY_SIZE + 2 · SIGNATURE_SIZE` = 189 / 221 / 269 B, so under BLS it takes two radio packets (DEC-255).
 
 ### Algorithmic meaning
 
@@ -400,12 +402,12 @@ Fields:
    Sequence number of the block containing the complex transaction whose UTXO is being spent. The reference is resolved against the current active chain only; within the `snake_chain` window the sequence uniquely identifies a stored block.
 
 2. **`output_index: u16`**  
-   Position of the referenced output in the block's UTXO-output stream: UTXO outputs only (balance outputs are not counted), transaction by transaction in block order, output by output within each transaction. This is the output's bit in the block's per-block available-UTXO bitfield (PRD FR34). `u16` matches ID 4 `max_block_utxo_output` and the widest bitfield a build can state (DEC-222); the input is 79 B.
+   Position of the referenced output in the block's UTXO-output stream: UTXO outputs only (balance outputs are not counted), transaction by transaction in block order, output by output within each transaction. This is the output's bit in the block's per-block available-UTXO bitfield (PRD FR34). `u16` matches ID 4 `max_block_utxo_output` and the widest bitfield a build can state (DEC-222); the input is `15 + SIGNATURE_SIZE` = 79 / 63 / 111 B.
 
 3. **`amount: u64`**  
    The referenced output's amount, declared by the spender (DEC-131); it must equal the output's amount. With it every input declares its value, so the transaction's input sum and fee follow from its bytes, and the signature commits to the amount spent.
 
-4. **`signature: [u8;64]`**  
+4. **`signature: [u8; SIGNATURE_SIZE]`**  
    Signature over the whole complex transaction — its serialized bytes with every input's signature field zeroed — using the private key corresponding to the referenced UTXO address (DEC-196). Every input signs the same preimage, so each signer commits to all inputs, all outputs and the `vote` field.
 
 #### Why sequence numbers instead of transaction hashes?
@@ -422,7 +424,9 @@ That implies:
 - `initializer: u32`
 - `amount: u64`
 - `comment: u64`
-- `signature: [u8;64]`
+- `signature: [u8; SIGNATURE_SIZE]`
+
+The balance input is `25 + SIGNATURE_SIZE` = 89 / 73 / 121 B.
 
 Notably, the article does **not** list a standalone `fee` field for the balance input, because fee emerges from input-output difference at the complex-transaction level.
 
@@ -430,8 +434,8 @@ Notably, the article does **not** list a standalone `fee` field for the balance 
 
 Fields:
 
-1. **`address: [u8;32]`**  
-   Public key of the output owner.
+1. **`address: [u8; PUBLIC_KEY_SIZE]`**  
+   Public key of the output owner, the raw key on every scheme (DEC-253: a hash address was considered, not planned); the output is `9 + PUBLIC_KEY_SIZE` = 41 / 105 / 57 B.
 
 2. **`amount: u64`**  
    Amount assigned to the UTXO.
@@ -486,8 +490,10 @@ Each node entry contains:
 3. **`vote_count: u32`**  
    Current total votes for the node.
 
-4. **`public_key: [u8;32]`**  
+4. **`public_key: [u8; PUBLIC_KEY_SIZE]`**  
    Public key used to validate future signatures.
+
+An entry is `16 + PUBLIC_KEY_SIZE` = 48 / 112 / 64 B, so a block carries 39 / 16 / 28 entries and a full 1 000-node balance replay takes 26 / 63 / 36 blocks (DEC-255).
 
 ### Algorithmic meaning of `max_node_id`
 

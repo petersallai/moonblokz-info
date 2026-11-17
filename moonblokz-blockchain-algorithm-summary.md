@@ -13,7 +13,7 @@ A compact, implementation-free restatement of the blockchain consensus and ledge
 ## 1. Notation and primitives
 
 - `H` = SHA-256. Hash order in tie-breaks: digest as big-endian unsigned integer.
-- `Sig` = one build-time backend (built in Story 6.16): Schnorr = BIP-340 over secp256k1 (pk = 32 B x-only, even-y; sig = `r ‖ s`, 64 B, big-endian) or BLS12-381 in the IETF proof-of-possession suite, `bls-min-sig` (pk 96 B, sig 48 B) or `bls-min-pk` (pk 48 B, sig 96 B); BLS on the chain is Story 6.17. `MAX_AGG = 50` aggregated signatures [crypto, DEC-235, DEC-247].
+- `Sig` = one build-time backend (built in Story 6.16): Schnorr = BIP-340 over secp256k1 (pk = 32 B x-only, even-y; sig = `r ‖ s`, 64 B, big-endian) or BLS12-381 in the IETF proof-of-possession suite, `bls-min-sig` (pk 96 B, sig 48 B) or `bls-min-pk` (pk 48 B, sig 96 B); BLS on the chain is Story 6.17 (ratified: every wire layout derived from these sizes, DEC-251; the chain names its scheme, ID 33, DEC-252). `MAX_AGG = 50` aggregated signatures [crypto, DEC-235, DEC-247].
   - Schnorr sign: BIP-340 with `aux_rand = 0` (deterministic), `e = H_tag("BIP0340/challenge", r ‖ pk ‖ m) mod q`, `s = k + e·sk mod q`. Verify: BIP-340 (`R = sG − eP` not the identity, even y, `x(R) = r`).
   - Schnorr aggregate (one message `m` for all signers): `seed = H_tag("MoonBlokz/aggregate", r_1 ‖ … ‖ r_k ‖ P_1 ‖ … ‖ P_k ‖ m)`; `w_i = (H_tag("MoonBlokz/weight", seed ‖ i u32) mod (q − 1)) + 1`; `s* = Σ w_i s_i mod q`; artifact `(count u16 BE, s*, r_1..r_k)`, `34 + 32k` B, `count ≥ 1`. Verify the full point equation `s*G = Σ w_i R_i + Σ w_i e_i P_i`; signer order is part of the artifact [DEC-194, DEC-235].
   - BLS aggregate: `σ = Σ σ_i`, verified against `Σ P_i` (FastAggregateVerify), constant 50 B (min-sig) or 98 B (min-pk); rogue-key safe only with a verified proof of possession per key [DEC-248].
@@ -25,7 +25,7 @@ A compact, implementation-free restatement of the blockchain consensus and ledge
 ## 2. Data model (binary, little-endian)
 
 **Block** `b = (header, payload)`, `|b| ≤ L = block_size_limit ≤ MAX_BLOCK_SIZE`, the build's block capacity (2016 B on the reference tier) [DEC-220, DEC-227].
-Header: `version u8 (=1) | sequence u32 | creator u32 | mined_amount u32 | payload_type u8 | consumed_votes u32 | first_voted_node u32 | consumed_votes_from_first_voted_node u32 | previous_hash [32] | signature`.
+Header: `version u8 (=1) | sequence u32 | creator u32 | mined_amount u32 | payload_type u8 | consumed_votes u32 | first_voted_node u32 | consumed_votes_from_first_voted_node u32 | previous_hash [32] | signature`; `58 + |sig|` = 122 / 106 / 154 B (Schnorr / min-sig / min-pk) [DEC-251].
 - `hash(b) = H(bytes(b))`, signature bytes included.
 - `signature = Sig_{sk(creator)}(header with the signature field zeroed ‖ H(payload))` [FR70].
 - `sequence(b) = sequence(parent) + 1`; `sequence = u32::MAX` is always invalid (no wrap in MVP) [FR53].
@@ -33,15 +33,15 @@ Header: `version u8 (=1) | sequence u32 | creator u32 | mined_amount u32 | paylo
 
 **Transaction block** (type 1): `count u16` (a protocol bound of 65 535 per block), then transactions, each starting `type u8 | vote u32`. A transaction block never holds both a registration (T2) and a complex transaction (T3) [FR6, FR9 Tier 1].
 
-- **T1 node transfer**: `anchor u32, initializer, receiver, amount u64, fee u32, comment u64, sig`; `sig = Sig_{sk(initializer)}(transaction bytes, sig zeroed)`, covering `type` and `vote`.
-- **T2 registration**: `initializer, new_node_id, registration_price u64, fee u64, new_pk, new_key_sig = Pop_{sk_new}(new_pk), sig = Sig_{sk(initializer)}(transaction bytes, sig zeroed, new_key_sig present)`, `Pop` the proof of possession [DEC-248]. No anchor.
+- **T1 node transfer** (101 / 85 / 133 B): `anchor u32, initializer, receiver, amount u64, fee u32, comment u64, sig`; `sig = Sig_{sk(initializer)}(transaction bytes, sig zeroed)`, covering `type` and `vote`.
+- **T2 registration** (189 / 221 / 269 B): `initializer, new_node_id, registration_price u64, fee u64, new_pk, new_key_sig = Pop_{sk_new}(new_pk), sig = Sig_{sk(initializer)}(transaction bytes, sig zeroed, new_key_sig present)`, `Pop` the proof of possession [DEC-248]. No anchor.
 - **T3 complex**: `in_count u8, out_count u8`, inputs, outputs (≥ 1 output; UTXO outputs per block ≤ `max_block_utxo_output`).
   - UTXO input: `(q = block_sequence u32, i = output_index u16, a = amount u64, sig)`. `sig` is by the key equal to the referenced output's address, over the whole transaction with every input signature zeroed [DEC-196]. `i` = position in block `q`'s UTXO-output stream (UTXO outputs only, transaction order, output order) [ADR-016, DEC-131].
   - Balance input: `(anchor, initializer, amount, comment, sig)`, sig "over this input and all outputs".
-  - UTXO output: `(address = owner pk [32], amount)`. Balance output: `(receiver u32, amount)`.
+  - UTXO output: `(address = owner pk, amount)`, the raw key on every scheme [DEC-253]. Balance output: `(receiver u32, amount)`.
   - `fee = Σ in − Σ out ≥ 0`. Zero inputs ⇒ valid only as a `snake_chain` carry-forward (§10.3).
 
-**Balance block** (type 2): `count u32, max_node_id u32` (= the chain-global `M` at this sequence), entries `NodeInfo = (owner u32, balance u64, vote_count u32, public_key)` holding the owner's state at `sequence − 1`.
+**Balance block** (type 2): `count u32, max_node_id u32` (= the chain-global `M` at this sequence), entries `NodeInfo = (owner u32, balance u64, vote_count u32, public_key)` (48 / 112 / 64 B, so 39 / 16 / 28 per block) holding the owner's state at `sequence − 1`.
 
 **Chain-config block** (type 3): `count u16, {key u8, len u8, value}*, content_sig = Sig_{sk0}(content region)`. Key bit 7 = literal/bytecode, bits 0–6 = parameter id ∈ [1, 126]; content is an override set over code defaults; an unknown id ⇒ reject. Bytecode values run on a deterministic, fuel-bounded VM; failure falls back to default, then fallback literal. Configuration is immutable for the chain's lifetime and every chain-config block is byte-identical [FR7, FR8, FR17, config §3–§5].
 
@@ -206,8 +206,9 @@ Block #0 (by node 0, `previous_hash = 0³²`): registration of node 0 (`new_node
 | | | | | 30 | `verification_horizon` (Hv) | 50 |
 | | | | | 31 | `grace_period_step_ms` | 900 000 |
 | | | | | 32 | `max_node_count` | 1000 |
+| | | | | 33 | `signature_scheme` | 0 (`schnorr`; 1 min-sig, 2 min-pk) |
 
-Literal-only and bound-checked at acceptance: 3, 4, 10, 21, 30, 32. The others may be bytecode programs reading other parameters and chain-info (today: the registered-node count). Acceptance also checks `1 ≤ r ≤ MAX_AGG`, `vs ≠ 0`, `L ≤` build block capacity, `W ≤` build capacity, `1 ≤ Hv < W`, `W + 2·Hv ≤` block-storage capacity, `1 ≤ max_node_count ≤` build node capacity `MAX_NODES`, `θ ≤ 100` and `fee_min ≤ fee_max` (literals only).
+Literal-only and bound-checked at acceptance: 3, 4, 10, 21, 30, 32, 33. The others may be bytecode programs reading other parameters and chain-info (today: the registered-node count). Acceptance also checks `1 ≤ r ≤ MAX_AGG`, `vs ≠ 0`, `L ≤` build block capacity, `W ≤` build capacity, `1 ≤ Hv < W`, `W + 2·Hv ≤` block-storage capacity, `1 ≤ max_node_count ≤` build node capacity `MAX_NODES`, `signature_scheme =` the build's scheme [DEC-252], `θ ≤ 100` and `fee_min ≤ fee_max` (literals only).
 
 ## 15. Open specification gaps
 

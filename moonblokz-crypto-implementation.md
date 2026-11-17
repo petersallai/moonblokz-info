@@ -374,7 +374,7 @@ What the measurement shows:
 - **Schnorr is 5.5–9× faster than DEC-180's malachite figures** (sign 0.9 s → 163 ms, verify 1.9 s → 209 ms, aggregate verify 2.9 s → 332 ms per signer) and links without an allocator.
 - **Aggregation saves space, not time, on Schnorr** (332 ms per signer against 209 ms for a separate verification); on BLS it saves both (min-sig: 51.3 s for 40 against about 7.8 min verified one by one).
 - **BLS on the RP2040 is slow:** a single verification takes 11.7–12.7 s, so a full block (13 transfers under `bls-min-pk`, 22 under `bls-min-sig`, plus its block signature) takes about 3–4.5 minutes to verify. Story 6.17's RP2040 BLS profiles carry these numbers.
-- **BLS aggregation re-validates every contribution** (the subgroup check inside the aggregation) although `MultiSignature::new` already validated it: most of the 31–40 s for 40 is that repeated check. Under review with Story 6.17 (O-040 lists the follow-ups).
+- **BLS aggregation re-validates every contribution** (the subgroup check inside the aggregation) although `MultiSignature::new` already validated it: most of the 31–40 s for 40 is that repeated check. Story 6.17 AC0 drops the repeated check, relying on the `MultiSignature` type invariant, and re-measures (O-040).
 - `bls-min-pk` moves hash-to-curve into G2, so signing and its stack grow about 2× and 3× against `bls-min-sig`; its 33–41 KB stacks are what Story 6.17's BLS RP2040 profiles size Core 1 against.
 
 ### Earlier measurements (DEC-180, superseded)
