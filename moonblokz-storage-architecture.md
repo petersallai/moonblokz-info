@@ -660,7 +660,7 @@ This appendix defines architecture-level data structure contracts and ownership 
 - `first_voted_node (u32)`
 - `consumed_votes_from_first_voted_node (u32)`
 - `previous_hash ([u8;32])`
-- `signature ([u8;64])`
+- `signature ([u8; SIGNATURE_SIZE])` (64 / 48 / 96 B with Schnorr / `bls-min-sig` / `bls-min-pk`, so the header is 122 / 106 / 154 B; DEC-251)
 
 ### Storage Type & Placement Contract
 

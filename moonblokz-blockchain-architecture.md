@@ -137,7 +137,7 @@ graph TB
         T4["Transaction / TransactionView / TransactionBuilder"]
     end
     subgraph Existing["Existing dependencies"]
-        Crypto["moonblokz-crypto-lib (Schnorr 32B / BLS 96B PK)"]
+        Crypto["moonblokz-crypto-lib (PK 32 / 96 / 48 B: Schnorr / BLS min-sig / min-pk)"]
         Storage["moonblokz-storage (flash page management)"]
         Radio["moonblokz-radio-lib (LoRa mesh, M.P.R. enum)"]
         Config["moonblokz-configuration (registry, resolution, FR8 state)"]
@@ -320,7 +320,7 @@ impl<...> Blockchain<...> {
 }
 ```
 
-`receive_support` takes the radio `Support` message's hop-invariant body, bytes `[5..len)`: `deviation_sequence u32 ‖ supporter_node_id u32 ‖ proposer_node_id u32 ‖ deviation_block_hash [32] ‖ support_signature`, little-endian, 108 B with Schnorr. The bridge builds the `SupportView` with `SupportView::from_bytes`, the FR26 (i) length check, and drops a `None` without relay; the type byte and the relay sender are not part of the body (DEC-229, Story 6.5).
+`receive_support` takes the radio `Support` message's hop-invariant body, bytes `[5..len)`: `deviation_sequence u32 ‖ supporter_node_id u32 ‖ proposer_node_id u32 ‖ deviation_block_hash [32] ‖ support_signature`, little-endian, 108 / 92 / 140 B with Schnorr / `bls-min-sig` / `bls-min-pk` (DEC-251). The bridge builds the `SupportView` with `SupportView::from_bytes`, the FR26 (i) length check, and drops a `None` without relay; the type byte and the relay sender are not part of the body (DEC-229, Story 6.5).
 
 ### 3.2 Outcome enums (single-outcome pattern)
 
@@ -361,7 +361,7 @@ pub enum ReceiveSupportOutcome {                                   // FR26 (Stor
 // produced by `process_genesis`; see §3.6 and decision row 19.)
 ```
 
-`SupportMessage` (Story 6.4, DEC-215) is an owned value with public fields — `supporter_node_id`, `proposer_node_id`, `deviation_sequence: u32`, `deviation_block_hash: [u8; HASH_SIZE]` and `support_signature: [u8; MULTI_SIGNATURE_SIZE]`, the backend's serialized multi-signature — about 108 B with Schnorr, carried on the stack only by `receive_block`'s return; the bridge frames it into the 113 B radio `Support`. It replaces a borrowed `SupportView<'a>`, which would have needed a 113 B static scratch buffer and a lifetime on every caller; `SupportView` names only the inbound borrowed view of `receive_support` (§3.1, Story 6.5). Support is decided once, at the end of `receive_block`, so the FR2 gates still see `AcceptedSilently`. The DEC-203 re-evaluation at a grace expiry emits its support from `on_tick`, through a `TickOutcome` variant that Story 8.5 adds.
+`SupportMessage` (Story 6.4, DEC-215) is an owned value with public fields — `supporter_node_id`, `proposer_node_id`, `deviation_sequence: u32`, `deviation_block_hash: [u8; HASH_SIZE]` and `support_signature: [u8; MULTI_SIGNATURE_SIZE]`, the backend's serialized multi-signature — 108 / 92 / 140 B with Schnorr / `bls-min-sig` / `bls-min-pk`, carried on the stack only by `receive_block`'s return; the bridge frames it into the radio `Support` (113 / 97 / 145 B, DEC-251). It replaces a borrowed `SupportView<'a>`, which would have needed a 113 B static scratch buffer and a lifetime on every caller; `SupportView` names only the inbound borrowed view of `receive_support` (§3.1, Story 6.5). Support is decided once, at the end of `receive_block`, so the FR2 gates still see `AcceptedSilently`. The DEC-203 re-evaluation at a grace expiry emits its support from `on_tick`, through a `TickOutcome` variant that Story 8.5 adds.
 
 ### 3.3 Mempool sub-crate API (10 method-groups)
 
@@ -570,7 +570,7 @@ The full per-module breakdown (processes / data structures / relationships / API
 | `intake.rs` | FR10/FR14/FR16 | (stateless dispatcher; FR26 support intake is `receive_support` in `api.rs` over `approval.rs`, Story 6.5) |
 | `staged_validation.rs` | FR9 | (stateless tier 1/2/3 checks) |
 | `reconciliation.rs` | FR23, FR58 | (stateless: the switch admission rule — FR58's bound and the DEC-204 evaluability condition, against the tail and the horizon root (Story 6.14; no completeness horizon, DEC-211); the walk itself is private `Blockchain` methods in `api.rs`, because the state it rewrites is private there — `switch_toward`, `undo_active_head` / `undo_committed_block`, the replay through the shared step against a virtual tail, `commit_switch`, `restore_original`; DEC-171) |
-| `node_info.rs` | FR6, FR50, FR67/FR69 | 4 parallel arrays SoA (~44 KB Schnorr / ~108 KB BLS) |
+| `node_info.rs` | FR6, FR50, FR67/FR69 | 4 parallel arrays SoA (~44 / ~108 / ~60 KB: Schnorr / `bls-min-sig` / `bls-min-pk`) |
 | `available_utxo.rs` | ADR-016, FR3, FR51 | (operates on `BlockEntry.available_utxo` co-located) |
 | `creator.rs` | FR44/FR45/FR47 | (stateless; uses `bc.crypto.sign`) |
 | `approval.rs` | FR12/FR15/FR27/FR71 | `ApprovalAccumulator` (~3.4 KB Schnorr per-support store / ~2 KB BLS buffer, DEC-195); from Story 6.4 the ADR-015 subgroup math (seed, `node_value`, `r_eff` / `m`, rank-counting membership; encodings DEC-218), `SupportMessage` and the 45 B signed support content, and the `NonConflictRing` (16 entries, ~208–256 B) with the support floor `F` (DEC-219); from Story 6.5 the inbound `SupportView` and its parse (DEC-229), the `SupportDedupe` FIFO (128 × 12 B + 1 B cursor, DEC-230, DEC-231) and the FR26 intake checks; the active-set counter (DEC-213) and the dedupe cache are `Blockchain` fields |
@@ -598,8 +598,8 @@ As built (Story 6.0), the Tier 2 + Tier 3 per-block step and the Ready forward-e
 | `MAX_TX_PER_BLOCK` | ~64 | derived; FR45 included_keys gathering |
 | `MAX_BLOCK_UTXO_OUTPUT` | 256 | FR56 chain-config-derived; per-block available-UTXO bitfield width, also the Tier 1 UTXO-output cap before the durable lock (FR9) |
 | `MAX_AGGREGATED_SIGNATURES` | 50 | ADR-015; approval subgroup sizing |
-| `PUBLIC_KEY_SIZE` | 32 (Schnorr) / 96 (BLS) | crypto feature flag |
-| `SIGNATURE_SIZE` | derived from crypto feature | varies |
+| `PUBLIC_KEY_SIZE` | 32 / 96 / 48 (Schnorr / `bls-min-sig` / `bls-min-pk`) | crypto feature flag |
+| `SIGNATURE_SIZE` | 64 / 48 / 96 | crypto feature flag; every wire layout after a signature- or key-sized field is derived from these (DEC-251; ratified, being built in Story 6.17), e.g. `HEADER_SIZE` 122 / 106 / 154 B |
 
 ---
 
@@ -611,7 +611,7 @@ Each parallel array is indexed by **global node-id** and sized to `MAX_NODES` �
 
 ```rust
 pub(crate) struct NodeInfo<const MAX_NODES: usize, const PUBLIC_KEY_SIZE: usize> {
-    public_keys:       [[u8; PUBLIC_KEY_SIZE]; MAX_NODES],  // 32 KB Schnorr / 96 KB BLS
+    public_keys:       [[u8; PUBLIC_KEY_SIZE]; MAX_NODES],  // 32 / 96 / 48 KB Schnorr / min-sig / min-pk
     balances:          [u64; MAX_NODES],                    // 8 KB
     seed_source_idx:   [u32; MAX_NODES],                    // 4 KB  FR50 per-node projection
     max_known_node_id: u32,                                 // 4 B
@@ -708,7 +708,7 @@ pub(crate) struct ApprovalAccumulator {
 
 **Crypto-aware per-supporter cost within the 2 KB buffer:**
 - **Schnorr**: each new supporter adds `node_id` (4 B) + signature (~32 B) ≈ **36 B / supporter** → 50 supporters ≈ 1.8 KB (near the 2 KB limit).
-- **BLS**: each new supporter adds only `node_id` (4 B); the signature lives in a single 50 B aggregated-signature slot (`AGGREGATED_SIGNATURE_CONSTANT_SIZE`), which does not grow with supporter count. ≈ **4 B / supporter** → 50 supporters ≈ 250 B (ample room).
+- **BLS**: each new supporter adds only `node_id` (4 B); the signature lives in a single 50 B aggregated-signature slot (`AGGREGATED_SIGNATURE_CONSTANT_SIZE`; 98 B with `bls-min-pk`), which does not grow with supporter count. ≈ **4 B / supporter** → 50 supporters ≈ 250 B (ample room).
 
 Here BLS is significantly **more efficient** than Schnorr: the same 2 KB buffer can hold 5–10× more supporters. The allocated memory remains unchanged at ~2 KB for both variants.
 
@@ -812,6 +812,8 @@ pub struct VoteEngine<const MAX_NODES: usize> {
 | EmitScratch + lifecycle + scheduler + PRNG | ~2 081 | 2 081 |
 | **Subtotal (BLS)** | | **~165 690** |
 
+**Per BLS variant:** this column is `bls-min-sig` (96 B keys). `bls-min-pk` keys are 48 B, so at 1 000 nodes BLS adds about 63.2 KB (min-sig) or 17.6 KB (min-pk) of static RAM over Schnorr (story 6.17 estimates). The per-variant profiles (`MAX_NODES`, Core 1) are set and measured in Story 6.17 (DEC-254).
+
 **Note:** Earlier Step 7 validation incorrectly assumed BLS ApprovalAccumulator was ~6 KB (per-supporter signature × MAX_AGGREGATED_SIGNATURES). The correct model is: ApprovalAccumulator holds a fixed MAX_BLOCK_SIZE buffer (~2 KB) for in-place evidence-block construction. BLS aggregation packs more supporters into the same buffer (~4 B per supporter) than Schnorr (~36 B per supporter), so BLS is actually *more efficient* per supporter — but the allocated memory is identical.
 
 ### 7.3 264 KB SRAM full allocation
@@ -827,7 +829,7 @@ pub struct VoteEngine<const MAX_NODES: usize> {
 | **Subtotal allocated** | **~253 KB** | **~308 KB** |
 | **Margin** (264 KB − allocated) | **~11 KB** (~4%) ✅ | **~−44 KB** (exceeds 264 KB) ❌ |
 
-**Core 1 per scheme:** the Schnorr column carries the 32 KB Core 1 of DEC-137's 2026-11-16 amendment (k256 verify); the BLS column keeps the earlier 24 KB until Story 6.17 sizes Core 1 per BLS profile.
+**Core 1 per scheme:** the Schnorr column carries the 32 KB Core 1 of DEC-137's 2026-11-16 amendment (k256 verify); the BLS column (`bls-min-sig`) keeps the earlier 24 KB until Story 6.17 sizes Core 1 per BLS profile (DEC-254). The measured BLS stacks (QEMU, 6.16) put a min-sig verify at 22.5 KB and min-pk signing at 41.3 KB, so both BLS Core 1 stacks exceed 24 KB. `bls-min-pk` totals about 263 KB at 1 000 nodes before its larger Core 1 (story 6.17 estimate).
 
 **Radio figure:** `memory-config-medium` is counted at its source-confirmed ~60 KB (`moonblokz-radio-lib` README + `lib.rs` profile consts); an earlier ~30-40 KB estimate under-counted it and made the BLS default appear feasible.
 
@@ -989,9 +991,11 @@ When a deployment selects the BLS crypto backend, the default const-generic valu
 | `MAX_AGGREGATED_SIGNATURES` | 50 → 30 | **Schnorr: −1.4 KB** in ApprovalAccumulator (20 × 68 B, DEC-195). **BLS: ~0 KB** (signature is single aggregated slot, only `supporter_node_ids` shrinks) | Per ADR-015, must verify subgroup robustness. Such a build refuses every chain that leaves `required_support` at its default 40 (DEC-173); a chain it joins must declare 30 or less. |
 | `MEMPOOL_COMPACT_BYTES` | 20160 → 12000 | −8 KB | Smaller mempool capacity; more frequent replenishment. |
 
-**Note:** `MAX_AGGREGATED_SIGNATURES` tuning saves more on Schnorr than on BLS, because Schnorr accumulates per-supporter signatures (~32 B each) while BLS aggregates them into a single 50 B slot. BLS deployments should prefer `MAX_NODES` or `MEMPOOL_COMPACT_BYTES` tuning instead.
+**Note:** `MAX_AGGREGATED_SIGNATURES` tuning saves more on Schnorr than on BLS, because Schnorr accumulates per-supporter signatures (~32 B each) while BLS aggregates them into a single 50 B slot (98 B with `bls-min-pk`). BLS deployments should prefer `MAX_NODES` or `MEMPOOL_COMPACT_BYTES` tuning instead.
 
 ### 12.2 Recommended BLS deployment profiles
+
+Estimates for `bls-min-sig` with the earlier 24 KB Core 1. Story 6.17 replaces them with measured profiles per BLS variant (`MAX_NODES` and Core 1 for `bls-min-sig` and `bls-min-pk`, DEC-254).
 
 | Profile | MAX_NODES | SNAKE_CHAIN | Margin (BLS, 264 KB) |
 |---|---:|---:|---:|
@@ -1061,10 +1065,10 @@ Selected high-impact decisions from the Step 5 + Step 6 + Step 7 iterations:
 
 | Risk | Severity | Mitigation |
 |---|---|---|
-| BLS does not fit at 1000-node default (~−44 KB) with the ~60 KB radio medium profile and the 24 KB Core 1 stack | Medium-High | §12 tuning; `MAX_NODES 1000→500` mandatory for BLS → ~15 KB margin |
+| BLS does not fit at 1000-node default (~−44 KB) with the ~60 KB radio medium profile and the 24 KB Core 1 stack | Medium-High | §12 tuning; `MAX_NODES 1000→500` mandatory for BLS → ~15 KB margin; Story 6.17 fits and measures a profile per BLS variant (DEC-254) |
 | Blockchain still reads the fixed-value chain-config stub, not `moonblokz-configuration` | Medium | Both crates exist and carry the §11 surface; the blockchain's path-dep migration is its own change, held to a behaviour-neutrality bar |
 | Blockchain-task stack peak grows past the 32 KB Core 1 stack as Epics 6–10 deepen the call graph | Medium | §8: re-measure with the probe method on material call-graph changes (DEC-137) |
-| ~~`MAX_AGGREGATED_SIGNATURES` / `MULTI_SIGNATURE_SIZE` const values not yet ratified~~ **Resolved:** `moonblokz-crypto` fixes `MAX_AGGREGATED_SIGNATURES = 50` for every backend and `MULTI_SIGNATURE_SIZE` at 64 B (Schnorr) / 48 B (BLS); chain-config `required_support` is refused at acceptance above the backend limit ([Configuration Module Specification](./moonblokz-configuration-specification.md) §6 check 3) | — | — |
+| ~~`MAX_AGGREGATED_SIGNATURES` / `MULTI_SIGNATURE_SIZE` const values not yet ratified~~ **Resolved:** `moonblokz-crypto` fixes `MAX_AGGREGATED_SIGNATURES = 50` for every backend and `MULTI_SIGNATURE_SIZE` at 64 B (Schnorr) / 48 B (`bls-min-sig`) / 96 B (`bls-min-pk`); chain-config `required_support` is refused at acceptance above the backend limit ([Configuration Module Specification](./moonblokz-configuration-specification.md) §6 check 3) | — | — |
 | Simulator blockchain integration not yet implemented | Out-of-scope (post-MVP) | §10 confirms architectural compatibility; integration is separate work |
 
 ---

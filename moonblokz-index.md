@@ -36,7 +36,7 @@ If you already know your topic, use this table to jump straight to the relevant 
 The subsystem documents fall into two deliberately different classes:
 
 - **Requirements-driven (authoritative).** Blockchain and storage each have a Product Requirements Document and an Architecture Decision Document, authored ahead of their implementation-facing docs. These carry the *(authoritative)* marker above and win on any divergence; their concept, algorithm, and implementation docs describe how that intent is realized. The [Configuration Module Specification](./moonblokz-configuration-specification.md) belongs to the same class: it was ratified ahead of the `moonblokz-configuration` and `moonblokz-vm` crates and remains authoritative for everything it covers now that both exist.
-- **Current-code-grounded.** Crypto, radio, simulator, and telemetry have no PRD or Architecture Decision Document. Their concept, algorithm, and implementation docs are grounded in the current code, which is the source of truth for those subsystems and wins on any divergence — except sections marked as ratified (the crypto backends of Story 6.16, DEC-235, DEC-244..250), which the code is being brought to.
+- **Current-code-grounded.** Crypto, radio, simulator, and telemetry have no PRD or Architecture Decision Document. Their concept, algorithm, and implementation docs are grounded in the current code, which is the source of truth for those subsystems and wins on any divergence — except sections marked as ratified (the BLS aggregation shortcut and `SIGNATURE_SCHEME` of Story 6.17, DEC-252, O-040), which the code is being brought to.
 
 The asymmetry is intentional: the requirements-first workflow that produces the PRD and Architecture documents was introduced only partway through the project, so blockchain and storage were captured under it while the earlier subsystems were documented from their existing code and have not been retrofitted with requirements artifacts.
 
@@ -109,8 +109,8 @@ This document explains:
 - the project-wide embedded-minimal coding discipline: add only code the current task requires; minimize both RAM data-structure size and compiled binary size; avoid unused fields/functions, unnecessary getters, convenience derives, and needless host/simulator divergence unless there is a current or explicitly planned consumer,
 - the design-decision discipline (§0.1): check a proposed implementation choice against the ratified principles, keep specified incremental mechanisms, and prefer event-time information to new stored state,
 - the blockchain capacity caps (const-generics such as `MAX_NODES`) and what they imply for deployment,
-- the crypto constants and bounded-aggregation limits for the Schnorr and BLS families,
-- the 264 KB RP2040 RAM/SRAM budget, per-structure costs, and the Schnorr-versus-BLS margins,
+- the crypto constants and bounded-aggregation limits for Schnorr, `bls-min-sig` and `bls-min-pk`, and the per-scheme block sizes,
+- the 264 KB RP2040 RAM/SRAM budget, per-structure costs, and the per-scheme margins (BLS RP2040 profiles measured in Story 6.17),
 - the flash and storage geometry constants,
 - the LoRa and airtime physical constraints and the radio memory profiles,
 - and the currently known cross-document discrepancies and gaps, with their impact.
@@ -294,7 +294,7 @@ This document explains:
 - **§4.5, the rules to check when allocating a new parameter**: why the identifier, width and default are permanent, how the *bound* decides the value form (universal limit, per-build limit, or a chain-declared ceiling with a clamp), and why a relation between two parameters is resolved by the consumer rather than by the configuration module,
 - **§4.6, the chain-info space** (ratified 2026-08-19; implemented by Story 5.12, gate replaced 2026-10-09 — identifier 1 is the registered-node count): a second host capability that lets a program read quantities derived from the active chain, why it is a separate identifier space from the parameter registry — separate, but equally permanent — and the five rules that keep it deterministic: a value must be a function of the active chain alone (the FR34 projections are where allocation starts, the mempool excluded), raw block content no further than the chain-configured `W`, an FR23 inverse for any new projection, the source bound at the handle inside the FR35 application step, and where a value is served (Ready; the scheduler at the head),
 - the three-tier resolution model (chain-config override, code-baked default, code-baked fallback literal) and the optional active-configuration handle that carries the tentative-versus-durable commitment state,
-- content acceptance and the structural bound checks on declared literals (acceptance runs no program — a partial check in front of the total runtime fallback would buy no coverage),
+- content acceptance and the structural bound checks on declared literals, including the chain's signature scheme against the build's (ID 33, check 19; acceptance runs no program — a partial check in front of the total runtime fallback would buy no coverage),
 - the virtual machine: machine model, full instruction set with opcode map and textual form, fuel accounting, trap model, host seam, and the capabilities deliberately left absent,
 - the commitment lifecycle, who calls storage, what is persisted, and the defined error branches,
 - how parameters reach consumers outside the blockchain — the change-notification seam and the radio snapshot,

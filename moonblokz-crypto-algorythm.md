@@ -18,7 +18,7 @@ Its purpose is to capture:
 
 This file is the **primary knowledge-base document for the formal crypto model**.
 
-**Status (2026-11-16): built in Story 6.16.** The backends, features, encodings and proof-of-possession methods below are built (DEC-235, DEC-244..248); the four earlier backends (`schnorr-malachite`, `schnorr-num-bigint-dig`, `schnorr-crypto-bigint`, `bls-bls12_381-bls`) are removed. BLS on the chain is Story 6.17.
+**Status (2026-11-16): built in Story 6.16.** The backends, features, encodings and proof-of-possession methods below are built (DEC-235, DEC-244..248); the four earlier backends (`schnorr-malachite`, `schnorr-num-bigint-dig`, `schnorr-crypto-bigint`, `bls-bls12_381-bls`) are removed. BLS on the chain is Story 6.17; the sections marked ratified (`SIGNATURE_SCHEME`, DEC-252; BLS aggregation without the repeated subgroup check, AC0) are being built there.
 
 - Use [moonblokz-crypto-concept.md](./moonblokz-crypto-concept.md) for the higher-level explanation of design goals and trade-offs.
 - Use [moonblokz-crypto-implementation.md](./moonblokz-crypto-implementation.md) for engineering implications, compatibility cautions, and maintenance guidance.
@@ -226,6 +226,8 @@ Across all families, the library currently uses:
 
 This gives the library a compile-time upper bound for serialized aggregated-signature storage.
 
+Ratified, being built in Story 6.17 (DEC-252): `SIGNATURE_SCHEME: u8`, gated per feature — 0 `schnorr`, 1 `bls-min-sig`, 2 `bls-min-pk` — the build's scheme code that the blockchain and `config-encoder` pass to configuration acceptance as `BuildLimits::signature_scheme`.
+
 The **practical per-backend ceiling** for how many supporters fit into one approval evidence block differs because `AGGREGATED_SIGNATURE_VARIABLE_SIZE` differs between backends. With a roughly 2 KB block-size budget, minus headers and a 4-byte node-id per signer, the resulting capacities are approximately 50 supporters for Schnorr (`VARIABLE_SIZE = 32`) and approximately 450 supporters for BLS (`VARIABLE_SIZE = 0`). The current global cap of 50 therefore matches the Schnorr capacity today; a BLS-centered deployment could carry more supporters per approval evidence block if the global cap were raised.
 
 ## Schnorr Algorithm Family Model
@@ -347,7 +349,7 @@ Min-sig keeps wire artifacts small; min-pk halves the `MAX_NODES` key array.
 
 ### BLS aggregate creation
 
-Same message for every signer: `σ = Σ σᵢ`, with no per-signer coefficients. The input checks are the trait's (empty input, more than `MAX_AGGREGATED_SIGNATURES`, length mismatch); the key bytes are taken and ignored.
+Same message for every signer: `σ = Σ σᵢ`, with no per-signer coefficients. The input checks are the trait's (empty input, more than `MAX_AGGREGATED_SIGNATURES`, length mismatch); the key bytes are taken and ignored. Ratified, being built in Story 6.17 (AC0, O-040): the contributions are decompressed without the subgroup check (`from_compressed_unchecked`), relying on the type invariant that a `MultiSignature` is a validated point (every constructor validates; the field is private); a sum that is the identity is still refused.
 
 ### BLS aggregate verification
 
