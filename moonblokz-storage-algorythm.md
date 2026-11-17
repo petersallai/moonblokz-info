@@ -97,7 +97,7 @@ The current storage crate must solve the following combined problem:
 The current storage implementation relies on these chain-types constants:
 
 - `MAX_BLOCK_SIZE = 2016` on the reference tier (the build selects it by a chain-types size-tier feature; DEC-220)
-- `HEADER_SIZE = 58 + SIGNATURE_SIZE`: 122 / 106 / 154 with Schnorr / `bls-min-sig` / `bls-min-pk` (DEC-251; ratified, being built in Story 6.17)
+- `HEADER_SIZE = 58 + SIGNATURE_SIZE`: 122 / 106 / 154 with Schnorr / `bls-min-sig` / `bls-min-pk` (DEC-251; built in Story 6.17)
 - `MAX_PAYLOAD_SIZE = MAX_BLOCK_SIZE - HEADER_SIZE`: 1894 / 1910 / 1862 on the reference tier
 - `HASH_SIZE = 32`
 

@@ -36,7 +36,7 @@ If you already know your topic, use this table to jump straight to the relevant 
 The subsystem documents fall into two deliberately different classes:
 
 - **Requirements-driven (authoritative).** Blockchain and storage each have a Product Requirements Document and an Architecture Decision Document, authored ahead of their implementation-facing docs. These carry the *(authoritative)* marker above and win on any divergence; their concept, algorithm, and implementation docs describe how that intent is realized. The [Configuration Module Specification](./moonblokz-configuration-specification.md) belongs to the same class: it was ratified ahead of the `moonblokz-configuration` and `moonblokz-vm` crates and remains authoritative for everything it covers now that both exist.
-- **Current-code-grounded.** Crypto, radio, simulator, and telemetry have no PRD or Architecture Decision Document. Their concept, algorithm, and implementation docs are grounded in the current code, which is the source of truth for those subsystems and wins on any divergence — except sections marked as ratified (the BLS aggregation shortcut and `SIGNATURE_SCHEME` of Story 6.17, DEC-252, O-040), which the code is being brought to.
+- **Current-code-grounded.** Crypto, radio, simulator, and telemetry have no PRD or Architecture Decision Document. Their concept, algorithm, and implementation docs are grounded in the current code, which is the source of truth for those subsystems and wins on any divergence — except sections marked as ratified, which the code is being brought to (none at present; Story 6.17 built the last ones).
 
 The asymmetry is intentional: the requirements-first workflow that produces the PRD and Architecture documents was introduced only partway through the project, so blockchain and storage were captured under it while the earlier subsystems were documented from their existing code and have not been retrofitted with requirements artifacts.
 
@@ -110,7 +110,7 @@ This document explains:
 - the design-decision discipline (§0.1): check a proposed implementation choice against the ratified principles, keep specified incremental mechanisms, and prefer event-time information to new stored state,
 - the blockchain capacity caps (const-generics such as `MAX_NODES`) and what they imply for deployment,
 - the crypto constants and bounded-aggregation limits for Schnorr, `bls-min-sig` and `bls-min-pk`, and the per-scheme block sizes,
-- the 264 KB RP2040 RAM/SRAM budget, per-structure costs, and the per-scheme margins (BLS RP2040 profiles measured in Story 6.17),
+- the 264 KB RP2040 RAM/SRAM budget, per-structure costs, and the measured per-scheme profiles (Story 6.17: `MAX_NODES` 1 000 / 356 / 291, Core 1 32 / 49 / 70 KiB; on the RP2040 `bls-min-pk` fits fewer nodes than `bls-min-sig`),
 - the flash and storage geometry constants,
 - the LoRa and airtime physical constraints and the radio memory profiles,
 - and the currently known cross-document discrepancies and gaps, with their impact.
@@ -226,10 +226,10 @@ This document explains:
 - the 15 + 1 internal modules of `moonblokz-blockchain` (`lifecycle`, `scheduler`, `blocks`, `chain_heads`, `snake_chain`, `branch_value`, `intake`, `staged_validation`, `reconciliation`, `node_info`, `available_utxo`, `creator`, `approval`, `queries`, `emit_scratch`, + the `api.rs` surface),
 - the const-generic catalog (`MAX_NODES`, `SNAKE_CHAIN_LENGTH_MAX`, `MAX_BLOCKS`, `MAX_BRANCH_COUNT`, etc. with default values),
 - the sized data-structure catalog with bit-level layouts (`BlockEntry` 80 B padded, `ChainHeadEntry` 32 B padded, `NodeInfo` SoA, `ApprovalAccumulator` ~2 KB crypto-agnostic, `EmitScratch`, `SchedulerState`),
-- the 264 KB SRAM RAM budget verified for Schnorr (~7% margin) and BLS (does not fit at the default profile; mandatory `MAX_NODES` tuning),
+- the 264 KB SRAM RAM budget, measured per scheme (Story 6.17): Schnorr fits the 1 000-node default with a ~7.9 KB (~3%) margin, and each BLS variant fixes `MAX_NODES` at its largest fitting count (356 `bls-min-sig`, 291 `bls-min-pk`),
 - the FR1–FR69 coverage matrix showing 63 hard-covered FRs, 5 delegated to the `moonblokz-configuration` crate, and 1 MVP-skip (FR52),
 - the `ChainConfigTrait` surface exposed by the `moonblokz-configuration` crate,
-- the BLS deployment-tuning recipe with `MAX_NODES` reduction levers,
+- the BLS deployment-tuning levers and the measured RP2040 profiles per scheme, with the per-scheme Core 1 stack (DEC-137, DEC-254),
 - the consolidated 22-row decisions log, the risks list, and the implementation roadmap.
 
 Use this file as the canonical reference whenever any other knowledge-base document — concept, algorithm, or implementation — describes a blockchain data structure, module boundary, public API method, RAM/stack budget, const-generic value, crate dependency edge, or initialization parameter. Divergence from the Architecture Decision Document must be treated as exact evidence of a knowledge-base inconsistency.
@@ -342,7 +342,7 @@ This document explains:
 - what implementation responsibilities follow from the current crypto design,
 - why compile-time backend selection and stable re-exports are important,
 - how the chosen library structure avoids excessive generics, trait-object complexity, and unnecessary heap dependence,
-- how backend choice affects maintenance, compatibility, low-level safety, and dependency risk, and what the built backends cost (measured on the RP2040, DEC-249, beside DEC-180's superseded earlier measurements),
+- how backend choice affects maintenance, compatibility, low-level safety, and dependency risk, and what the built backends cost (measured on the RP2040, DEC-249, beside DEC-180's superseded earlier measurements; Story 6.17's cheaper BLS aggregation: 5.85 s (`bls-min-sig`) and 20.0 s (`bls-min-pk`) for 40 on the RP2040),
 - why bounded aggregation, buffer-based serialization, and multi-feature testing must be preserved,
 - and which kinds of crypto evolution remain feasible versus compatibility-sensitive.
 

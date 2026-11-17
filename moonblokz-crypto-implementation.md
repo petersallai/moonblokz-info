@@ -163,7 +163,7 @@ The constants are gated per selected feature. A private `bls` helper feature, en
 
 - tests must run under all three features, not only the default
 - downstream users must disable default features when selecting a BLS variant
-- every forwarding crate (chain-types, storage, configuration, vote, mempool, blockchain, the node) forwards the same three names; chain-types refuses the BLS variants until Story 6.17
+- every forwarding crate (chain-types, storage, configuration, vote, mempool, blockchain, the node) forwards the same three names, and each builds and passes its tests under all three since Story 6.17 (DEC-255), with the crypto packages at `opt-level = 3` in the dev profile so the BLS legs stay short
 
 ## `#![no_std]` and Allocation Discipline
 
@@ -276,7 +276,7 @@ A private trait (or a small set of type parameters) names the signature group, t
 
 ### Key-validation cost
 
-Decompressing and subgroup-checking a G2 key (min-sig) costs about 50–89 M instructions, paid on every verify that parses a key: a 40-key aggregate check is about 41 s with per-use validation against about 9 s with pre-validated keys (QEMU-based estimates). An LRU cache of validated keys ([Blockchain Architecture](./moonblokz-blockchain-architecture.md) §12.3) is the remedy if it binds; it matters once the chain uses BLS (Story 6.17).
+Decompressing and subgroup-checking a G2 key (min-sig) costs about 50–89 M instructions, paid on every verify that parses a key: a 40-key aggregate check is about 41 s with per-use validation against about 9 s with pre-validated keys (QEMU-based estimates). An LRU cache of validated keys ([Blockchain Architecture](./moonblokz-blockchain-architecture.md) §12.3) is the remedy if it binds; it matters now that the chain uses BLS (Story 6.17).
 
 ### Practical consequence
 
@@ -363,8 +363,8 @@ The codebase by itself does not prove benchmark rankings. Any claim about one ba
 | Scheme | Flash | Keygen | Sign (QEMU) | Verify (QEMU) | 40-signer aggregate (QEMU) | 40-signer aggregate verify (QEMU) |
 |---|---:|---:|---|---|---|---|
 | `schnorr` (`k256` 0.14, BIP-340) | 41 KB | 158 ms | **163 ms** (12.1 M, 5.9 KB stack) | **209 ms** (15.9 M, 10.1 KB) | **39 ms** (1.5 M, 1.1 KB) | **13.3 s**, 332 ms per signer (1.02 G, 6.1 KB; DEC-244) |
-| `bls-min-sig` (zkcrypto `bls12_381` 0.9.2) | 98 KB | 2.05 s | **2.02 s** (79 M, 14.5 KB) | **11.7 s** (772 M, 22.5 KB) | **31.4 s** (1.06 G, 9.8 KB) | **51.3 s** (3.56 G, 26.0 KB; keys decompressed per use) |
-| `bls-min-pk` (zkcrypto `bls12_381` 0.9.2) | 100 KB | 1.32 s | **4.07 s** (299 M, 41.3 KB) | **12.7 s** (895 M, 33.6 KB) | **39.6 s** (2.86 G, 22.7 KB) | **42.5 s** (1.93 G, 35.6 KB) |
+| `bls-min-sig` (zkcrypto `bls12_381` 0.9.2) | 98 KB | 2.05 s | **2.02 s** (79 M, 14.5 KB) | **11.7 s** (772 M, 22.5 KB) | **5.85 s** (276 M, 7.2 KB; 31.4 s before AC0) | **51.3 s** (3.56 G, 26.0 KB; keys decompressed per use) |
+| `bls-min-pk` (zkcrypto `bls12_381` 0.9.2) | 100 KB | 1.32 s | **4.07 s** (299 M, 41.3 KB) | **12.7 s** (895 M, 33.6 KB) | **20.0 s** (1.46 G, 18.0 KB; 39.6 s before AC0) | **42.5 s** (1.93 G, 35.6 KB) |
 
 Key decompression (QEMU only): 1.0 M / 1.6 KB (Schnorr), 71 M / 22.2 KB (min-sig, G2), 26 M / 9.8 KB (min-pk, G1). The proof of possession costs exactly a signature to make and a verification to check (measured: 163 / 209 ms, 2.02 / 11.7 s, 4.07 / 12.7 s).
 
@@ -374,8 +374,8 @@ What the measurement shows:
 - **Schnorr is 5.5–9× faster than DEC-180's malachite figures** (sign 0.9 s → 163 ms, verify 1.9 s → 209 ms, aggregate verify 2.9 s → 332 ms per signer) and links without an allocator.
 - **Aggregation saves space, not time, on Schnorr** (332 ms per signer against 209 ms for a separate verification); on BLS it saves both (min-sig: 51.3 s for 40 against about 7.8 min verified one by one).
 - **BLS on the RP2040 is slow:** a single verification takes 11.7–12.7 s, so a full block (13 transfers under `bls-min-pk`, 22 under `bls-min-sig`, plus its block signature) takes about 3–4.5 minutes to verify. Story 6.17's RP2040 BLS profiles carry these numbers.
-- **BLS aggregation re-validates every contribution** (the subgroup check inside the aggregation) although `MultiSignature::new` already validated it: most of the 31–40 s for 40 is that repeated check. Story 6.17 AC0 drops the repeated check, relying on the `MultiSignature` type invariant, and re-measures (O-040).
-- `bls-min-pk` moves hash-to-curve into G2, so signing and its stack grow about 2× and 3× against `bls-min-sig`; its 33–41 KB stacks are what Story 6.17's BLS RP2040 profiles size Core 1 against.
+- **BLS aggregation re-validated every contribution** (the subgroup check inside the aggregation) although `MultiSignature::new` had already validated it: most of the 31–40 s for 40 was that repeated check. Story 6.17 AC0 dropped it (`from_compressed_unchecked`, relying on the `MultiSignature` type invariant; the identity sum is still refused; O-040). QEMU, 40 contributions: `bls-min-sig` 1 063 640 960 → 275 710 920 instructions (stack 9 768 → 7 176 B), 3.86× fewer; `bls-min-pk` 2 858 314 640 → 1 460 960 360 (22 656 → 17 952 B), 1.96× fewer (`6-17-ac0/`). On the RP2040 (`6-17-ac0/hardware-rp2040-bls-*.log`), `bls-min-sig` dropped from 31.4 s to 5.85 s (5.37×) and `bls-min-pk` from 39.6 s to 20.0 s (1.98×); the other operations moved by at most +0.7 % (code layout, untouched paths).
+- `bls-min-pk` moves hash-to-curve into G2, so signing and its stack grow about 2× and 3× against `bls-min-sig`. On the chain its deepest root, `process_genesis` (which signs), peaks at 56 544 B (55.2 KB) against 39 840 B (38.9 KB) for min-sig, so its RP2040 Core 1 is 70 KiB against 49 KiB, and min-pk fits fewer nodes than min-sig (291 against 356; [System Constraints](./moonblokz-system-constraints.md) §3.4).
 
 ### Earlier measurements (DEC-180, superseded)
 
