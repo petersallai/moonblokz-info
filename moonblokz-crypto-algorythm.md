@@ -18,7 +18,7 @@ Its purpose is to capture:
 
 This file is the **primary knowledge-base document for the formal crypto model**.
 
-**Status (2026-11-16): ratified, being built in Story 6.16.** The backends, features, encodings and proof-of-possession methods below are the ratified target (DEC-235, DEC-244..248); `moonblokz-crypto-lib` `367c5e1` still carries the four earlier backends (`schnorr-malachite`, `schnorr-num-bigint-dig`, `schnorr-crypto-bigint`, `bls-bls12_381-bls`) until the story lands. BLS on the chain is Story 6.17.
+**Status (2026-11-16): built in Story 6.16.** The backends, features, encodings and proof-of-possession methods below are built (DEC-235, DEC-244..248); the four earlier backends (`schnorr-malachite`, `schnorr-num-bigint-dig`, `schnorr-crypto-bigint`, `bls-bls12_381-bls`) are removed. BLS on the chain is Story 6.17.
 
 - Use [moonblokz-crypto-concept.md](./moonblokz-crypto-concept.md) for the higher-level explanation of design goals and trade-offs.
 - Use [moonblokz-crypto-implementation.md](./moonblokz-crypto-implementation.md) for engineering implications, compatibility cautions, and maintenance guidance.
@@ -100,7 +100,7 @@ The public crypto API is always bound to exactly one backend at build time.
 
 ## Feature Model
 
-Ratified, being built in Story 6.16 (DEC-246). The feature names the scheme, not the implementation:
+Built in Story 6.16 (DEC-246). The feature names the scheme, not the implementation:
 
 | Feature | Backend | Scheme |
 |---|---|---|
@@ -176,9 +176,9 @@ This trait defines the main cryptographic behavior:
 - `multi_sign(&self, message: &[u8]) -> MultiSignature`
 - `verify_multi_signature(&self, message: &[u8], multi_signature: &MultiSignature, public_key: &PublicKey) -> bool`
 - `verify_signature(&self, message: &[u8], signature: &Signature, public_key: &PublicKey) -> bool`
-- `aggregate_signatures(&self, signatures: &[&MultiSignature], public_keys: &[&[u8; PUBLIC_KEY_SIZE]], message: &[u8]) -> Result<AggregatedSignature, CryptoError>` — ratified, being built in Story 6.16 (DEC-194); a length mismatch, empty input and more than `MAX_AGGREGATED_SIGNATURES` inputs are errors; the BLS backends take and ignore the keys
+- `aggregate_signatures(&self, signatures: &[&MultiSignature], public_keys: &[&[u8; PUBLIC_KEY_SIZE]], message: &[u8]) -> Result<AggregatedSignature, CryptoError>` — built in Story 6.16 (DEC-194); a length mismatch, empty input and more than `MAX_AGGREGATED_SIGNATURES` inputs are errors; the BLS backends take and ignore the keys
 - `verify_aggregated_signature(&self, message: &[u8], aggregated_signature: &AggregatedSignature, public_keys: &[&PublicKey]) -> bool`
-- `prove_possession(&self) -> Signature` and `verify_possession(&self, public_key: &PublicKey, proof: &Signature) -> bool` — ratified, being built in Story 6.16 (DEC-248); see §Proof of Possession
+- `prove_possession(&self) -> Signature` and `verify_possession(&self, public_key: &PublicKey, proof: &Signature) -> bool` — built in Story 6.16 (DEC-248); see §Proof of Possession
 
 ## Signature Role Model
 
@@ -230,7 +230,7 @@ The **practical per-backend ceiling** for how many supporters fit into one appro
 
 ## Schnorr Algorithm Family Model
 
-Ratified, being built in Story 6.16 (DEC-235): one backend, BIP-340 as implemented by `k256` 0.14 (`k256::schnorr`). It replaces three backends with a custom scheme (little-endian integers, trimmed hash inputs, x-only verification that accepted the negated point) that did not behave alike: the malachite and num-bigint-dig backends failed to verify about 1 in 256 of their own signatures.
+Built in Story 6.16 (DEC-235): one backend, BIP-340 as implemented by `k256` 0.14 (`k256::schnorr`). It replaces three backends with a custom scheme (little-endian integers, trimmed hash inputs, x-only verification that accepted the negated point) that did not behave alike: the malachite and num-bigint-dig backends failed to verify about 1 in 256 of their own signatures.
 
 ### Curve model
 
@@ -262,7 +262,7 @@ So the role distinction between `sign` and `multi_sign` is semantic and protocol
 
 ## Schnorr Aggregation Model
 
-Ratified, being built in Story 6.16 (DEC-194, encoding DEC-235). Half-aggregation of `k` BIP-340 signatures `(rᵢ, sᵢ)` by keys `Pᵢ` (32 B x-only), all on one message `m`, in the given order.
+Built in Story 6.16 (DEC-194, encoding DEC-235). Half-aggregation of `k` BIP-340 signatures `(rᵢ, sᵢ)` by keys `Pᵢ` (32 B x-only), all on one message `m`, in the given order.
 
 ### Input validation
 
@@ -309,16 +309,16 @@ So the Schnorr aggregate artifact is not order-free: signer position is part of 
 
 ## Proof of Possession
 
-Ratified, being built in Story 6.16 (DEC-248). `prove_possession` returns a `Signature` (`SIGNATURE_SIZE` bytes), so the registration's `new_key_signature` keeps its size per backend; `verify_possession` checks it against a parsed `PublicKey`.
+Built in Story 6.16 (DEC-248). `prove_possession` returns a `Signature` (`SIGNATURE_SIZE` bytes), so the registration's `new_key_signature` keeps its size per backend; `verify_possession` checks it against a parsed `PublicKey`.
 
-- **Schnorr:** a BIP-340 signature by the key's owner over `"MoonBlokz/pop" ‖ public key (32 B)`, the ASCII tag unterminated; verification is BIP-340 verification of that message. The tag keeps proofs and ordinary signatures in separate domains: no ordinary signature over 32 B of data serves as a proof, and no proof as an ordinary signature.
+- **Schnorr:** a BIP-340 signature by the key's owner over `"MoonBlokz/pop" ‖ public key (32 B)`, the ASCII tag unterminated; verification is BIP-340 verification of that message. The tag keeps proofs and ordinary signatures in separate domains: no ordinary signature over 32 B of data serves as a proof, and no proof as an ordinary signature. The separation is by message, not by challenge tag, so an ordinary signature over exactly `"MoonBlokz/pop" ‖ key` (45 B) is a proof too; no MoonBlokz message has that form (transactions start with their type byte, blocks with the version, supports with `MBSUP`, chain configurations with their entry count), and Schnorr aggregation does not rely on the proof (code review, 2026-11-16).
 - **BLS (both variants):** the suite's `PopProve` / `PopVerify` with its proof-of-possession DST (`BLS_POP_BLS12381G1_XMD:SHA-256_SSWU_RO_POP_` for `bls-min-sig`, `BLS_POP_BLS12381G2_XMD:SHA-256_SSWU_RO_POP_` for `bls-min-pk`): the proof is `sk · H_pop(serialized public key)` in the signature group; verification runs KeyValidate on the key and the pairing check.
 
 The registration transaction carries this proof ([Blockchain Algorithm Model](./moonblokz-blockchain-algorythm.md) §5 Registration Transaction Structure).
 
 ## BLS Algorithm Family Model
 
-Ratified, being built in Story 6.16 (DEC-247): zkcrypto `bls12_381` 0.9.2, the IETF proof-of-possession suite in two variants through one generic core, whose parameters are the signature group, the key group, the DST and the pairing argument order; a build compiles one variant. It replaces the `bls12_381-bls` wrapper, whose `h0(m) = hash_to_scalar(m)·G1` made every message hash's discrete logarithm public, so one signature yielded a valid signature on any message.
+Built in Story 6.16 (DEC-247): zkcrypto `bls12_381` 0.9.2, the IETF proof-of-possession suite in two variants through one generic core, whose parameters are the signature group, the key group, the DST and the pairing argument order; a build compiles one variant. It replaces the `bls12_381-bls` wrapper, whose `h0(m) = hash_to_scalar(m)·G1` made every message hash's discrete logarithm public, so one signature yielded a valid signature on any message.
 
 ### Variants
 
@@ -343,7 +343,7 @@ Min-sig keeps wire artifacts small; min-pk halves the `MAX_NODES` key array.
 
 ### BLS aggregate structure
 
-`count` as `u16`, then the aggregated signature (48 or 96 B): 50 or 98 B, constant with respect to the signer count. Story 6.16 does not fix the count's byte order for BLS.
+`count` as `u16`, then the aggregated signature (48 or 96 B): 50 or 98 B, constant with respect to the signer count. The count is big-endian, as in the Schnorr aggregate.
 
 ### BLS aggregate creation
 
@@ -426,11 +426,11 @@ The tests also cover rejection or failure for:
 
 ### Byte-level vectors
 
-Ratified, being built in Story 6.16; they replace the `schnorr-crypto-bigint` regression vector:
+Built in Story 6.16; they replace the `schnorr-crypto-bigint` regression vector:
 
 - `schnorr`: all 19 official BIP-340 vectors — signing through the trait for vectors 0 and 15–18 (`aux_rand = 0`), verification for 0–18 with a parse failure counting as invalid — plus pinned DEC-194 aggregate vectors;
 - `bls-min-sig`: RFC 9380 Appendix J.9.1 (hash to G1) plus signature vectors pinned once after an out-of-band cross-check against an independent implementation;
-- `bls-min-pk`: RFC 9380 Appendix J.10.1 (hash to G2) and the Ethereum consensus-spec BLS tests (min-pk, POP DST).
+- `bls-min-pk`: RFC 9380 Appendix J.10.1 (hash to G2) and the Ethereum consensus-spec BLS tests (min-pk, POP DST): all `sign`, `verify` and `fast_aggregate_verify` cases of `ethereum/bls12-381-tests` v0.1.2 (commit `89ff3a8`), vendored in `src/bls_eth_vectors.rs`; its `deserialization_G1` / `G2` cases run under both variants (the identity is refused by KeyValidate).
 
 The story's negative tests add the aggregate refusals above (`count = 0`, the negated point, `s ≥ q`, an unliftable `r`, swapped key or signature order, a dropped signer) and the proof-of-possession refusals (another key's proof, an ordinary signature over the key bytes).
 

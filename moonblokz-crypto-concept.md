@@ -15,7 +15,7 @@ Its purpose is to describe:
 
 This file is intentionally focused on conceptual understanding rather than exact API shape, byte-level serialization, or backend-internal implementation detail.
 
-**Status (2026-11-16):** the backend set described here is ratified and being built in Story 6.16 (DEC-235, DEC-245..247); the code still carries the four earlier backends until the story lands.
+**Status (2026-11-16):** the backend set described here is built in Story 6.16 (DEC-235, DEC-245..247); the four earlier backends are removed.
 
 - Use this document to understand **what cryptography must achieve in MoonBlokz**, **why the current trade-offs exist**, and **how the crypto subsystem fits the broader product and protocol context**.
 - Use [moonblokz-crypto-algorythm.md](./moonblokz-crypto-algorythm.md) for the formal API, constants, serialization rules, and signing or verification flows.

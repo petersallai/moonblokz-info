@@ -356,7 +356,7 @@ Registration adds a new node identifier and public key to the network.
    Public key of the new node. It must be globally unique.
 
 6. **`new_key_signature: [u8;64]`**  
-   Proof that the registering party possesses the corresponding private key: the crypto library's `prove_possession` by the new key (DEC-248; ratified, being built in Story 6.16). For Schnorr it is a BIP-340 signature over `"MoonBlokz/pop" ‖ new_public_key`, so it is not an ordinary signature of the key itself as in Part V; see [Crypto Algorithm Model](./moonblokz-crypto-algorythm.md) §Proof of Possession.
+   Proof that the registering party possesses the corresponding private key: the crypto library's `prove_possession` by the new key (DEC-248; built in Story 6.16). For Schnorr it is a BIP-340 signature over `"MoonBlokz/pop" ‖ new_public_key`, so it is not an ordinary signature of the key itself as in Part V; see [Crypto Algorithm Model](./moonblokz-crypto-algorythm.md) §Proof of Possession.
 
 7. **`signature: [u8;64]`**  
    Signature over the full transaction content by the initializer.
