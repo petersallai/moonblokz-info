@@ -92,23 +92,21 @@ Cross-check: on BLS the `ApprovalAccumulator` costs ~4 B per supporter (`4 + 0`)
 
 ### 2.1 Measured crypto timings (RP2040) and what they cost
 
-Authoritative source: [`moonblokz-crypto-implementation.md`](./moonblokz-crypto-implementation.md) §Measured timings on the reference hardware (DEC-180). The figures below are DEC-180's `schnorr-malachite` measurements at `opt-level = "z"`, taken with an allocator — not the node build: about 0.9 s to sign, 1.9 s to verify one signature, and 2.9 s per signer to verify an aggregate. The `"s"` profile is about 25 % faster.
+Authoritative source: [`moonblokz-crypto-implementation.md`](./moonblokz-crypto-implementation.md) §Measured costs of the built backends (DEC-249). Measured on the reference board (Waveshare RP2040-LoRa, 125 MHz) with the built `schnorr` backend (`k256`, DEC-235): **163 ms to sign, 209 ms to verify one signature, 13.3 s for a 40-signer aggregate check** (332 ms per signer; on Schnorr aggregation saves space, not time). These replace DEC-180's `schnorr-malachite` figures (0.9 s / 1.9 s / 2.9 s per signer, measured with an allocator), from which the earlier version of this table was derived. The BLS schemes verify one signature in 11.7 s (`bls-min-sig`) and 12.7 s (`bls-min-pk`) on the same board; Story 6.17's RP2040 BLS profiles carry those numbers.
 
-The built `schnorr` backend (`k256`, DEC-235, Story 6.16) has only QEMU-based **estimates** until DEC-249's hardware run: sign about 12 M and verify about 16 M instructions, a 40-signer aggregate check about 1.02 G (DEC-244), so roughly 0.1–0.3 s to sign, 0.15–0.4 s to verify and 10–25 s per 40-signer aggregate on an RP2040 ([`moonblokz-crypto-implementation.md`](./moonblokz-crypto-implementation.md) §Estimates for the built backends, which also lists both BLS schemes). The derived costs below are recomputed from the measured numbers once they exist.
-
-A node relays a block or support message only after accepting it, so each relay hop adds the verification time. The exception is a support whose deviation is not on the receiver's active chain and whose supporter key the receiver cannot derive: it is accepted and relayed unverified ([BC-FR26](./moonblokz-blockchain-prd.md), DEC-232, AR-023). The costs below are derived, not measured: they assume about 3 hops to the median node, on top of the measured unsigned-block `t₅₀` of 33 s at 100 nodes.
+A node relays a block or support message only after accepting it, so each relay hop adds the verification time. The exception is a support whose deviation is not on the receiver's active chain and whose supporter key the receiver cannot derive: it is accepted and relayed unverified ([BC-FR26](./moonblokz-blockchain-prd.md), DEC-232, AR-023). The costs below are derived, not measured: they assume about 3 hops to the median node, on top of the measured unsigned-block `t₅₀` of 33 s at 100 nodes (re-derived 2026-11-17 with the measured Schnorr numbers; the model is unchanged).
 
 | Work | Verification per node | Remark |
 |---|---:|---|
-| Full transaction block (18 transfers + block signature) | about 36 s | median propagation about 2.3 min |
-| Low-traffic block (3 transfers + block signature) | about 7.6 s | median propagation about 1 min |
-| Approval evidence block, `r = 40` | about 2 min | median propagation about 6–7 min |
-| Support message | 1.9 s | the proposer needs 40 (about 76 s); a node that relays all 79 spends about 2.5 min |
-| One approval round, `r = 40` | — | about 9–11 min from a node's receipt of the deviation to its receipt of the evidence (about 14–17 min at the 90th percentile; +2–3 min when a replay is due before the evidence): block to the subgroup 1–2.3 min, 40 supports to the proposer 2–4 min, evidence 6–7 min; the basis of the 15-minute later grace step (DEC-203) |
-| FR3 pass over `W + H = 550` blocks | about 70 min (low traffic) to 5.5 h (full blocks) | plus about 2 min per evidence block |
-| Chain switch over `H = 50` full blocks | about 30 min | replay only |
+| Full transaction block (18 transfers + block signature) | about 4.0 s | median propagation about 45 s |
+| Low-traffic block (3 transfers + block signature) | about 0.84 s | median propagation about 36 s |
+| Approval evidence block, `r = 40` | about 13.5 s | median propagation about 1.2 min |
+| Support message | 0.21 s | the proposer needs 40 (about 8.4 s); a node that relays all 79 spends about 17 s |
+| One approval round, `r = 40` | — | about 2.5–3.5 min from a node's receipt of the deviation to its receipt of the evidence (about 4–5.5 min at the 90th percentile, scaled as before): block to the subgroup 0.6–0.75 min, 40 supports to the proposer about 0.7–1.4 min, evidence about 1.2 min. The radio, not verification, now dominates. DEC-203's 15-minute later grace step was set on the earlier 9–11-minute figure; whether to shorten it is open (O-040) |
+| FR3 pass over `W + H = 550` blocks | about 8 min (low traffic) to 36 min (full blocks) | plus about 14 s per evidence block |
+| Chain switch over `H = 50` full blocks | about 3.3 min | replay only |
 
-At about 36 s per full block, a node verifies at most about 1.7 full blocks per minute. That caps the network at roughly 30 transfers per minute, before support traffic.
+At about 4 s per full block, a node verifies about 15 full blocks per minute (about 270 transfers per minute, before support traffic), so the radio's airtime limits (§5), not verification, are expected to bind first. Under BLS on the RP2040 a full block takes about 3–4.5 minutes to verify (13 transfers at 12.7 s under `bls-min-pk`, 22 at 11.7 s under `bls-min-sig`), which is a BLS-profile limit (Story 6.17).
 
 ---
 

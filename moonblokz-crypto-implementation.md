@@ -24,7 +24,7 @@ This document is based on:
 
 - `moonblokz-crypto-lib/Cargo.toml`, `src/lib.rs`, `README.md` and `run_tests.sh`
 - the ratified Story 6.16 decisions (`_bmad-output/implementation-artifacts/6-16-*.md`, D1–D8) and their evaluation measurements (QEMU `mps2-an385 -icount`, thumbv6m firmware linked without an allocator, `6-16-crypto-eval/`)
-- the Project Lead's reference-hardware measurements in the series article *MoonBlokz series part VI — Crypto Algorithms* (2025-05-26), named the current reference on 2026-10-28 (DEC-180)
+- the Project Lead's reference-hardware measurements in the series article *MoonBlokz series part VI — Crypto Algorithms* (2025-05-26), named the reference on 2026-10-28 (DEC-180), superseded on 2026-11-17 by the measured built backends (DEC-249)
 
 ## Scope and Intent
 
@@ -356,21 +356,30 @@ The current knowledge-base update is based on the codebase rather than benchmark
 
 The codebase by itself does not prove benchmark rankings. Any claim about one backend being faster must be backed by measurements; repeat them when a backend, its arithmetic library or the build profile changes.
 
-### Estimates for the built backends (QEMU, until the hardware run)
+### Measured costs of the built backends (RP2040 and QEMU)
 
-Instruction counts under QEMU (`mps2-an385 -icount shift=0`) of the built `moonblokz-crypto` trait, one thumbv6m firmware per scheme linked without an allocator, with painted stack high-water marks (Story 6.16 AC6; `6-16-crypto-eval/final/`). Flash is the `test_crypto` link proof exercising every trait item. The RP2040 times are **estimates** (instructions × 1.2–3 cycles at 125 MHz) until DEC-249's hardware run (the `test_crypto` `crypto_timing` UF2s) replaces them.
+**Measured on the reference hardware (DEC-249, 2026-11-17):** Waveshare RP2040-LoRa at 125 MHz (the Embassy default clock), the `test_crypto` `crypto_timing` firmware per scheme (release, `opt-level = "z"`, linked without an allocator, timed with the 1 µs timer, nothing logged during the run; logs in `6-16-crypto-eval/final/hardware-rp2040-*.log`). Instruction counts and painted stacks come from QEMU (`mps2-an385 -icount shift=0`) on the same trait (Story 6.16 AC6). Flash is the `test_crypto` link proof exercising every trait item. Keygen and multi-sign are averages over 40.
 
-| Scheme | Flash | Sign | Verify | Key decompress | 40-signer aggregate | 40-signer aggregate verify |
-|---|---:|---|---|---|---|---|
-| `schnorr` (`k256` 0.14, BIP-340) | 41 KB | 12.1 M, 5.9 KB stack; about 0.1–0.3 s | 15.9 M, 10.1 KB; about 0.15–0.4 s | 1.0 M, 1.6 KB | 1.5 M, 1.1 KB | 1.02 G, 6.1 KB (DEC-244); about 10–25 s |
-| `bls-min-sig` (zkcrypto `bls12_381` 0.9.2) | 98 KB | 79 M, 14.5 KB; about 0.8–1.9 s | 772 M, 22.5 KB; about 7–19 s | 71 M, 22.2 KB | 1.06 G, 9.8 KB | 3.56 G, 26.0 KB (keys decompressed per use); about 34–85 s |
-| `bls-min-pk` (zkcrypto `bls12_381` 0.9.2) | 100 KB | 299 M, 41.3 KB; about 3–7 s | 895 M, 33.6 KB; about 9–21 s | 26 M, 9.8 KB | 2.86 G, 22.7 KB | 1.93 G, 35.6 KB; about 19–46 s |
+| Scheme | Flash | Keygen | Sign (QEMU) | Verify (QEMU) | 40-signer aggregate (QEMU) | 40-signer aggregate verify (QEMU) |
+|---|---:|---:|---|---|---|---|
+| `schnorr` (`k256` 0.14, BIP-340) | 41 KB | 158 ms | **163 ms** (12.1 M, 5.9 KB stack) | **209 ms** (15.9 M, 10.1 KB) | **39 ms** (1.5 M, 1.1 KB) | **13.3 s**, 332 ms per signer (1.02 G, 6.1 KB; DEC-244) |
+| `bls-min-sig` (zkcrypto `bls12_381` 0.9.2) | 98 KB | 2.05 s | **2.02 s** (79 M, 14.5 KB) | **11.7 s** (772 M, 22.5 KB) | **31.4 s** (1.06 G, 9.8 KB) | **51.3 s** (3.56 G, 26.0 KB; keys decompressed per use) |
+| `bls-min-pk` (zkcrypto `bls12_381` 0.9.2) | 100 KB | 1.32 s | **4.07 s** (299 M, 41.3 KB) | **12.7 s** (895 M, 33.6 KB) | **39.6 s** (2.86 G, 22.7 KB) | **42.5 s** (1.93 G, 35.6 KB) |
 
-The proof of possession costs a signature to make and a verification to check. `bls-min-pk` moves hash-to-curve into G2, so signing and its stack grow about 4× and 3× against `bls-min-sig`; its 33–41 KB stacks are what Story 6.17's BLS RP2040 profiles size Core 1 against.
+Key decompression (QEMU only): 1.0 M / 1.6 KB (Schnorr), 71 M / 22.2 KB (min-sig, G2), 26 M / 9.8 KB (min-pk, G1). The proof of possession costs exactly a signature to make and a verification to check (measured: 163 / 209 ms, 2.02 / 11.7 s, 4.07 / 12.7 s).
 
-### Measured timings on the reference hardware
+What the measurement shows:
 
-These are DEC-180's figures: the earlier backends, measured with an allocator. No node build uses them (every firmware build links without an allocator, and the node never ran malachite); they are superseded once DEC-249's hardware run measures the ratified backends.
+- **About 1.65–1.9 cycles per instruction** for most operations, so the QEMU counts predict RP2040 time well; operations dominated by square roots and inversions run at 3.2–3.7 (min-sig signing's hash to G1, min-sig aggregation, min-pk keygen and aggregate verify at 2.75–3.3).
+- **Schnorr is 5.5–9× faster than DEC-180's malachite figures** (sign 0.9 s → 163 ms, verify 1.9 s → 209 ms, aggregate verify 2.9 s → 332 ms per signer) and links without an allocator.
+- **Aggregation saves space, not time, on Schnorr** (332 ms per signer against 209 ms for a separate verification); on BLS it saves both (min-sig: 51.3 s for 40 against about 7.8 min verified one by one).
+- **BLS on the RP2040 is slow:** a single verification takes 11.7–12.7 s, so a full block (13 transfers under `bls-min-pk`, 22 under `bls-min-sig`, plus its block signature) takes about 3–4.5 minutes to verify. Story 6.17's RP2040 BLS profiles carry these numbers.
+- **BLS aggregation re-validates every contribution** (the subgroup check inside the aggregation) although `MultiSignature::new` already validated it: most of the 31–40 s for 40 is that repeated check. Under review with Story 6.17 (O-040 lists the follow-ups).
+- `bls-min-pk` moves hash-to-curve into G2, so signing and its stack grow about 2× and 3× against `bls-min-sig`; its 33–41 KB stacks are what Story 6.17's BLS RP2040 profiles size Core 1 against.
+
+### Earlier measurements (DEC-180, superseded)
+
+These are DEC-180's figures: the earlier backends, measured with an allocator. No node build uses them (every firmware build links without an allocator, and the node never ran malachite). **Superseded on 2026-11-17 by DEC-249's hardware run** (the table above); kept as history.
 
 The Project Lead measured the backends on the reference hardware and published the results in the series article *MoonBlokz series part VI — Crypto Algorithms* (2025-05-26). On 2026-10-28 the Project Lead named these the current reference (DEC-180). Hardware: Waveshare RP2040-LoRa (Raspberry Pi Pico 1 class, dual-core 133 MHz, 264 KB SRAM). Test project: Embassy firmware, 10 signers, SHA-256, message `"Hello, world!"`. "Aggregate" is the aggregation of 10 multi-signatures, and "Verify aggregated" is the verification of that aggregate.
 
@@ -388,7 +397,7 @@ The Project Lead measured the backends on the reference hardware and published t
 
 What followed from them:
 
-- **The KB's derived limits use the `schnorr-malachite` `"z"` row** (DEC-180): about 1.9 s per verification and 2.9 s per signer for an aggregate (system constraints §2.1). The `"s"` profile is about 25 % faster.
+- **The KB's derived limits used the `schnorr-malachite` `"z"` row** (DEC-180) until 2026-11-17: about 1.9 s per verification and 2.9 s per signer for an aggregate; system constraints §2.1 now uses the measured `k256` numbers. The `"s"` profile was about 25 % faster.
 - **Aggregation saved space, not time** on that backend (2.9 s against 1.9 s per signer).
 - **The `bls12_381-bls` rows are of the forgeable backend** that Story 6.16 removes.
 - **Acceleration is deferred to a later development phase (O-032).**
