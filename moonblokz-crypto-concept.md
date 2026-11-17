@@ -178,7 +178,7 @@ One backend: standard BIP-340 through `k256` (DEC-235), with MoonBlokz's own hal
 
 ### BLS family
 
-One backend on zkcrypto `bls12_381`, the IETF proof-of-possession suite in two variants (DEC-247): `bls-min-sig` keeps signatures small (48 B) for the radio, `bls-min-pk` keeps keys small (48 B) for builds with many nodes. On the RP2040 the smaller keys do not win: min-pk's hash-to-G2 signing needs a 70 KiB Core 1 stack, so it fits fewer nodes (291) than min-sig (356) ([System Constraints](./moonblokz-system-constraints.md) §3.4). BLS stays for stronger hardware and faster networks, where its constant-size aggregation pays off; it runs on the chain since Story 6.17.
+One backend on zkcrypto `bls12_381`, the IETF proof-of-possession suite in two variants (DEC-247): `bls-min-sig` keeps signatures small (48 B) for the radio, `bls-min-pk` keeps keys small (48 B) for builds with many nodes. On the RP2040 the smaller keys do not win: min-pk's hash-to-G2 signing needs a 70 KiB Core 1 stack, so it fits fewer nodes (211) than min-sig (330) ([System Constraints](./moonblokz-system-constraints.md) §3.4). BLS stays for stronger hardware and faster networks, where its constant-size aggregation pays off; it runs on the chain since Story 6.17.
 
 ## The Core Conceptual Trade-off
 
