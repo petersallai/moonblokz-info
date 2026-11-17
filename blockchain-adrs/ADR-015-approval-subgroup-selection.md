@@ -19,9 +19,9 @@ Approval subgroup selection uses a deterministic, seed-derived rendezvous-hash o
 
 #### Active-node set
 
-A node is **active** at an evaluation point if, within that point's active window, it created at least one block (of any payload type) or is a signer listed in an approval evidence block or a twin verdict bitmap. Transaction initiation alone does not count (Project Lead, 2026-10-28; DEC-185): sleeping senders cannot sign and so cost approval liveness (AR-008), and an identity could join `A` for one transaction fee. The evaluation point is the deviation's parent `p − 1` for an approval and the twins' shared parent `P` for a verdict, so every node derives the same set (O-030 closed). With `vote_interest = 50` creation rotates, so for `N ≤ W` every voted node creates within the window and `A` covers the network; for `N > W` it is a sample of about `W` creators in which a coalition keeps about its population share.
+A node is **active** at an evaluation point if, within that point's active window, it created at least one block (of any payload type). Transaction initiation alone does not count (Project Lead, 2026-10-28; DEC-185): sleeping senders cannot sign and so cost approval liveness (AR-008), and an identity could join `A` for one transaction fee. Signing an approval evidence block or a twin verdict does not count either (Project Lead, 2026-11-16; DEC-241): a signer is a subgroup member, so it was already in `A` at its own evaluation point; counting it would only prolong that membership, and would need the signer bitmap decoded again when its block leaves the window. The evaluation point is the deviation's parent `p − 1` for an approval and the twins' shared parent `P` for a verdict, so every node derives the same set (O-030 closed). With `vote_interest = 50` creation rotates, so for `N ≤ W` every voted node creates within the window and `A` covers the network; for `N > W` it is a sample of about `W` creators in which a coalition keeps about its population share.
 
-The active set `A` is therefore derivable from active-chain state per ADR-003 and ADR-008, bounded by the `snake_chain` length, and does not require separately persisted membership state. It is kept as a per-node appearance counter, maintained as blocks enter and leave the window (Project Lead, 2026-11-10; DEC-213); Story 6.4 counts block creators only, and evidence and verdict signers (Stories 6.6, 6.7, 6.13; O-037) and the exclusions below (6.13, 6.7, 7.2) follow.
+The active set `A` is therefore derivable from active-chain state per ADR-003 and ADR-008, bounded by the `snake_chain` length, and does not require separately persisted membership state. It is kept as a per-node appearance counter, maintained as blocks enter and leave the window (Project Lead, 2026-11-10; DEC-213); Story 6.4 counts the block creators, and the exclusions below (6.13, 6.7, 7.2) follow.
 
 A node under a BC-FR72 equivocation exclusion is not in `A` while the exclusion lasts (Project Lead, 2026-10-22; DEC-165), nor is a node under a late-node exclusion (BC-FR37, DEC-184, DEC-185).
 
@@ -77,7 +77,7 @@ The twin verdict seed follows the same rules.
 
 #### Chain-config invariant
 
-Only the supporters that actually sign are written into the approval evidence, so the crypto aggregation ceiling constrains `required_support`, not `m`:
+Only the supporters that actually sign are written into the approval evidence (the proposer writes exactly `r_eff`, one per subgroup rank; DEC-236), so the crypto aggregation ceiling constrains `required_support`, not `m`:
 
 ```
 required_support ≤ MAX_AGGREGATED_SIGNATURES(backend)
@@ -102,7 +102,7 @@ If an approval cannot collect `r_eff` signatures in time, the subgroup is **not*
 #### Trade-offs
 - The "active node" definition is per-branch, so in rare multi-branch situations each branch computes its own subgroup. This is consistent with the active-chain-centered model but must be remembered when reasoning about reorgs.
 - Chain-config validation must know the active crypto backend in order to reject `required_support` values that exceed that backend's `MAX_AGGREGATED_SIGNATURES`.
-- A newly registered node becomes "active" only once it creates a block within the window or is a listed signer; its registration and transactions alone do not count (DEC-185).
+- A newly registered node becomes "active" only once it creates a block within the window; its registration, transactions and signatures alone do not count (DEC-185, DEC-241).
 
 ### Alternatives considered
 

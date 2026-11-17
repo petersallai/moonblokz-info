@@ -225,7 +225,7 @@ This document explains:
 - the three-type model (Owned + View + Builder) for `Block` / `Transaction` and friends,
 - the 15 + 1 internal modules of `moonblokz-blockchain` (`lifecycle`, `scheduler`, `blocks`, `chain_heads`, `snake_chain`, `branch_value`, `intake`, `staged_validation`, `reconciliation`, `node_info`, `available_utxo`, `creator`, `approval`, `queries`, `emit_scratch`, + the `api.rs` surface),
 - the const-generic catalog (`MAX_NODES`, `SNAKE_CHAIN_LENGTH_MAX`, `MAX_BLOCKS`, `MAX_BRANCH_COUNT`, etc. with default values),
-- the sized data-structure catalog with bit-level layouts (`BlockEntry` 80 B padded, `ChainHeadEntry` 32 B padded, `NodeInfo` SoA, `ApprovalAccumulator` ~2 KB crypto-agnostic, `EmitScratch`, `SchedulerState`),
+- the sized data-structure catalog with bit-level layouts (`BlockEntry` 80 B padded, `ChainHeadEntry` 32 B padded, `NodeInfo` SoA, `ApprovalAccumulator` ~3.7 KB Schnorr, `EmitScratch`, `SchedulerState`),
 - the 264 KB SRAM RAM budget, measured per scheme (Story 6.17): Schnorr fits the 1 000-node default with a ~7.9 KB (~3%) margin, and each BLS variant fixes `MAX_NODES` at its largest fitting count (356 `bls-min-sig`, 291 `bls-min-pk`),
 - the FR1–FR69 coverage matrix showing 63 hard-covered FRs, 5 delegated to the `moonblokz-configuration` crate, and 1 MVP-skip (FR52),
 - the `ChainConfigTrait` surface exposed by the `moonblokz-configuration` crate,
