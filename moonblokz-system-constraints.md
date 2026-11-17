@@ -92,7 +92,9 @@ Cross-check: on BLS the `ApprovalAccumulator` costs ~4 B per supporter (`4 + 0`)
 
 ### 2.1 Measured crypto timings (RP2040) and what they cost
 
-Authoritative source: [`moonblokz-crypto-implementation.md`](./moonblokz-crypto-implementation.md) §Measured timings on the reference hardware (DEC-180). The current build is `schnorr-malachite` with `opt-level = "z"`: about 0.9 s to sign, 1.9 s to verify one signature, and 2.9 s per signer to verify an aggregate. The `"s"` profile is about 25 % faster.
+Authoritative source: [`moonblokz-crypto-implementation.md`](./moonblokz-crypto-implementation.md) §Measured timings on the reference hardware (DEC-180). The figures below are DEC-180's `schnorr-malachite` measurements at `opt-level = "z"`, taken with an allocator — not the node build: about 0.9 s to sign, 1.9 s to verify one signature, and 2.9 s per signer to verify an aggregate. The `"s"` profile is about 25 % faster.
+
+The built `schnorr` backend (`k256`, DEC-235, Story 6.16) has only QEMU-based **estimates** until DEC-249's hardware run: sign about 12 M and verify about 16 M instructions, a 40-signer aggregate check about 1.02 G (DEC-244), so roughly 0.1–0.3 s to sign, 0.15–0.4 s to verify and 10–25 s per 40-signer aggregate on an RP2040 ([`moonblokz-crypto-implementation.md`](./moonblokz-crypto-implementation.md) §Estimates for the built backends, which also lists both BLS schemes). The derived costs below are recomputed from the measured numbers once they exist.
 
 A node relays a block or support message only after accepting it, so each relay hop adds the verification time. The exception is a support whose deviation is not on the receiver's active chain and whose supporter key the receiver cannot derive: it is accepted and relayed unverified ([BC-FR26](./moonblokz-blockchain-prd.md), DEC-232, AR-023). The costs below are derived, not measured: they assume about 3 hops to the median node, on top of the measured unsigned-block `t₅₀` of 33 s at 100 nodes.
 
@@ -139,16 +141,16 @@ Raising `MAX_NODES` costs ~50 B/node (Schnorr) or ~114 B/node (BLS) across the n
 | radio-lib (memory-config-medium) | ~60 KB | ~60 KB |
 | crypto-lib scratch | ~4 KB | ~4 KB |
 | storage page buffer | ~4 KB | ~4 KB |
-| Stacks: Core 1 (blockchain task) 24 KB + other tasks ~18 KB | ~42 KB | ~42 KB |
+| Stacks: Core 1 (blockchain task) 32 KB Schnorr / 24 KB BLS + other tasks ~18 KB | ~50 KB | ~42 KB |
 | Embassy executor + statics | ~4 KB | ~4 KB |
-| **Subtotal allocated** | **~245 KB** | **~308 KB** |
-| **Margin (264 KB − allocated)** | **~19 KB (~7%)** ✅ | **~−44 KB (exceeds 264 KB)** ❌ |
+| **Subtotal allocated** | **~253 KB** | **~308 KB** |
+| **Margin (264 KB − allocated)** | **~11 KB (~4%)** ✅ | **~−44 KB (exceeds 264 KB)** ❌ |
 
-The radio figure is the **source-confirmed** `memory-config-medium = ~60 KB` (radio module `README.md` + `lib.rs` profile consts; see §6 and §7/D1), additive to the separately-counted Embassy task stacks. **Consequence:** at the default 1000-node profile the BLS backend **exceeds the 264 KB ceiling by ~44 KB** — const-generic tuning (e.g. `MAX_NODES 1000 → 500`, §3.4) is therefore **mandatory** for BLS, not optional. Schnorr keeps a ~19 KB (~7%) margin. The authoritative architecture §7.3/§7.4/§12 and the index have been updated to match this source-confirmed figure (radio = 60 KB).
+The radio figure is the **source-confirmed** `memory-config-medium = ~60 KB` (radio module `README.md` + `lib.rs` profile consts; see §6 and §7/D1), additive to the separately-counted Embassy task stacks. **Consequence:** at the default 1000-node profile the BLS backend **exceeds the 264 KB ceiling by ~44 KB** — const-generic tuning (e.g. `MAX_NODES 1000 → 500`, §3.4) is therefore **mandatory** for BLS, not optional. Schnorr keeps a ~11 KB (~4%) margin with its 32 KB Core 1 stack (DEC-137, k256); the BLS column keeps the 24 KB Core 1 until Story 6.17 sizes it per BLS profile. The authoritative architecture §7.3/§7.4/§12 and the index have been updated to match this source-confirmed figure (radio = 60 KB).
 
 ### 3.3 Stack frames
 
-- Chain-lib hosting task: runs on Core 1, whose stack is **24 KB** — measured peak 19.2 KB plus ~25% (architecture §8, DEC-137).
+- Chain-lib hosting task: runs on Core 1, whose stack is **32 KB** — measured peak 25.1 KB (`process_genesis`, k256 Schnorr) plus ~25% (architecture §8, DEC-137 amended 2026-11-16).
 - Other Embassy tasks (radio, USB console): **4 KB**.
 
 ### 3.4 Deployment tuning (BLS headroom)
@@ -162,6 +164,8 @@ Per-lever savings: [`moonblokz-blockchain-architecture.md`](./moonblokz-blockcha
 | BLS-small | 250 | 300 | ~49 KB ✅ |
 
 Most impactful lever: `MAX_NODES 1000 → 500` saves ~57 KB (BLS) but halves the node capacity, so the build joins only chains with `max_node_count ≤ 500` — and is the minimum tuning needed to make BLS fit at all once the radio medium profile is counted at its real ~60 KB.
+
+The figures above are `bls-min-sig` (96 B keys). Two levers relieve the key array without cutting capacity: `bls-min-pk` halves it (48 B keys, DEC-247), and the LRU public-key cache of architecture §12.3 keeps only hot keys in RAM (not MVP).
 
 ---
 

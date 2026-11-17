@@ -15,21 +15,18 @@ Its purpose is to describe:
 
 This file is intentionally focused on conceptual understanding rather than exact API shape, byte-level serialization, or backend-internal implementation detail.
 
+**Status (2026-11-16):** the backend set described here is built in Story 6.16 (DEC-235, DEC-245..247); the four earlier backends are removed.
+
 - Use this document to understand **what cryptography must achieve in MoonBlokz**, **why the current trade-offs exist**, and **how the crypto subsystem fits the broader product and protocol context**.
 - Use [moonblokz-crypto-algorythm.md](./moonblokz-crypto-algorythm.md) for the formal API, constants, serialization rules, and signing or verification flows.
 - Use [moonblokz-crypto-implementation.md](./moonblokz-crypto-implementation.md) for engineering constraints, maintenance cautions, dependency concerns, and test implications.
 
 ## Source Basis
 
-This document is based on the current contents of:
+This document is based on:
 
-- `moonblokz-crypto-lib/Cargo.toml`
-- `moonblokz-crypto-lib/src/lib.rs`
-- `moonblokz-crypto-lib/src/schnorr_malachite_signer.rs`
-- `moonblokz-crypto-lib/src/schnorr_num_bigint_dig_signer.rs`
-- `moonblokz-crypto-lib/src/schnorr_crypto_bigint_signer.rs`
-- `moonblokz-crypto-lib/src/bls_bls12_381_bls_signer.rs`
-- `moonblokz-crypto-lib/README.md`
+- `moonblokz-crypto-lib/Cargo.toml`, `src/lib.rs` and `README.md`
+- the ratified Story 6.16 decisions (`_bmad-output/implementation-artifacts/6-16-*.md`) and the epics entry for Story 6.16
 
 It also remains consistent with the broader architectural direction described in the MoonBlokz article series, but this file treats the codebase as the authoritative source where code and earlier summaries differ.
 
@@ -118,7 +115,7 @@ Conceptually, this means MoonBlokz treats cryptography as **swappable infrastruc
 
 ### Deterministic behavior where possible
 
-The Schnorr implementations derive nonces deterministically from the private key, message, and counter through tagged hashing.
+Schnorr signing is BIP-340 with zero auxiliary randomness, so the nonce is derived deterministically from the private key and the message.
 
 Conceptually, this reflects a preference for reducing fragile runtime randomness dependencies in constrained environments.
 
@@ -161,12 +158,7 @@ This design shows that MoonBlokz treats approval evidence as a distinct business
 
 ## Why MoonBlokz Keeps Multiple Backends
 
-The current library supports four concrete backend features:
-
-- `schnorr-malachite`
-- `schnorr-num-bigint-dig`
-- `schnorr-crypto-bigint`
-- `bls-bls12_381-bls`
+The library selects one of three scheme features at build time (DEC-246): `schnorr` (default), `bls-min-sig` and `bls-min-pk`. The feature names the scheme, not the implementation, and every crate of the stack forwards it.
 
 Conceptually, this means MoonBlokz has separated three concerns:
 
@@ -174,38 +166,30 @@ Conceptually, this means MoonBlokz has separated three concerns:
 2. **which algorithm family is active**,
 3. **which concrete backend implements that family**.
 
-This is a very important design choice. It means MoonBlokz is not betting the entire project on one library’s long-term viability.
+This is a very important design choice. It means MoonBlokz is not betting the entire project on one library’s long-term viability: the earlier Schnorr arithmetic backends were replaced without changing the public API.
 
 ## Conceptual Meaning of the Current Backend Mix
 
-The codebase currently expresses two larger algorithm families and multiple implementation strategies.
+Only libraries that build and run on the devices as `no_std` **without an allocator** qualify (Project Lead, 2026-11-14). That rule removed the allocating malachite and num-bigint-dig backends; the crypto-bigint backend went because it took minutes per operation and was not constant-time, and the earlier BLS wrapper because it was forgeable (DEC-245).
 
 ### Schnorr family
 
-Schnorr is implemented three ways:
-
-- via Malachite,
-- via num-bigint-dig,
-- via crypto-bigint.
-
-Conceptually, this means MoonBlokz sees Schnorr as the practical algorithm family worth preserving even when arithmetic backends change.
+One backend: standard BIP-340 through `k256` (DEC-235), with MoonBlokz's own half-aggregation (DEC-194) on top. Using an audited library's single-signature path rather than custom signature code also gives MoonBlokz the official test vectors.
 
 ### BLS family
 
-BLS exists as a wrapper-based option using the external `bls12_381-bls` ecosystem.
-
-Conceptually, this means MoonBlokz still values constant-size aggregated-signature behavior enough to preserve BLS as a swappable option, even if it is not the main practical direction today.
+One backend on zkcrypto `bls12_381`, the IETF proof-of-possession suite in two variants (DEC-247): `bls-min-sig` keeps signatures small (48 B) for the radio, `bls-min-pk` keeps keys small (48 B) for builds with many nodes. BLS stays for stronger hardware and faster networks, where its constant-size aggregation pays off; on the chain it is Story 6.17.
 
 ## The Core Conceptual Trade-off
 
 The current library structure preserves the central trade-off already visible in the earlier article context.
 
 - **BLS** offers the conceptually cleaner aggregation story.
-- **Schnorr** offers a more implementation-driven path with explicit control over signing, verification, and bounded aggregation behavior.
+- **Schnorr** offers a standard, library-backed path (BIP-340) with explicit control over its bounded aggregation behavior.
 
 The codebase reinforces this by keeping both families available, while making Schnorr the default through the crate’s default feature:
 
-- default feature: `schnorr-malachite`
+- default feature: `schnorr`
 
 So conceptually, MoonBlokz is still optimized for **practical deployability first, backend replaceability second, ideal aggregation compactness third**.
 
@@ -232,18 +216,13 @@ The BLS backend is still relevant conceptually because it demonstrates the other
 
 - constant-size aggregated signatures,
 - explicit aggregation of public keys for verification,
-- and a thinner wrapper implementation because the underlying library provides more of the heavy lifting.
+- and a rogue-key defence that rests on a verified proof of possession for every key rather than on per-signer coefficients (DEC-248).
 
 Even if MoonBlokz does not currently center the system around BLS, keeping it in the codebase preserves an important architectural option.
 
 ## Deterministic Nonces as a Conceptual Safety Choice
 
-In all Schnorr backends, signing uses deterministic tagged hashing with:
-
-- a nonce tag,
-- private key bytes,
-- message bytes,
-- and a counter.
+Schnorr signing is BIP-340 with zero auxiliary randomness, so the nonce follows from the private key and the message alone.
 
 Conceptually, this shows that MoonBlokz treats weak randomness on constrained devices as a real operational risk. The design therefore shifts from “generate a random nonce safely every time” to “derive a reproducible nonce safely from controlled inputs.”
 
@@ -262,7 +241,7 @@ This fits the broader MoonBlokz philosophy of bounded behavior on constrained de
 
 ## Why Compact Public-Key Encoding Matters Conceptually
 
-In the Schnorr implementations, the public key is serialized as the `x` coordinate only, with the even-`y` convention used when reconstructing the point.
+In the Schnorr backend, the public key is the BIP-340 x-only key, with the even-`y` convention used when reconstructing the point.
 
 Conceptually, this means MoonBlokz prefers compact public-key representation and accepts reconstruction logic as part of verification behavior.
 
@@ -287,6 +266,8 @@ So the present conceptual state is clear:
 
 - MoonBlokz has a replaceable classical crypto subsystem,
 - but it does not yet have a practical post-quantum-ready implementation path in the library.
+
+No standardized post-quantum signature fits the consensus path today (sizes, the `MAX_NODES` key array, no compact aggregation); a migration path — a key-type tag and a signed key rotation, LMS / HSS for low-volume signatures — is an open, undecided question (O-039).
 
 ## Main Conceptual Conclusions
 
@@ -324,7 +305,7 @@ From an architectural point of view, the current crypto library establishes seve
 - bounded serialization is a first-class concern,
 - and algorithm-family and backend concerns are intentionally separated.
 
-The addition of a `schnorr-crypto-bigint` backend strengthens the architectural conclusion that MoonBlokz expects crypto backend evolution over time.
+The replacement of the earlier Schnorr and BLS backends without an API change (Story 6.16) confirms that MoonBlokz expects crypto backend evolution over time.
 
 ## Related Documents
 

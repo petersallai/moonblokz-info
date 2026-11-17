@@ -36,7 +36,7 @@ If you already know your topic, use this table to jump straight to the relevant 
 The subsystem documents fall into two deliberately different classes:
 
 - **Requirements-driven (authoritative).** Blockchain and storage each have a Product Requirements Document and an Architecture Decision Document, authored ahead of their implementation-facing docs. These carry the *(authoritative)* marker above and win on any divergence; their concept, algorithm, and implementation docs describe how that intent is realized. The [Configuration Module Specification](./moonblokz-configuration-specification.md) belongs to the same class: it was ratified ahead of the `moonblokz-configuration` and `moonblokz-vm` crates and remains authoritative for everything it covers now that both exist.
-- **Current-code-grounded.** Crypto, radio, simulator, and telemetry have no PRD or Architecture Decision Document. Their concept, algorithm, and implementation docs are grounded in the current code, which is the source of truth for those subsystems and wins on any divergence.
+- **Current-code-grounded.** Crypto, radio, simulator, and telemetry have no PRD or Architecture Decision Document. Their concept, algorithm, and implementation docs are grounded in the current code, which is the source of truth for those subsystems and wins on any divergence — except sections marked as ratified (the crypto backends of Story 6.16, DEC-235, DEC-244..250), which the code is being brought to.
 
 The asymmetry is intentional: the requirements-first workflow that produces the PRD and Architecture documents was introduced only partway through the project, so blockchain and storage were captured under it while the earlier subsystems were documented from their existing code and have not been retrofitted with requirements artifacts.
 
@@ -325,10 +325,10 @@ A formal, algorithm-oriented cryptography document based on the current `moonblo
 This document explains:
 
 - what public traits, constants, and error types define the current crypto subsystem,
-- how compile-time feature selection chooses between the Schnorr and BLS families and among concrete backends,
+- how the compile-time scheme feature (`schnorr`, `bls-min-sig`, `bls-min-pk`) selects the backend,
 - what the formal roles of `Crypto`, `PublicKey`, `Signature`, `MultiSignature`, and `AggregatedSignature` are,
 - how deterministic Schnorr signing, deterministically weighted aggregation, and aggregate verification work in the current code,
-- how the BLS wrapper differs structurally,
+- the ratified Story 6.16 target: BIP-340 Schnorr through `k256`, the DEC-194 aggregate encoding, the proof-of-possession methods, and the two IETF BLS suites (`bls-min-sig`, `bls-min-pk`),
 - and what explicit bounds such as `MAX_AGGREGATED_SIGNATURES = 50` mean for the formal model.
 
 Use this file when you want the exact current crypto API and behavior without dropping into maintenance or evolution guidance.
@@ -342,7 +342,7 @@ This document explains:
 - what implementation responsibilities follow from the current crypto design,
 - why compile-time backend selection and stable re-exports are important,
 - how the chosen library structure avoids excessive generics, trait-object complexity, and unnecessary heap dependence,
-- how backend choice affects maintenance, compatibility, low-level safety, and dependency risk,
+- how backend choice affects maintenance, compatibility, low-level safety, and dependency risk, and what the ratified backends cost (QEMU estimates until the hardware run, beside DEC-180's earlier measurements),
 - why bounded aggregation, buffer-based serialization, and multi-feature testing must be preserved,
 - and which kinds of crypto evolution remain feasible versus compatibility-sensitive.
 

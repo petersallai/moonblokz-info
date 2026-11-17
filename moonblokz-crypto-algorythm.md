@@ -2,7 +2,7 @@
 
 ## Purpose of This Document
 
-This document provides a formal, algorithm-oriented description of the current MoonBlokz cryptographic design as implemented in `moonblokz-crypto-lib`.
+This document provides a formal, algorithm-oriented description of the MoonBlokz cryptographic design in `moonblokz-crypto-lib`.
 
 Its purpose is to capture:
 
@@ -11,29 +11,27 @@ Its purpose is to capture:
 - the concrete backend set,
 - family-specific constants,
 - signature-type behavior,
-- deterministic Schnorr nonce derivation,
-- current Schnorr aggregation behavior,
-- BLS wrapper behavior,
+- deterministic Schnorr signing,
+- Schnorr aggregation behavior,
+- the BLS proof-of-possession suites,
 - and explicit structural limits present in the codebase.
 
-This file is the **primary knowledge-base document for the formal crypto model currently implemented in code**.
+This file is the **primary knowledge-base document for the formal crypto model**.
+
+**Status (2026-11-16): built in Story 6.16.** The backends, features, encodings and proof-of-possession methods below are built (DEC-235, DEC-244..248); the four earlier backends (`schnorr-malachite`, `schnorr-num-bigint-dig`, `schnorr-crypto-bigint`, `bls-bls12_381-bls`) are removed. BLS on the chain is Story 6.17.
 
 - Use [moonblokz-crypto-concept.md](./moonblokz-crypto-concept.md) for the higher-level explanation of design goals and trade-offs.
 - Use [moonblokz-crypto-implementation.md](./moonblokz-crypto-implementation.md) for engineering implications, compatibility cautions, and maintenance guidance.
 
 ## Source Basis
 
-This document is based on the current contents of:
+This document is based on:
 
-- `moonblokz-crypto-lib/Cargo.toml`
-- `moonblokz-crypto-lib/src/lib.rs`
-- `moonblokz-crypto-lib/src/schnorr_malachite_signer.rs`
-- `moonblokz-crypto-lib/src/schnorr_num_bigint_dig_signer.rs`
-- `moonblokz-crypto-lib/src/schnorr_crypto_bigint_signer.rs`
-- `moonblokz-crypto-lib/src/bls_bls12_381_bls_signer.rs`
-- `moonblokz-crypto-lib/README.md`
+- `moonblokz-crypto-lib/Cargo.toml`, `src/lib.rs` and `README.md` (the trait model, constants and guards, which the target keeps except where stated);
+- the ratified Story 6.16 decisions (`_bmad-output/implementation-artifacts/6-16-*.md`, D1–D8; DEC-235, DEC-244..250), which define the target modules `src/schnorr_k256_signer.rs` and `src/bls_zkcrypto_signer.rs`;
+- BIP-340, RFC 9380 and the IETF BLS signature draft (ciphersuites, KeyValidate, FastAggregateVerify, proof of possession).
 
-Where earlier article-era summaries and the codebase diverge, this file treats the code as authoritative.
+Where earlier article-era summaries and the codebase diverge, this file treats the code as authoritative; where a section is marked as ratified, the code is being brought to it.
 
 ## Scope and Limits
 
@@ -63,7 +61,7 @@ To stay aligned with the companion conceptual and implementation files, this doc
 - **Aggregation-ready signature** — the single-signer artifact represented by `MultiSignature`, intended for later combination.
 - **Aggregated signature** — the combined artifact represented by `AggregatedSignature`.
 - **Algorithm family** — the broader family, currently Schnorr or BLS.
-- **Backend** — one concrete compile-time-selected implementation of a family.
+- **Backend** — one concrete compile-time-selected implementation, named by its scheme feature (`schnorr`, `bls-min-sig`, `bls-min-pk`).
 
 When this document refers to exact code constructs, it uses the public type names `Signature`, `MultiSignature`, and `AggregatedSignature` directly.
 
@@ -84,18 +82,17 @@ The current library is designed to provide a single crypto API that can:
 
 The root library file enforces two critical compile-time rules.
 
-### Rule 1: exactly one implementation feature must be enabled
+### Rule 1: exactly one scheme feature must be enabled
 
 Compilation fails if more than one of these features is enabled:
 
-- `schnorr-malachite`
-- `schnorr-num-bigint-dig`
-- `schnorr-crypto-bigint`
-- `bls-bls12_381-bls`
+- `schnorr`
+- `bls-min-sig`
+- `bls-min-pk`
 
-### Rule 2: at least one implementation feature must be enabled
+### Rule 2: at least one scheme feature must be enabled
 
-Compilation also fails if none of those concrete implementation features is enabled.
+Compilation also fails if none of them is enabled.
 
 ### Consequence
 
@@ -103,25 +100,15 @@ The public crypto API is always bound to exactly one backend at build time.
 
 ## Feature Model
 
-The library uses a two-layer feature structure.
+Built in Story 6.16 (DEC-246). The feature names the scheme, not the implementation:
 
-### Layer 1: algorithm family
+| Feature | Backend | Scheme |
+|---|---|---|
+| `schnorr` (default) | `k256` 0.14 (`arithmetic`, `schnorr`; no `precomputed-tables`) | BIP-340 as implemented by `k256` 0.14, with the DEC-194 aggregate |
+| `bls-min-sig` | zkcrypto `bls12_381` 0.9.2 (`groups`, `pairings`, `experimental`; no `sqrt-table`) | IETF `BLS_SIG_BLS12381G1_XMD:SHA-256_SSWU_RO_POP_` |
+| `bls-min-pk` | zkcrypto `bls12_381` 0.9.2 | IETF `BLS_SIG_BLS12381G2_XMD:SHA-256_SSWU_RO_POP_` |
 
-- `schnorr`
-- `bls`
-
-### Layer 2: concrete implementation
-
-- `schnorr-malachite`
-- `schnorr-num-bigint-dig`
-- `schnorr-crypto-bigint`
-- `bls-bls12_381-bls`
-
-### Default feature
-
-The current default feature is:
-
-- `schnorr-malachite`
+A private `bls` helper feature, enabled by both BLS variants, may gate their shared code; the guards also refuse it without a variant. Every crate that forwards a backend forwards these three names, `default` containing `schnorr`; chain-types refuses both BLS features until Story 6.17.
 
 ## Public API Re-Export Model
 
@@ -189,8 +176,9 @@ This trait defines the main cryptographic behavior:
 - `multi_sign(&self, message: &[u8]) -> MultiSignature`
 - `verify_multi_signature(&self, message: &[u8], multi_signature: &MultiSignature, public_key: &PublicKey) -> bool`
 - `verify_signature(&self, message: &[u8], signature: &Signature, public_key: &PublicKey) -> bool`
-- `aggregate_signatures(&self, signatures: &[&MultiSignature], message: &[u8]) -> Result<AggregatedSignature, CryptoError>` (to gain the signers' public keys, DEC-194)
+- `aggregate_signatures(&self, signatures: &[&MultiSignature], public_keys: &[&[u8; PUBLIC_KEY_SIZE]], message: &[u8]) -> Result<AggregatedSignature, CryptoError>` — built in Story 6.16 (DEC-194); a length mismatch, empty input and more than `MAX_AGGREGATED_SIGNATURES` inputs are errors; the BLS backends take and ignore the keys
 - `verify_aggregated_signature(&self, message: &[u8], aggregated_signature: &AggregatedSignature, public_keys: &[&PublicKey]) -> bool`
+- `prove_possession(&self) -> Signature` and `verify_possession(&self, public_key: &PublicKey, proof: &Signature) -> bool` — built in Story 6.16 (DEC-248); see §Proof of Possession
 
 ## Signature Role Model
 
@@ -219,14 +207,15 @@ When the `schnorr` family is active:
 
 ### BLS constants
 
-When the `bls` family is active:
+Per variant (DEC-247; `bls-min-sig` keeps the current BLS sizes):
 
-- `SIGNATURE_SIZE = 48`
-- `MULTI_SIGNATURE_SIZE = 48`
-- `PUBLIC_KEY_SIZE = 96`
-- `PRIVATE_KEY_SIZE = 32`
-- `AGGREGATED_SIGNATURE_CONSTANT_SIZE = 50`
-- `AGGREGATED_SIGNATURE_VARIABLE_SIZE = 0`
+| Constant | `bls-min-sig` | `bls-min-pk` |
+|---|---:|---:|
+| `SIGNATURE_SIZE`, `MULTI_SIGNATURE_SIZE` | 48 | 96 |
+| `PUBLIC_KEY_SIZE` | 96 | 48 |
+| `PRIVATE_KEY_SIZE` | 32 | 32 |
+| `AGGREGATED_SIGNATURE_CONSTANT_SIZE` | 50 | 98 |
+| `AGGREGATED_SIGNATURE_VARIABLE_SIZE` | 0 | 0 |
 
 ### Global bounded-aggregation constants
 
@@ -239,181 +228,73 @@ This gives the library a compile-time upper bound for serialized aggregated-sign
 
 The **practical per-backend ceiling** for how many supporters fit into one approval evidence block differs because `AGGREGATED_SIGNATURE_VARIABLE_SIZE` differs between backends. With a roughly 2 KB block-size budget, minus headers and a 4-byte node-id per signer, the resulting capacities are approximately 50 supporters for Schnorr (`VARIABLE_SIZE = 32`) and approximately 450 supporters for BLS (`VARIABLE_SIZE = 0`). The current global cap of 50 therefore matches the Schnorr capacity today; a BLS-centered deployment could carry more supporters per approval evidence block if the global cap were raised.
 
-## Current Schnorr Algorithm Family Model
+## Schnorr Algorithm Family Model
 
-All three Schnorr backends implement the same effective public behavior with different arithmetic backends:
+Built in Story 6.16 (DEC-235): one backend, BIP-340 as implemented by `k256` 0.14 (`k256::schnorr`). It replaces three backends with a custom scheme (little-endian integers, trimmed hash inputs, x-only verification that accepted the negated point) that did not behave alike: the malachite and num-bigint-dig backends failed to verify about 1 in 256 of their own signatures.
 
-- Malachite-based big integers
-- num-bigint-dig-based big integers
-- crypto-bigint fixed-width arithmetic
+### Curve model
 
-### Shared curve model
-
-All current Schnorr backends use the same effective secp256k1-style curve parameters:
+secp256k1:
 
 - field modulus `p = FFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFEFFFFFC2F`
-- order `n = FFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFEBAAEDCE6AF48A03BBFD25E8CD0364141`
+- group order `q = FFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFEBAAEDCE6AF48A03BBFD25E8CD0364141`
 - generator point `G` with the standard secp256k1 base point coordinates
 
-### Shared public-key representation
+Every integer and 32 B value below is big-endian, as in BIP-340. `H_tag(tag, x) = SHA256(SHA256(tag) ‖ SHA256(tag) ‖ x)` is the BIP-340 tagged hash.
 
-The public key is serialized as a `32`-byte `x` coordinate.
+### Keys
 
-When reconstructing the curve point from bytes, the implementation:
-
-1. interprets the bytes as `x`,
-2. recomputes `y^2 = x^3 + 7 mod p`,
-3. derives a square-root candidate,
-4. rejects invalid `x` values,
-5. chooses the even-`y` representative.
-
-### Private-key validation rule
-
-The private key must satisfy:
-
-- `1 <= private_key < n`
-
-Otherwise `Crypto::new` returns `InvalidPrivateKey`.
-
-### Canonicalization during signer construction
-
-After computing `public_key = private_key * G`, the current Schnorr implementations normalize the result so that the stored public key uses an even `y` coordinate.
-
-If the initial public point has odd `y`, the implementation:
-
-- reflects the public point to the even-`y` version,
-- and replaces the stored private key with `n - private_key`.
-
-This means signer initialization performs canonicalization, not mere storage.
+- Private key: 32 B, `1 ≤ d < q`; otherwise `Crypto::new` returns `InvalidPrivateKey`.
+- Public key: the 32 B x-only BIP-340 key. `PublicKey::new` lifts it to the point with even `y` and rejects `x ≥ p` and an `x` off the curve (`InvalidPublicKey`). As in BIP-340, a private key whose point has odd `y` signs as `q − d`.
 
 ## Schnorr Signing Model
 
-The three Schnorr backends share the same effective signing flow.
+- `sign` and `multi_sign` produce identical bytes: BIP-340 signing with `aux_rand = 0³²` over the whole message. With zero auxiliary randomness the nonce depends on the key and the message only, so signing is deterministic (FR63).
+- The signature is `r ‖ s`, 32 B each: `r` is the x coordinate of the even-`y` nonce point `R`, and `s = k + e·d mod q` with the BIP-340 challenge `e = int(H_tag("BIP0340/challenge", r ‖ P ‖ m)) mod q`.
+- `sign` is infallible in the trait; it could fail only if the nonce or `s` were zero on all 256 retries (probability about 2⁻²⁰⁴⁸).
+- `Signature::new` and `MultiSignature::new` parse exactly 64 B and refuse `r ≥ p`, `s ≥ q`, `r = 0` and `s = 0` (refusing `s = 0` deviates from BIP-340 negligibly).
 
-### Deterministic nonce derivation
-
-The signer derives a nonce candidate using a tagged SHA-256 hash over:
-
-- tag `"nonce"`
-- private key bytes
-- message bytes
-- little-endian counter bytes
-
-The process repeats with incremented counter until the derived scalar is non-zero modulo `n`.
-
-### Public nonce parity normalization
-
-The implementation computes:
-
-- `R = k0 * G`
-
-If `R.y` is odd, the effective scalar becomes:
-
-- `k = n - k0`
-
-Otherwise:
-
-- `k = k0`
-
-### Challenge derivation
-
-The challenge is derived with tagged SHA-256 over:
-
-- tag `"challenge"`
-- serialized `r` bytes
-- serialized public key bytes
-- message bytes
-
-Then reduced modulo `n`.
-
-### Signature equation
-
-The signature is stored as `(r, s)` where:
-
-- `r = R.x`
-- `s = k + e * private_key mod n`
-
-### `sign` versus `multi_sign`
-
-In all current Schnorr backends:
-
-- `sign(message)` and `multi_sign(message)` use the same underlying signing logic
-- they differ only in the wrapper type returned
-
-So the role distinction is semantic and protocol-oriented, not mathematical, for Schnorr.
+So the role distinction between `sign` and `multi_sign` is semantic and protocol-oriented, not mathematical, for Schnorr.
 
 ## Schnorr Single-Signature Verification Model
 
-The Schnorr backends verify signatures by:
-
-1. checking that `r < p` and `s < n`,
-2. recomputing the challenge from `r`, public key, and message,
-3. computing `sG + (n - e)P`,
-4. accepting if the resulting point’s `x` coordinate equals `r`.
-
-This same logic is used for both:
-
-- `verify_signature`
-- `verify_multi_signature`
+`verify_signature` and `verify_multi_signature` are BIP-340 verification: compute `R = s·G − e·P` and accept only if `R` is not the identity, has even `y`, and its `x` coordinate equals `r`.
 
 ## Schnorr Aggregation Model
 
-The current Schnorr aggregation implementation is more specific than a simple “combine signatures” description.
+Built in Story 6.16 (DEC-194, encoding DEC-235). Half-aggregation of `k` BIP-340 signatures `(rᵢ, sᵢ)` by keys `Pᵢ` (32 B x-only), all on one message `m`, in the given order.
 
 ### Input validation
 
-Aggregation fails with `InvalidSignature` if:
-
-- the input signature list is empty,
-- or the input count exceeds `MAX_AGGREGATED_SIGNATURES`.
+Aggregation returns an error if the input is empty, exceeds `MAX_AGGREGATED_SIGNATURES`, or has a different number of signatures and public keys.
 
 ### Serialized aggregate structure
 
-A Schnorr `AggregatedSignature` stores:
+1. `count` as `u16` big-endian (unlike the little-endian wire integers of DEC-195 and DEC-218, to stay consistent with BIP-340)
+2. `s` as 32 bytes
+3. one 32-byte `r` per contributing signature
 
-- `count: usize`
-- `r_bytes: [[u8; 32]; MAX_AGGREGATED_SIGNATURES]`
-- combined `s`
-
-The serialized form is:
-
-1. `count` as `u16` little-endian
-2. `s` as `32` bytes
-3. one `32`-byte `r` value per contributing aggregation-ready signature
-
-So the serialized length is:
-
-- `34 + 32 * count`
+The serialized length is `34 + 32 · count`. `AggregatedSignature::new` parses this prefix (the approval-evidence payload continues after it, DEC-195), reports `serialized_len`, and refuses `count = 0`.
 
 ### Deterministically weighted aggregation
 
-The current Schnorr aggregate implementation does not simply sum all component `s` values.
+1. `seed = H_tag("MoonBlokz/aggregate", r₁ ‖ … ‖ r_k ‖ P₁ ‖ … ‖ P_k ‖ m)`, every value untrimmed as on the wire.
+2. `wᵢ = (int(H_tag("MoonBlokz/weight", seed ‖ i)) mod (q − 1)) + 1` for `i = 0 … k − 1`, `i` as `u32` big-endian, so every weight lies in `[1, q − 1]`.
+3. `s = Σ wᵢ·sᵢ mod q`.
 
-It performs these steps:
-
-1. sum all `r` values modulo `p` to get `r_sum`
-2. derive an `initial_random_seed` with tagged hash `"aggregate"` over `r_sum`, `r_sum`, and `message`
-3. for each signer index `i`, derive a per-signer deterministic weight with tagged hash `"rand"` over the seed and the serialized index
-4. constrain each weight to the interval `1..n-1`
-5. compute the aggregated `s` as the weighted modular sum of all component `s` values
-
-This means the current Schnorr aggregate is a **deterministically weighted aggregate**, not just a naive additive bundle.
-
-**Decided change (DEC-194, before Story 6.6).** Step 2 derives the seed from every signer's `r` and public key in order, and the message — `H("aggregate", r₁ ‖ … ‖ rₙ ‖ P₁ ‖ … ‖ Pₙ ‖ message)` — instead of from `r_sum` alone, as published half-aggregation schemes with a security proof do; `aggregate_signatures` therefore takes the signers' public keys, and verification derives the same seed. No attack on the current form is known, and rogue keys are blocked by the registration proof of possession. An external cryptographic review is recommended.
+The seed binds every signer's nonce and key and the message, as published half-aggregation schemes with a security proof do (DEC-194); the earlier form derived it from `Σ rᵢ mod p` and the message only. An external cryptographic review is recommended, not required.
 
 ### Aggregate verification
 
-To verify an aggregated Schnorr signature, the implementation:
+Verification refuses `count = 0`, `count > MAX_AGGREGATED_SIGNATURES`, `count ≠ public_keys.len()`, `s ≥ q`, and any `rᵢ ≥ p` or not on the curve. Otherwise it:
 
-1. checks that `count == public_keys.len()`
-2. recomputes the same `r_sum` and aggregate seed
-3. reconstructs each `R` point from its serialized `r` value
-4. recomputes the same per-index deterministic weight
-5. multiplies each reconstructed `R` point by its weight and sums them
-6. recomputes each signer challenge `e`
-7. multiplies each public key by `(n - e) * weight` and sums them
-8. computes `sG`
-9. accepts if the final point sum has the same `x` coordinate as the weighted sum of reconstructed `R` points
+1. recomputes `seed`, every `wᵢ`, and every BIP-340 challenge `eᵢ = int(H_tag("BIP0340/challenge", rᵢ ‖ Pᵢ ‖ m)) mod q`,
+2. lifts each `rᵢ` to `Rᵢ` with even `y`,
+3. accepts only if `s·G = Σ wᵢ·Rᵢ + Σ (wᵢ·eᵢ)·Pᵢ` as points, so neither the negated point nor an empty aggregate verifies.
+
+The sums use no multiscalar call: two constant-time scalar multiplications per signer into an accumulator, about 6 KB of stack (DEC-244).
+
+No precondition on the keys is needed for Schnorr, since each signature binds its own key through its challenge; the chain still verifies a proof of possession at registration. Signer distinctness (no key twice in one aggregate) is the caller's check.
 
 ### Important consequence
 
@@ -424,64 +305,53 @@ The aggregate verification depends on:
 - the per-signer `r` values,
 - and the deterministic weight derivation.
 
-So the current Schnorr aggregate artifact is not order-free in the conceptual sense. The code treats signer position as part of the aggregate definition.
+So the Schnorr aggregate artifact is not order-free: signer position is part of the aggregate definition.
+
+## Proof of Possession
+
+Built in Story 6.16 (DEC-248). `prove_possession` returns a `Signature` (`SIGNATURE_SIZE` bytes), so the registration's `new_key_signature` keeps its size per backend; `verify_possession` checks it against a parsed `PublicKey`.
+
+- **Schnorr:** a BIP-340 signature by the key's owner over `"MoonBlokz/pop" ‖ public key (32 B)`, the ASCII tag unterminated; verification is BIP-340 verification of that message. The tag keeps proofs and ordinary signatures in separate domains: no ordinary signature over 32 B of data serves as a proof, and no proof as an ordinary signature. The separation is by message, not by challenge tag, so an ordinary signature over exactly `"MoonBlokz/pop" ‖ key` (45 B) is a proof too; no MoonBlokz message has that form (transactions start with their type byte, blocks with the version, supports with `MBSUP`, chain configurations with their entry count), and Schnorr aggregation does not rely on the proof (code review, 2026-11-16).
+- **BLS (both variants):** the suite's `PopProve` / `PopVerify` with its proof-of-possession DST (`BLS_POP_BLS12381G1_XMD:SHA-256_SSWU_RO_POP_` for `bls-min-sig`, `BLS_POP_BLS12381G2_XMD:SHA-256_SSWU_RO_POP_` for `bls-min-pk`): the proof is `sk · H_pop(serialized public key)` in the signature group; verification runs KeyValidate on the key and the pairing check.
+
+The registration transaction carries this proof ([Blockchain Algorithm Model](./moonblokz-blockchain-algorythm.md) §5 Registration Transaction Structure).
 
 ## BLS Algorithm Family Model
 
-The BLS backend is implemented as a wrapper around the `bls12_381-bls` library ecosystem.
+Built in Story 6.16 (DEC-247): zkcrypto `bls12_381` 0.9.2, the IETF proof-of-possession suite in two variants through one generic core, whose parameters are the signature group, the key group, the DST and the pairing argument order; a build compiles one variant. It replaces the `bls12_381-bls` wrapper, whose `h0(m) = hash_to_scalar(m)·G1` made every message hash's discrete logarithm public, so one signature yielded a valid signature on any message.
 
-### Public-key model
+### Variants
 
-- `PublicKey` stores a `BLS_PublicKey`
-- serialized size is `96` bytes
+| | `bls-min-sig` | `bls-min-pk` |
+|---|---|---|
+| Ciphersuite | `BLS_SIG_BLS12381G1_XMD:SHA-256_SSWU_RO_POP_` | `BLS_SIG_BLS12381G2_XMD:SHA-256_SSWU_RO_POP_` |
+| Signatures (hash-to-curve, RFC 9380) | G1, 48 B | G2, 96 B |
+| Public keys (key aggregation) | G2, 96 B | G1, 48 B |
+| Aggregate | 50 B | 98 B |
 
-### Single-signature model
+Min-sig keeps wire artifacts small; min-pk halves the `MAX_NODES` key array.
 
-- `sign(message)` calls `SecretKey::sign(message)`
-- result size is `48` bytes
+### Keys
 
-### Aggregation-ready signature model
+- Private key: 32 B big-endian (the suite's I2OSP form), `1 ≤ sk < r`, `r` the group order.
+- `PublicKey::new` is the suite's KeyValidate: compressed-point decoding with the subgroup check, and the identity refused. Signature parsing refuses the identity and non-subgroup points the same way.
 
-- `multi_sign(message)` calls `SecretKey::sign_multisig(&public_key, message)`
-- result size is `48` bytes
+### Signing and verification
 
-### Verification behavior
-
-- ordinary signature verification uses `public_key.verify(signature, message)`
-- aggregation-ready signature verification first aggregates the single public key into a `MultisigPublicKey`, then verifies the `MultiSignature` against that aggregate public key
+- `sign` and `multi_sign` are the suite's `Sign`: `σ = sk · H(m)`, hashed into the signature group with the suite's DST.
+- Verification is one pairing equation, computed with two `pairing()` calls and a comparison (the multi-Miller loop needs an allocator in `bls12_381`).
 
 ### BLS aggregate structure
 
-A BLS `AggregatedSignature` stores:
-
-- `count`
-- one aggregated multisignature object
-- serialized bytes of length `50`
-
-Its serialized form is:
-
-1. `count` as `u16` little-endian
-2. `48` bytes of aggregated signature
-
-So BLS aggregation is constant-sized with respect to signature body length.
+`count` as `u16`, then the aggregated signature (48 or 96 B): 50 or 98 B, constant with respect to the signer count. The count is big-endian, as in the Schnorr aggregate.
 
 ### BLS aggregate creation
 
-The BLS backend:
-
-1. rejects empty inputs and inputs larger than `MAX_AGGREGATED_SIGNATURES`
-2. clones the first aggregation-ready signature
-3. aggregates the remaining aggregation-ready signatures into it
-4. stores the final result with the count prefix
+Same message for every signer: `σ = Σ σᵢ`, with no per-signer coefficients. The input checks are the trait's (empty input, more than `MAX_AGGREGATED_SIGNATURES`, length mismatch); the key bytes are taken and ignored.
 
 ### BLS aggregate verification
 
-To verify an aggregated BLS signature, the implementation:
-
-1. checks that `count == public_keys.len()`
-2. rejects counts above `MAX_AGGREGATED_SIGNATURES`
-3. aggregates the provided public keys into a `MultisigPublicKey`
-4. verifies the aggregated signature against that aggregated public key and the message
+The suite's FastAggregateVerify: `count == public_keys.len()`, at most `MAX_AGGREGATED_SIGNATURES`, and `σ` verified against `Σ Pᵢ` and the message. **Precondition:** every key carries a verified proof of possession, since the suite has no rogue-key coefficients (DEC-248).
 
 ## Serialization and Deserialization Model
 
@@ -554,15 +424,15 @@ The tests also cover rejection or failure for:
 - empty aggregate input
 - aggregate verification with empty public-key list
 
-### Backend-specific regression coverage
+### Byte-level vectors
 
-The `schnorr-crypto-bigint` backend includes regression-vector tests for:
+Built in Story 6.16; they replace the `schnorr-crypto-bigint` regression vector:
 
-- exact signature bytes
-- exact aggregate serialization layout
-- aggregate count and `r` component ordering
+- `schnorr`: all 19 official BIP-340 vectors — signing through the trait for vectors 0 and 15–18 (`aux_rand = 0`), verification for 0–18 with a parse failure counting as invalid — plus pinned DEC-194 aggregate vectors;
+- `bls-min-sig`: RFC 9380 Appendix J.9.1 (hash to G1) plus signature vectors pinned once after an out-of-band cross-check against an independent implementation;
+- `bls-min-pk`: RFC 9380 Appendix J.10.1 (hash to G2) and the Ethereum consensus-spec BLS tests (min-pk, POP DST): all `sign`, `verify` and `fast_aggregate_verify` cases of `ethereum/bls12-381-tests` v0.1.2 (commit `89ff3a8`), vendored in `src/bls_eth_vectors.rs`; its `deserialization_G1` / `G2` cases run under both variants (the identity is refused by KeyValidate).
 
-This gives that backend stronger byte-level behavioral specification than the others currently have in the root test suite.
+The story's negative tests add the aggregate refusals above (`count = 0`, the negated point, `s ≥ q`, an unliftable `r`, swapped key or signature order, a dropped signer) and the proof-of-possession refusals (another key's proof, an ordinary signature over the key bytes).
 
 ## Business Analyst View: What the Formal Model Enables
 

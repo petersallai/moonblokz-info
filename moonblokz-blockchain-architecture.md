@@ -822,16 +822,18 @@ pub struct VoteEngine<const MAX_NODES: usize> {
 | moonblokz-radio-lib (memory-config-medium) | ~60 KB | ~60 KB |
 | moonblokz-crypto-lib scratch | ~4 KB | ~4 KB |
 | moonblokz-storage page buffer | ~4 KB | ~4 KB |
-| Stacks: Core 1 (blockchain task) 24 KB (DEC-137) + other tasks ~18 KB | ~42 KB | ~42 KB |
+| Stacks: Core 1 (blockchain task) 32 KB Schnorr / 24 KB BLS (DEC-137) + other tasks ~18 KB | ~50 KB | ~42 KB |
 | Embassy executor + statics | ~4 KB | ~4 KB |
-| **Subtotal allocated** | **~245 KB** | **~308 KB** |
-| **Margin** (264 KB − allocated) | **~19 KB** (~7%) ✅ | **~−44 KB** (exceeds 264 KB) ❌ |
+| **Subtotal allocated** | **~253 KB** | **~308 KB** |
+| **Margin** (264 KB − allocated) | **~11 KB** (~4%) ✅ | **~−44 KB** (exceeds 264 KB) ❌ |
+
+**Core 1 per scheme:** the Schnorr column carries the 32 KB Core 1 of DEC-137's 2026-11-16 amendment (k256 verify); the BLS column keeps the earlier 24 KB until Story 6.17 sizes Core 1 per BLS profile.
 
 **Radio figure:** `memory-config-medium` is counted at its source-confirmed ~60 KB (`moonblokz-radio-lib` README + `lib.rs` profile consts); an earlier ~30-40 KB estimate under-counted it and made the BLS default appear feasible.
 
 ### 7.4 Verdict
 
-- **Schnorr build**: comfortable margin, MVP-ready.
+- **Schnorr build**: fits with a ~11 KB margin (32 KB Core 1, DEC-137), MVP-ready.
 - **BLS build**: does **not** fit at the 1000-node default once the radio `memory-config-medium` profile is counted at its source-confirmed ~60 KB (README + `lib.rs`) instead of the earlier ~30-40 KB estimate — the full-system total is ~308 KB, ~44 KB over the 264 KB ceiling (the 24 KB Core 1 stack included, DEC-137). Const-generic tuning (see §12) is therefore **mandatory** for BLS: `MAX_NODES 1000 → 500` frees ~57 KB, yielding ~15 KB margin.
 
 ---
@@ -844,12 +846,12 @@ pub struct VoteEngine<const MAX_NODES: usize> {
 | (2) `receive_block` Tier 3 validation | api → intake → `tier1_admit` → `judge_head_extension` → `derive_block` → UTXO resolver (`storage.read_block_into`) | measured 11.5 KB worst case (via the FR3 pass); was ~1.5 KB estimated | local view refs. As built (Story 6.0) the step lives in `api.rs` (§4.2). The UTXO resolver, the creator-signature check and the continuation's stored-child step each hold their block-sized buffer in their own frame (DEC-136); the stored-child frame is gone before any deletion or tail advance, so it never shares the stack with the 2.4 KB delete-set buffer. |
 | (3) **FR45 block creation** | on_tick → creator.try_create_block → BlockBuilder (~2 KB) → bc.crypto.sign → emit_scratch | **~4 KB** | BlockBuilder is the hot spot |
 | (4) FR23 chain-switch backward walk | `receive_block` → `switch_toward` → `undo_active_head` → `balance_owners` / `previous_seed_sources` / `undo_committed_block` (each its own 2 KB read frame, never nested) | within `receive_block`'s measured 12.0 KB (Story 6.3: +344 B, almost all of it DEC-205's re-entry) | never nested with each other; the pre-pass's read frame nests with the signature preimage frame, as the head extension's does (DEC-136) |
-| (5) FR23 forward walk peak | `switch_toward` → `apply_stored_child` (2 KB read) → `judge_head_extension` → `derive_block` → preimage / `utxo_output_of` frames | the head-extension path's depth; `receive_block` measured 12.0 KB, worst case `process_genesis` 19.2 KB of the 24 KB Core 1 stack (Story 6.3) | the Story 7.4 mempool calls will add their own frame |
+| (5) FR23 forward walk peak | `switch_toward` → `apply_stored_child` (2 KB read) → `judge_head_extension` → `derive_block` → preimage / `utxo_output_of` frames | the head-extension path's depth; `receive_block` measured 12.0 KB, worst case `process_genesis` 19.2 KB (Story 6.3); 25.1 KB with k256 (Story 6.16) of the 32 KB Core 1 stack | the Story 7.4 mempool calls will add their own frame |
 | (6) FR59 restart | api.initialize_from_storage → rebuild scan → run_processing_pass loop | ~3 KB | same iter pattern as FR23. As built (Story 5.10) the spine lives in `api.rs`, not in `lifecycle.rs`/`reconciliation.rs`: it drives `run_processing_pass` / `recover_from_failed_pass`, which are `api.rs` methods over private fields, so reaching them from another module would mean widening the field surface for no gain. One caller-owned read buffer per scan, reused across slots (`read_block_into`, DEC-136). |
 
-**Measured (2026-10-18, DEC-136).** A thumbv6m probe binary at the §5 defaults (node release profile: LTO, `opt-level = "z"`; frames read from prologues and summed along the deepest call path; indirect calls not followed) gave worst-case blockchain-task stacks of `receive_block` 11.5 KB, `initialize_from_storage` 15.5 KB, `process_genesis` 19.2 KB and `on_tick` 1.0 KB, after reads were moved into one caller-owned buffer (`read_block_into`) and the block-sized buffers given their own frames (before: 27.9 / 25.9 / 25.6 KB — LTO merged them). The deepest path is the FR3 pass: `marked` (2.4 KB) + read buffer (2 KB) + creator-signature preimage (2 KB) + Schnorr verify (~3.9 KB). These exceed the original 6 KB budget, so the stack is sized to the measured peak (DEC-137, below). Re-measured 2026-11-07 after the Story 6.3 chain switch and DEC-205: `receive_block` 12.0 KB, `initialize_from_storage` 15.9 KB, `process_genesis` 19.2 KB, `on_tick` 1.0 KB; after Story 6.4's support evaluation (its reads and the multi-signature in their own frames) `receive_block` 12.1 KB and `initialize_from_storage` 15.9 KB, the peak unchanged; Story 6.5's `receive_support` 3.9 KB, the peak unchanged. The switch's read frames never nest with each other; the growth (+344 B and +352 B) is the re-entry after a restore failure, which runs the acquisition spine inside the FR22 comparison.
+**Measured (2026-10-18, DEC-136).** A thumbv6m probe binary at the §5 defaults (node release profile: LTO, `opt-level = "z"`; frames read from prologues and summed along the deepest call path; indirect calls not followed) gave worst-case blockchain-task stacks of `receive_block` 11.5 KB, `initialize_from_storage` 15.5 KB, `process_genesis` 19.2 KB and `on_tick` 1.0 KB, after reads were moved into one caller-owned buffer (`read_block_into`) and the block-sized buffers given their own frames (before: 27.9 / 25.9 / 25.6 KB — LTO merged them). The deepest path is the FR3 pass: `marked` (2.4 KB) + read buffer (2 KB) + creator-signature preimage (2 KB) + Schnorr verify (~3.9 KB). These exceed the original 6 KB budget, so the stack is sized to the measured peak (DEC-137, below). Re-measured 2026-11-07 after the Story 6.3 chain switch and DEC-205: `receive_block` 12.0 KB, `initialize_from_storage` 15.9 KB, `process_genesis` 19.2 KB, `on_tick` 1.0 KB; after Story 6.4's support evaluation (its reads and the multi-signature in their own frames) `receive_block` 12.1 KB and `initialize_from_storage` 15.9 KB, the peak unchanged; Story 6.5's `receive_support` 3.9 KB, the peak unchanged. Re-measured 2026-11-16 after Story 6.16's k256 backend (BIP-340 verify ~10 KB, k256's inlined wNAF tables; `stack_depth.py` now also follows `blx` through literals and `b` / `b.w` tail calls): `receive_block` 18.2 KB, `initialize_from_storage` 21.8 KB, `process_genesis` 25.1 KB, `on_tick` 1.0 KB, `receive_support` 10.5 KB. The switch's read frames never nest with each other; the growth (+344 B and +352 B) is the re-entry after a restore failure, which runs the acquisition spine inside the FR22 comparison.
 
-**Decision (DEC-137, supersedes the 6 KB figure):** the blockchain task runs on Core 1 (§2), and Embassy tasks are stackless futures that share their core's stack, so its stack is the **Core 1 stack: 24 KB** — the 19.2 KB measured peak (`process_genesis`) plus ~25% for what the measurement does not follow (indirect calls, executor and interrupt frames). Re-measure when the call graph changes materially. Other embassy tasks (radio, USB console) can remain 4 KB.
+**Decision (DEC-137, supersedes the 6 KB figure):** the blockchain task runs on Core 1 (§2), and Embassy tasks are stackless futures that share their core's stack, so its stack is the **Core 1 stack: 32 KB** — the 25.1 KB measured peak (`process_genesis`, k256 Schnorr; 24 KB over 19.2 KB before Story 6.16) plus ~25% for what the measurement does not follow (indirect calls, executor and interrupt frames). Re-measure when the call graph changes materially. Other embassy tasks (radio, USB console) can remain 4 KB.
 
 ---
 
@@ -999,7 +1001,7 @@ When a deployment selects the BLS crypto backend, the default const-generic valu
 
 ### 12.3 Future optimization (NOT MVP)
 
-A future architectural enhancement: **LRU public key cache**. Hot nodes' public keys stay in a small RAM cache (e.g. 100-200 slots = ~10-20 KB BLS), cold nodes only hold a reference to the block where the key lives. Storage read on cache miss. Could save ~70-80 KB on BLS deployments. Tracked as a follow-up, not in MVP.
+A future architectural enhancement: **LRU public key cache**. Hot nodes' public keys stay in a small RAM cache (e.g. 100-200 slots = ~10-20 KB BLS), cold nodes only hold a reference to the block where the key lives. Storage read on cache miss. Could save ~70-80 KB on BLS deployments. Tracked as a follow-up, not in MVP. It is the key-RAM lever of a `bls-min-sig` build (96 B keys; `bls-min-pk` halves the array instead, DEC-247), and a cache of already validated keys also removes the per-use decompression and subgroup check: about 9 s instead of about 41 s for a 40-key aggregate check (QEMU-based estimate, DEC-248).
 
 ---
 
@@ -1016,7 +1018,7 @@ Tasks to bring the empty `moonblokz-blockchain` directory and the existing depen
 | 5 | Add three-type model to `moonblokz-chain-types` | existing crate | `Block` (Owned) + `BlockView<'_>` + `BlockBuilder` per FR61. Also Transaction triplet. |
 | 6 | Rename `Block` → `BlockView` where applicable in chain-types | existing crate | Per Step 5 user directive: current `Block` is actually a view. |
 | 7 | Radio-lib getter API additions | `moonblokz-radio-lib` | Expose radio-derived score input cleanly for vote sub-crate (per PRD FR55 `scoring_module` boundary). |
-| 8 | Set the Core 1 (blockchain task) stack to 24 KB | node binary (`CORE1_STACK`) | Per §8 measurement (DEC-137). |
+| 8 | Set the Core 1 (blockchain task) stack to 32 KB | node binary (`CORE1_STACK`) | Per §8 measurement (DEC-137, amended 2026-11-16). |
 | 9 | Initial scaffold for `moonblokz-configuration` crate | filesystem (placeholder) | Trait stub per §11 only; full BMAD later. |
 | 10 | Wire all 4 new crates into `moonblokz-node/Cargo.toml` | existing | Add `moonblokz-blockchain` + `moonblokz-mempool` + `moonblokz-vote` + `moonblokz-node-runtime` path deps. |
 
@@ -1043,7 +1045,7 @@ Selected high-impact decisions from the Step 5 + Step 6 + Step 7 iterations:
 | 13 | SchedulerState 4 conditional deadlines as `Option<u64>` | FR46 explicit "not scheduled" states; `filter_map(min)` for NextCall |
 | 14 | Block-creation + grace-period deadlines network-wide-consistent | Critical consensus invariant; both `Some` on every node, role-differentiated triggers |
 | 15 | `moonblokz-configuration` (+ `moonblokz-vm`) as separate crates | FR56 mini-VM capability doesn't belong in core blockchain; designed in the [Configuration Module Specification](./moonblokz-configuration-specification.md) |
-| 16 | Chain-lib hosting task gets a 24 KB stack (Core 1; was 6 KB) | §8 measured peak 19.2 KB (DEC-137) |
+| 16 | Chain-lib hosting task gets a 32 KB stack (Core 1; was 6 KB, then 24 KB) | §8 measured peak 25.1 KB with k256 (DEC-137) |
 | 17 | Feature-gated introspection getters (`#[cfg(feature = "introspection")]`) | FR65 production binary minimal; simulator/CLI enable for observability |
 | 18 | ~~Three separate `initialize_*` constructors (genesis / join / restart)~~ **Superseded:** a single in-place constructor `init` for every node + role-specific follow-ups (genesis = `process_genesis`). Distinct precondition contracts remain, now as follow-ups rather than constructors. Join and restart share `initialize_from_storage` (Story 5.10). | — |
 | 19 | ~~Genesis two-block bootstrap split across `initialize_genesis` + next `on_tick`~~ **Superseded:** `process_genesis` builds **both** Block #0 and Block #1 in one call and returns both for radio broadcast; there is no `GenesisChainConfigCreated` tick effect. New reject reason `GenesisRejectReason::StorageNotEmpty` guards re-genesis of a non-empty chain. The return is a plain `Result<GenesisBlocks, GenesisRejectReason>` — a bare `GenesisBlocks { block_zero, block_one }` struct (no `Rejected` variant; refusal is the `Err`) and **no `NextCall`/`now`**: genesis is one-per-chain with no immediately-scheduled follow-up, so it is kept out of the AR4 scheduling-pull contract. | — |
@@ -1061,7 +1063,7 @@ Selected high-impact decisions from the Step 5 + Step 6 + Step 7 iterations:
 |---|---|---|
 | BLS does not fit at 1000-node default (~−44 KB) with the ~60 KB radio medium profile and the 24 KB Core 1 stack | Medium-High | §12 tuning; `MAX_NODES 1000→500` mandatory for BLS → ~15 KB margin |
 | Blockchain still reads the fixed-value chain-config stub, not `moonblokz-configuration` | Medium | Both crates exist and carry the §11 surface; the blockchain's path-dep migration is its own change, held to a behaviour-neutrality bar |
-| Blockchain-task stack peak grows past the 24 KB Core 1 stack as Epics 6–10 deepen the call graph | Medium | §8: re-measure with the probe method on material call-graph changes (DEC-137) |
+| Blockchain-task stack peak grows past the 32 KB Core 1 stack as Epics 6–10 deepen the call graph | Medium | §8: re-measure with the probe method on material call-graph changes (DEC-137) |
 | ~~`MAX_AGGREGATED_SIGNATURES` / `MULTI_SIGNATURE_SIZE` const values not yet ratified~~ **Resolved:** `moonblokz-crypto` fixes `MAX_AGGREGATED_SIGNATURES = 50` for every backend and `MULTI_SIGNATURE_SIZE` at 64 B (Schnorr) / 48 B (BLS); chain-config `required_support` is refused at acceptance above the backend limit ([Configuration Module Specification](./moonblokz-configuration-specification.md) §6 check 3) | — | — |
 | Simulator blockchain integration not yet implemented | Out-of-scope (post-MVP) | §10 confirms architectural compatibility; integration is separate work |
 
