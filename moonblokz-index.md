@@ -342,7 +342,7 @@ This document explains:
 - what implementation responsibilities follow from the current crypto design,
 - why compile-time backend selection and stable re-exports are important,
 - how the chosen library structure avoids excessive generics, trait-object complexity, and unnecessary heap dependence,
-- how backend choice affects maintenance, compatibility, low-level safety, and dependency risk, and what the ratified backends cost (QEMU estimates until the hardware run, beside DEC-180's earlier measurements),
+- how backend choice affects maintenance, compatibility, low-level safety, and dependency risk, and what the built backends cost (measured on the RP2040, DEC-249, beside DEC-180's superseded earlier measurements),
 - why bounded aggregation, buffer-based serialization, and multi-feature testing must be preserved,
 - and which kinds of crypto evolution remain feasible versus compatibility-sensitive.
 
