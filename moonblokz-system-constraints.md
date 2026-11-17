@@ -86,7 +86,7 @@ Every wire layout follows these sizes (DEC-251; built in Story 6.17); the derive
 
 Global, all families:
 - `MAX_AGGREGATED_SIGNATURES = 50` (count cap).
-- Practical per-approval-block supporter capacity within a ~2 KB block budget (minus header + 4 B node-id/signer): **~50 supporters Schnorr**, **~450 supporters BLS**. The global cap of 50 currently matches the Schnorr ceiling; a BLS-centered deployment could carry more if the cap were raised.
+- Practical supporter capacity of an approval evidence block (DEC-195 / DEC-241 / DEC-242: a `⌈m/8⌉ B` signer bitmap, no per-signer id) in a 2 016 B block: with Schnorr the aggregate grows by 32 B per signer, so the fixed part is 1 339 B at `required_support = 40` (69 late entries fit) and 1 662 B at 50 (29 fit), and about 57 signers would fit with no late entry; with BLS the aggregate is constant (50 / 98 B), and the `m u8` field bounds the subgroup instead (`m = 2r − 1 ≤ 255`, so `r ≤ 128`). The global cap of 50 is just below the Schnorr ceiling; a BLS-centered deployment could carry more if the cap were raised. Chain acceptance guarantees that the fixed part fits (configuration §6 check 20, DEC-257).
 
 `MAX_AGGREGATED_SIGNATURES` is also the per-build bound `required_support` is checked against at chain acceptance: the parameter is literal-only and refused above it, never clamped — the chain-declared ceiling `max_aggregated_signatures` was retired on 2026-10-12 (DEC-075). See [Configuration Module Specification](./moonblokz-configuration-specification.md) §6 for why a per-build bound must be literal-only.
 

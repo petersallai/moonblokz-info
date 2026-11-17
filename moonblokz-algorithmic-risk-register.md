@@ -122,8 +122,10 @@ Time no longer limits the attack at realistic `r`. Support collection takes minu
 
 The Project Lead stated that the default must follow:
 
-- **Schnorr:** the evidence-block capacity, about 36 B per supporter, at most about 50.
-- **BLS:** security and practicality, because its evidence capacity (about 450) is not binding.
+- **Schnorr:** the evidence-block capacity: 32 B of aggregate per supporter plus one bitmap bit (DEC-195), at most about 57 supporters in a 2 016 B block, so the aggregation cap of 50 binds first (at 50, 29 late entries still fit).
+- **BLS:** security and practicality, because its evidence capacity is not binding: the aggregate is constant, and only the `m u8` field bounds the subgroup (`r ≤ 128`).
+
+*(Figures restated on 2026-11-17 for the bitmap layout, DEC-195 / DEC-241 / DEC-242; the statement was made with the earlier signer-id layout's figures, about 36 B per supporter and about 450 for BLS.)*
 
 The binding cost is radio. All `m = 2r − 1` subgroup members send a support message of 113 B with Schnorr (O-002, DEC-187; 97 / 145 B with `bls-min-sig` / `bls-min-pk`, DEC-251). At a channel throughput of about 30–50 B/s, before relaying:
 
