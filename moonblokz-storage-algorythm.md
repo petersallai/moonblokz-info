@@ -178,16 +178,17 @@ The current public contract exposes exactly these methods:
 5. `set_chain_configuration(block)`
 6. `load_control_data()`
 
+One further call is a method of each backend struct, not of `StorageTrait`: `load_private_key()` returns the persisted key for the node runtime → crypto path (FR54). A consumer that holds only `S: StorageTrait`, such as the blockchain module, cannot call it (BC-FR68; DEC-267).
+
 ## C2. Public return model
 
 `load_control_data()` returns `ControlPlaneData` with:
 
-- `private_key: [u8; PRIVATE_KEY_SIZE]`
 - `own_node_id: u32`
 - `init_params: [u8; INIT_PARAMS_SIZE]`
 - `chain_configuration: Option<Block>`
 
-Decided 2026-10-12, not yet implemented: `load_control_data()` stops returning `private_key`, and a separate `load_private_key()` serves the node runtime → crypto path, so the blockchain module never receives the key ([`moonblokz-storage-prd.md`](./moonblokz-storage-prd.md) FR11 / FR54; BC-FR68).
+It returns no private key (FR11). `load_private_key() -> Result<[u8; PRIVATE_KEY_SIZE], StorageError>` reads the same first valid replica, with the same errors and the same replica repair (FR54). Inside each backend the key and `ControlPlaneData` travel together in a crate-private record, so replica repair and `set_chain_configuration`'s rewrite keep the key; the persisted layout is unchanged.
 
 ## C3. Public error categories
 

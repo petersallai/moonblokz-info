@@ -383,7 +383,7 @@ moonblokz-storage/
 ### Architectural Boundaries
 
 **API Boundaries:**
-- `moonblokz-storage` exposes a trait-defined public contract via `StorageTrait` in `src/lib.rs`.
+- `moonblokz-storage` exposes a trait-defined public contract via `StorageTrait` in `src/lib.rs`. The one exception is `load_private_key()` (FR54), a method of each backend struct: a consumer bound only by `StorageTrait` cannot reach the key (BC-FR68; DEC-267).
 - `moonblokz-chain-types` exposes canonical block/type contracts and a canonical hashing function.
 
 **Component Boundaries:**
