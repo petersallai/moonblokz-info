@@ -223,7 +223,7 @@ This document explains:
 - the single-outcome scheduling-pull API pattern with `CallResult<OutcomeEnum> + NextCall` shape,
 - the 20-method public API surface of the `Blockchain<C, S, X, ...>` struct (3 init methods, 4 intake, 1 tick, 12 read-only),
 - the three-type model (Owned + View + Builder) for `Block` / `Transaction` and friends,
-- the 15 + 1 internal modules of `moonblokz-blockchain` (`lifecycle`, `scheduler`, `blocks`, `chain_heads`, `snake_chain`, `branch_value`, `intake`, `staged_validation`, `reconciliation`, `node_info`, `available_utxo`, `creator`, `approval`, `queries`, `emit_scratch`, + the `api.rs` surface),
+- the 15 + 1 internal modules of `moonblokz-blockchain` (`lifecycle`, `scheduler`, `blocks`, `chain_heads`, `snake_chain`, `branch_value`, `intake`, `staged_validation`, `reconciliation`, `node_info`, `available_utxo`, `creator`, `approval`, `queries`, `emit_scratch`, + the `api` surface: `api/mod.rs` and its 14 child modules by FR area, Story 6.18),
 - the const-generic catalog (`MAX_NODES`, `SNAKE_CHAIN_LENGTH_MAX`, `MAX_BLOCKS`, `MAX_BRANCH_COUNT`, etc. with default values),
 - the sized data-structure catalog with bit-level layouts (`BlockEntry` 80 B padded, `ChainHeadEntry` 32 B padded, `NodeInfo` SoA, `ApprovalAccumulator` ~3.7 KB Schnorr, `EmitScratch`, `SchedulerState`),
 - the 264 KB SRAM RAM budget, measured per scheme (Story 6.17, re-measured after Stories 6.6 and 6.7): Schnorr fits the 1 000-node default with a ~4.3 KB (~1.6%) margin, and each BLS variant fixes `MAX_NODES` at its largest fitting count (258 `bls-min-sig`, 211 `bls-min-pk`),
