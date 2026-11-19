@@ -171,7 +171,7 @@ Per-lever savings: [`moonblokz-blockchain-architecture.md`](./moonblokz-blockcha
 | `bls-min-sig` | 258 | 57 KiB | 87 200 B | 141 016 B | 101 B ✅ |
 | `bls-min-pk` | 211 | 70 KiB | 73 968 B | 146 400 B | 21 B ✅ |
 
-A BLS build joins only chains with `max_node_count` at or below its `MAX_NODES` (DEC-228). Node flash stays far inside the ~800 KB left for code beside the 600 block slots, so `MAX_BLOCKS = 600` keeps its headroom. The profiles live in the footprint probe's `Blockchain` instantiation until the node instantiates the blockchain itself (the bridge, AR12 / Epic 8).
+A BLS build joins only chains with `max_node_count` at or below its `MAX_NODES` (DEC-228). Node flash stays far inside the ~800 KB left for code beside the 600 block slots, so `MAX_BLOCKS = 600` keeps its headroom. The profiles live in the footprint probe's `Blockchain` instantiation until the node instantiates the blockchain itself (the bridge, AR12 / Epic 12).
 
 **Min-pk fits fewer nodes than min-sig on the RP2040.** The earlier estimates (about 450–500 nodes min-sig, 700–800 min-pk, and min-pk at about 263 KB with 1 000 nodes) assumed a 24 KB Core 1 for both. With the measured stacks, min-pk's hash-to-G2 signing forces a 70 KiB Core 1 against min-sig's 57 KiB (49 KiB before Story 6.7's inline evidence check), which outweighs its halved key array (66 against 114 B per node): 211 nodes against 258. The earlier expectation that min-pk is the better RP2040 BLS variant is reversed. The LRU public-key cache of architecture §12.3 remains a key-array lever (not MVP).
 

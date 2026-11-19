@@ -119,7 +119,7 @@ Value proposition: MoonBlokz Storage gives constrained microcontrollers determin
 
 ### Journey 1: Primary User - Success Path (Chain Runtime)
 
-At first boot, the Chain Runtime starts in a constrained RP2040 environment where RAM cannot hold full blockchain history. Before normal operation, runtime executes `init(private_key, own_node_id, init_params)` to initialize control-plane state, clear control-plane replicas and block pages, and establish deterministic storage layout. On subsequent boots, runtime calls `load_control_data()` to load control-plane metadata (node id, init params, optional chain configuration) before block reconstruction begins, and `load_private_key()` to hand the key to the crypto module.
+At first boot, the Chain Runtime starts in a constrained RP2040 environment where RAM cannot hold full blockchain history. Before normal operation, runtime executes `init(private_key, own_node_id, init_params)` to initialize control-plane state, clear control-plane replicas and block pages, and establish deterministic storage layout. On subsequent boots, runtime calls `load_control_data()` to load control-plane metadata (node id, init params, optional chain configuration) before block reconstruction begins. The node runtime, not the blockchain module, separately calls `load_private_key()` to hand the key to the crypto module.
 
 After control-plane load succeeds, runtime iterates indexed blocks and rebuilds in-memory chain structures needed for participation. Each retrieved block is integrity-checked (hash revalidation) before it is accepted into runtime state.
 

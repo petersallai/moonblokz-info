@@ -337,7 +337,7 @@ The mempool is empty after a restart (FR30, FR59). Radio outcomes carry no cause
 | 5 | Run the FR2 → FR3 → FR4 spine (7.1), then re-run the lock-time cleanups | FR2–FR4, FR8, FR9 | built (5.10) |
 | 6 | Return `ResumedReady` or `ResumedCollecting`; release blocks more than `H` below `S_tail` | FR48, FR59 | built (5.10, 9.1); keeping the horizon built (6.14) |
 
-Blocks deleted before the restart can return, because storage has no delete; every deletion driver re-fires, so the node converges ([architecture](./moonblokz-blockchain-architecture.md) §3.6). The control-plane load still returns the private key until Story 6.9.
+Blocks deleted before the restart can return, because storage has no delete; every deletion driver re-fires, so the node converges ([architecture](./moonblokz-blockchain-architecture.md) §3.6). The control-plane load returns no private key (storage ST-FR11, built in 6.9); the node runtime loads it separately for the crypto module (Story 12.1).
 
 ### 7.9 Twin Conflict
 

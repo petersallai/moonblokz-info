@@ -1013,7 +1013,7 @@ When a deployment selects the BLS crypto backend, the default const-generic valu
 
 ### 12.2 RP2040 profiles per scheme
 
-Built and measured in Story 6.17 (DEC-254) with the footprint probe (`footprint.py --scheme S`): each BLS variant fixes `MAX_NODES` at the largest count whose static RAM, its own Core 1 (§8) and the rest of the §7.3 allocation fit 264 KB; `SNAKE_CHAIN_LENGTH_MAX` 500, `MAX_BLOCKS` 600, `MAX_BRANCH_COUNT` 40 and `MAX_BLOCK_UTXO_OUTPUT` 256 stay. Re-fitted after Story 6.6's accumulator (356 → 330, 291 → 211), and `bls-min-sig` after Story 6.7's evidence check (330 → 258, Core 1 49 → 57 KiB; DEC-263). The profiles live in the probe's `Blockchain` instantiation until the node instantiates the blockchain (the bridge, AR12 / Epic 8).
+Built and measured in Story 6.17 (DEC-254) with the footprint probe (`footprint.py --scheme S`): each BLS variant fixes `MAX_NODES` at the largest count whose static RAM, its own Core 1 (§8) and the rest of the §7.3 allocation fit 264 KB; `SNAKE_CHAIN_LENGTH_MAX` 500, `MAX_BLOCKS` 600, `MAX_BRANCH_COUNT` 40 and `MAX_BLOCK_UTXO_OUTPUT` 256 stay. Re-fitted after Story 6.6's accumulator (356 → 330, 291 → 211), and `bls-min-sig` after Story 6.7's evidence check (330 → 258, Core 1 49 → 57 KiB; DEC-263). The profiles live in the probe's `Blockchain` instantiation until the node instantiates the blockchain (the bridge, AR12 / Epic 12).
 
 | Profile | `MAX_NODES` | Core 1 | Static RAM (`SLOT`) | Node flash (estimated) | Margin (264 KB) |
 |---|---:|---:|---:|---:|---:|
