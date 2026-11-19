@@ -37,7 +37,7 @@ seed = H( "MBSEED"  ‖  proposed_sequence  ‖  circulating_currency(p − 1)  
 - It replaces the tail block's hash, which its creator could vary freely (transaction order, comments) and so grind for a subgroup it controls (AR-013). Within a block the total moves only through deterministic minting and burning and through registrations, whose price is burned; a creator can vary the seed only by including or leaving out pending registrations, usually one or two variants, and each sybil registration it adds for more variants costs the full registration price.
 - The seed is known only once `p − 1` is fixed, where the tail hash was known `W` blocks ahead.
 - `proposed_sequence` keeps proposals at different positions apart; `proposer_node_id` binds the seed to the proposer; the domain tag separates it from the twin verdict seed.
-- On a window-anchored FR3 candidate the total is not served before the pass has covered the window, so subgroup checks of evidence blocks whose evaluation point lies in the segment's first `W` positions are trusted there, like other pre-window state (DEC-107).
+- On a window-anchored FR3 candidate the total is not served before the pass has covered the window, so subgroup checks of evidence blocks whose evaluation point lies in the segment's first `W` positions are trusted there, like other pre-window state (DEC-107). An evidence block's vote and key conditions are evaluated at run time from the pass's seed state: it is checked exactly when `p − W ≥ a` and, at `p − 1`, the roster is known and every node's vote and every marked signer's key are seeded, which always holds by `p − 1 ≥ a + H + W − 1`, and trusted otherwise; a genesis-anchored segment is always exact (DEC-262).
 - Until Story 7.6 the code takes the total from a stub that returns one fixed value, the same on every node, so the seed varies only with `p` and the proposer until then; 7.6 lands before Story 8.5 enables production emission (DEC-212).
 
 #### Subgroup selection
@@ -77,7 +77,7 @@ The twin verdict seed follows the same rules.
 
 #### Chain-config invariant
 
-Only the supporters that actually sign are written into the approval evidence (the proposer writes exactly `r_eff`, one per subgroup rank; DEC-236), so the crypto aggregation ceiling constrains `required_support`, not `m`:
+Only the supporters that actually sign are written into the approval evidence (the proposer writes exactly `r_eff`, one per subgroup rank; DEC-236; a validator accepts any population `n ≥ r_eff`, up to `MAX_AGGREGATED_SIGNATURES`, BC-FR27), so the crypto aggregation ceiling constrains `required_support`, not `m`:
 
 ```
 required_support ≤ MAX_AGGREGATED_SIGNATURES(backend)

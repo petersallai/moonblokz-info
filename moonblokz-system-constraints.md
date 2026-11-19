@@ -53,10 +53,10 @@ Authoritative source: [`moonblokz-blockchain-architecture.md`](./moonblokz-block
 
 | Const generic | Default | Meaning / deployment implication |
 |---|---:|---|
-| `MAX_NODES` | 1000 (Schnorr; RP2040 BLS profiles 330 `bls-min-sig`, 211 `bls-min-pk`, §3.4) | **The build's node capacity.** Sizes all node-id-indexed arrays (`NodeInfo`, `VoteEngine.accumulated_vote`); every node holds an entry for every registered node. The network cap is chain parameter ID 32 `max_node_count`, which acceptance bounds by `MAX_NODES` (DEC-228). Dominant RAM driver — see §3. |
+| `MAX_NODES` | 1000 (Schnorr; RP2040 BLS profiles 258 `bls-min-sig`, 211 `bls-min-pk`, §3.4) | **The build's node capacity.** Sizes all node-id-indexed arrays (`NodeInfo`, `VoteEngine.accumulated_vote`); every node holds an entry for every registered node. The network cap is chain parameter ID 32 `max_node_count`, which acceptance bounds by `MAX_NODES` (DEC-228). Dominant RAM driver — see §3. |
 | `SNAKE_CHAIN_LENGTH_MAX` | 500 | **Capacity** of the active-chain window, not its length. The length in force, `W`, is chain configuration ([BC-FR56](./moonblokz-blockchain-prd.md)) and acceptance requires `W ≤ SNAKE_CHAIN_LENGTH_MAX`; a build whose capacity is below the chain's `W` cannot join. See D2 in §7. |
 | `MAX_BLOCK_SIZE` | 2016 | **Build tier feature**, not a const generic: the block capacity a `moonblokz-chain-types` size-tier feature selects (`block-size-2016` default, `block-size-65536`; DEC-220). Acceptance requires the chain's `block_size_limit` to fit it; a larger block is a local refusal, never evidence (DEC-225). See §4. |
-| `MAX_BLOCKS` | 600 | In-RAM block-table slots; 1:1 with RP2040 durable flash capacity (see §4). Chain-config acceptance also requires `W + 2·H ≤ MAX_BLOCKS` ([BC-FR8](./moonblokz-blockchain-prd.md), DEC-160). |
+| `MAX_BLOCKS` | 600 | In-RAM block-table slots; 1:1 with RP2040 durable flash capacity (see §4). Chain-config acceptance also requires `W + 2·H ≤ MAX_BLOCKS` ([BC-FR8](./moonblokz-blockchain-prd.md), DEC-160). With `MAX_NODES` it is bounded by the branch-value proof `MAX_BLOCKS · VALUE_CAP ≤ u64::MAX`: a build profile keeps `MAX_BLOCKS · MAX_NODES` below about 8.6 · 10⁷ (architecture §6.4, DEC-264). |
 | `MAX_BRANCH_COUNT` | 40 | Chain-heads table capacity; collecting-state branch headroom. |
 | `MEMPOOL_COMPACT_BYTES` | 20160 | Mempool compact buffer (~10 × `MAX_BLOCK_SIZE`; at least `MAX_BLOCK_SIZE`, [BC-FR56](./moonblokz-blockchain-prd.md), DEC-223). |
 | `MEMPOOL_MAX_ENTRIES` | 128 | Mempool index capacity. |
@@ -87,6 +87,7 @@ Every wire layout follows these sizes (DEC-251; built in Story 6.17); the derive
 Global, all families:
 - `MAX_AGGREGATED_SIGNATURES = 50` (count cap).
 - Practical supporter capacity of an approval evidence block (DEC-195 / DEC-241 / DEC-242: a `⌈m/8⌉ B` signer bitmap, no per-signer id) in a 2 016 B block: with Schnorr the aggregate grows by 32 B per signer, so the fixed part is 1 339 B at `required_support = 40` (69 late entries fit) and 1 662 B at 50 (29 fit), and about 57 signers would fit with no late entry; with BLS the aggregate is constant (50 / 98 B), and the `m u8` field bounds the subgroup instead (`m = 2r − 1 ≤ 255`, so `r ≤ 128`). The global cap of 50 is just below the Schnorr ceiling; a BLS-centered deployment could carry more if the cap were raised. Chain acceptance guarantees that the fixed part fits (configuration §6 check 20, DEC-257).
+- An evidence block always fits its run: every block at `s ≡ H − 1 (mod H)` must be clean (no UTXO output, no registration; [BC-FR48](./moonblokz-blockchain-prd.md), DEC-265), which costs about 2 % of block positions at the defaults (`W = 500`, `H = 50`) and keeps a proposer's replays within `H` positions of its deviation, so the evidence lands by `p + H` ([BC-FR27](./moonblokz-blockchain-prd.md), DEC-258).
 
 `MAX_AGGREGATED_SIGNATURES` is also the per-build bound `required_support` is checked against at chain acceptance: the parameter is literal-only and refused above it, never clamped — the chain-declared ceiling `max_aggregated_signatures` was retired on 2026-10-12 (DEC-075). See [Configuration Module Specification](./moonblokz-configuration-specification.md) §6 for why a per-build bound must be literal-only.
 
@@ -107,6 +108,8 @@ A node relays a block or support message only after accepting it, so each relay 
 | One approval round, `r = 40` | — | about 2.5–3.5 min from a node's receipt of the deviation to its receipt of the evidence (about 4–5.5 min at the 90th percentile, scaled as before): block to the subgroup 0.6–0.75 min, 40 supports to the proposer about 0.7–1.4 min, evidence about 1.2 min. The radio, not verification, now dominates. DEC-203's 15-minute later grace step was set on the earlier 9–11-minute figure; whether to shorten it is open (O-040) |
 | FR3 pass over `W + H = 550` blocks | about 8 min (low traffic) to 36 min (full blocks) | plus about 14 s per evidence block |
 | Chain switch over `H = 50` full blocks | about 3.3 min | replay only |
+
+An incoming evidence block's aggregate is verified inline, once per evidence block per node, after the cheap checks, and blocks the call: about 13.3 s with Schnorr, 51.6 s with `bls-min-sig` and 42.6 s with `bls-min-pk` at 40 signers (DEC-263). The "signatures accepted" mark keeps a chain-switch restore or a later walk from repeating it, or any transaction signature (DEC-259); a junk aggregate behind correct cheap fields still costs each judging node one verification (AR-026). Its frame makes the FR3 pass the `bls-min-sig` stack peak, so that Core 1 is 57 KiB (§3.3).
 
 At about 4 s per full block, a node verifies about 15 full blocks per minute (about 270 transfers per minute, before support traffic), so the radio's airtime limits (§5), not verification, are expected to bind first. Under BLS on the RP2040 a full block takes about 3–4.5 minutes to verify (13 transfers at 12.7 s under `bls-min-pk`, 22 at 11.7 s under `bls-min-sig`), which is a BLS-profile limit (Story 6.17).
 
@@ -135,42 +138,42 @@ Measured (Story 6.17, footprint probe): the blockchain's static RAM, its `VoteEn
 
 ### 3.2 Full-system allocation
 
-Measured in Story 6.17 (DEC-254) and re-measured after Story 6.6's accumulator, at each scheme's RP2040 profile (§3.4), in bytes; 264 KB = 270 336 B.
+Measured in Story 6.17 (DEC-254) and re-measured after Story 6.6's accumulator and Story 6.7's evidence check, at each scheme's RP2040 profile (§3.4), in bytes; 264 KB = 270 336 B.
 
-| Consumer | Schnorr (1 000 nodes) | `bls-min-sig` (330) | `bls-min-pk` (211) | Basis |
+| Consumer | Schnorr (1 000 nodes) | `bls-min-sig` (258) | `bls-min-pk` (211) | Basis |
 |---|---:|---:|---:|---|
-| blockchain incl. vote (probe `SLOT`) | 108 520 | 95 400 | 73 960 | measured (footprint probe) |
+| blockchain incl. vote (probe `SLOT`) | 108 528 | 87 200 | 73 968 | measured (footprint probe) |
 | node statics without Core 1 (USB console, executor pool, channels) | 11 720 | 11 720 | 11 720 | measured (node build) |
-| Core 1 stack (blockchain task) | 32 768 | 50 176 | 71 680 | measured peak × 1.25, §3.3 |
+| Core 1 stack (blockchain task) | 32 768 | 58 368 | 71 680 | measured peak × 1.25, §3.3 |
 | mempool | 24 883 | 24 883 | 24 883 | ~24.3 KB, not linked yet |
 | radio-lib (memory-config-medium) | 61 440 | 61 440 | 61 440 | ~60 KB, source-confirmed |
 | crypto-lib scratch | 4 096 | 4 096 | 4 096 | estimate |
 | storage page buffer | 4 096 | 4 096 | 4 096 | estimate |
 | other task stacks | 18 432 | 18 432 | 18 432 | estimate |
-| **Total** | **265 955** | **270 243** | **270 307** | |
-| **Margin (270 336 − total)** | **4 381 (~4.3 KB)** ✅ | **93** ✅ | **29** ✅ | |
+| **Total** | **265 963** | **270 235** | **270 315** | |
+| **Margin (270 336 − total)** | **4 373 (~4.3 KB)** ✅ | **101** ✅ | **21** ✅ | |
 
 The radio figure is the **source-confirmed** `memory-config-medium = ~60 KB` (radio module `README.md` + `lib.rs` profile consts; see §6 and §7/D1), additive to the separately-counted Embassy task stacks. The node statics replace the earlier ~4 KB "Embassy executor + statics" estimate. At 1 000 nodes no BLS variant fits, so each fixes a smaller `MAX_NODES` (§3.4), the largest count that fits; with margins of tens of bytes, any growth in a counted consumer lowers it. Schnorr keeps ~4.3 KB (~1.6%) with its 32 KiB Core 1 (DEC-137; ~7.9 KB before Story 6.6's accumulator). Authoritative: architecture §7.3/§7.4/§12.
 
 ### 3.3 Stack frames
 
-- Chain-lib hosting task: runs on Core 1, whose stack is sized per scheme at ≥ 1.25 × the deepest root's measured peak, rounded up to a KiB (architecture §8, DEC-137 amended 2026-11-17, DEC-254). The deepest root is `process_genesis` on every scheme, because it signs: 25 692 B (Schnorr), 39 840 B (`bls-min-sig`), 56 544 B (`bls-min-pk`), so Core 1 is **32 KiB / 49 KiB / 70 KiB**, selected by `#[cfg]` in the node's `CORE1_STACK`.
+- Chain-lib hosting task: runs on Core 1, whose stack is sized per scheme at ≥ 1.25 × the deepest root's measured peak, rounded up to a KiB (architecture §8, DEC-137 amended 2026-11-17, DEC-254). The deepest root is `process_genesis` with Schnorr (25 692 B) and `bls-min-pk` (56 552 B), because it signs, and with `bls-min-sig` the FR3 pass (`initialize_from_storage` 46 584 B), which verifies an approval evidence block's aggregate inline (Story 6.7, DEC-263), so Core 1 is **32 KiB / 57 KiB / 70 KiB**, selected by `#[cfg]` in the node's `CORE1_STACK`.
 - `bls-min-pk`'s hash-to-G2 signing is what makes its Core 1 the largest; `bls-min-sig` signs in G1.
 - Other Embassy tasks (radio, USB console): **4 KB**.
 
 ### 3.4 Deployment tuning (BLS profiles)
 
-Per-lever savings: [`moonblokz-blockchain-architecture.md`](./moonblokz-blockchain-architecture.md) §12.1. Each BLS variant's RP2040 profile (Story 6.17, D12, DEC-254; re-fitted after Story 6.6's accumulator) fixes `MAX_NODES` at the largest count whose static RAM, its own Core 1 and the rest of §3.2 fit 264 KB; `SNAKE_CHAIN_LENGTH_MAX` 500 and `MAX_BLOCKS` 600 stay. Measured with the footprint probe (`footprint.py --scheme S`); architecture §12.2 carries the same figures.
+Per-lever savings: [`moonblokz-blockchain-architecture.md`](./moonblokz-blockchain-architecture.md) §12.1. Each BLS variant's RP2040 profile (Story 6.17, D12, DEC-254; re-fitted after Story 6.6's accumulator, and `bls-min-sig` again after Story 6.7's evidence check) fixes `MAX_NODES` at the largest count whose static RAM, its own Core 1 and the rest of §3.2 fit 264 KB; `SNAKE_CHAIN_LENGTH_MAX` 500 and `MAX_BLOCKS` 600 stay. Measured with the footprint probe (`footprint.py --scheme S`); architecture §12.2 carries the same figures.
 
 | Profile | `MAX_NODES` | Core 1 | Static RAM (`SLOT`) | Node flash (estimated) | Margin |
 |---|---:|---:|---:|---:|---:|
-| Schnorr (default) | 1 000 | 32 KiB | 108 520 B | 97 260 B | 4 381 B ✅ |
-| `bls-min-sig` | 330 | 49 KiB | 95 400 B | 133 984 B | 93 B ✅ |
-| `bls-min-pk` | 211 | 70 KiB | 73 960 B | 139 476 B | 29 B ✅ |
+| Schnorr (default) | 1 000 | 32 KiB | 108 528 B | 105 408 B | 4 373 B ✅ |
+| `bls-min-sig` | 258 | 57 KiB | 87 200 B | 141 016 B | 101 B ✅ |
+| `bls-min-pk` | 211 | 70 KiB | 73 968 B | 146 400 B | 21 B ✅ |
 
 A BLS build joins only chains with `max_node_count` at or below its `MAX_NODES` (DEC-228). Node flash stays far inside the ~800 KB left for code beside the 600 block slots, so `MAX_BLOCKS = 600` keeps its headroom. The profiles live in the footprint probe's `Blockchain` instantiation until the node instantiates the blockchain itself (the bridge, AR12 / Epic 8).
 
-**Min-pk fits fewer nodes than min-sig on the RP2040.** The earlier estimates (about 450–500 nodes min-sig, 700–800 min-pk, and min-pk at about 263 KB with 1 000 nodes) assumed a 24 KB Core 1 for both. With the measured stacks, min-pk's hash-to-G2 signing forces a 70 KiB Core 1 against min-sig's 49 KiB, which outweighs its halved key array (66 against 114 B per node): 211 nodes against 330. The earlier expectation that min-pk is the better RP2040 BLS variant is reversed. The LRU public-key cache of architecture §12.3 remains a key-array lever (not MVP).
+**Min-pk fits fewer nodes than min-sig on the RP2040.** The earlier estimates (about 450–500 nodes min-sig, 700–800 min-pk, and min-pk at about 263 KB with 1 000 nodes) assumed a 24 KB Core 1 for both. With the measured stacks, min-pk's hash-to-G2 signing forces a 70 KiB Core 1 against min-sig's 57 KiB (49 KiB before Story 6.7's inline evidence check), which outweighs its halved key array (66 against 114 B per node): 211 nodes against 258. The earlier expectation that min-pk is the better RP2040 BLS variant is reversed. The LRU public-key cache of architecture §12.3 remains a key-array lever (not MVP).
 
 ---
 
