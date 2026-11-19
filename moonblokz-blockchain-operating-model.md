@@ -148,7 +148,7 @@ What a valid chain must satisfy, grouped by scope. **Checked** names where the r
 | I-23 | Every referenced node id lies within `[0, max_known_node_id]` | FR6 | T3; pass | built (5.4) |
 | I-24 | A registration's `new_public_key` is globally unique, also within a block | FR6, FR9, FR14 | T3; pass | built — pass built (5.4); head extension built (6.0); side branches at the chain-switch replay built (6.3) (not Tier 2: an active-roster collision is no evidence on a side branch, DEC-147) |
 | I-25 | `new_key_signature` proves possession of the new key | FR6, FR9 | T1 | built (4.2, 6.16): the crypto module's proof of possession (`prove_possession` / `verify_possession`, DEC-248), checked at Tier 1 |
-| I-26 | `new_node_id = max_known_node_id + 1`, stride 1 within a block; block #0 registers id 0 without incrementing | FR6, FR9, FR54 | T3; pass | built (5.4) — explicit #0 check missing |
+| I-26 | `new_node_id = max_known_node_id + 1`, stride 1 within a block; block #0 registers id 0 without incrementing | FR6, FR9, FR54 | T3; pass | built (5.4) — explicit #0 check (`new_node_id == 0` only in block #0, T1) 6.10 |
 | I-53 | Every registered node id is below the chain's `max_node_count` (ID 32): a registration with `new_node_id ≥ max_node_count`, or a balance block with `max_node_id ≥ max_node_count`, is exact evidence in every projection, complete or not (DEC-228). Acceptance keeps `max_node_count ≤ MAX_NODES`, so no id can exceed the build's arrays | FR6, FR8, FR50, FR56 | T3; pass; accept | built (6.15) |
 
 ### 5.5 UTXO
@@ -188,7 +188,7 @@ Checked at head extension in Ready, and inside the FR3 pass against the candidat
 |---|---|---|---|---|
 | I-39 | No artifact may assert a node #0 key other than `node_zero_public_key` (registration of id 0, balance entry of node 0, content signature) | FR7, FR9, FR50, FR69 | T1 | built (4.2, 5.9) |
 | I-40 | Chain-config content carries node #0's signature, valid against the anchor | FR7 | T1 | built (5.9) |
-| I-41 | Blocks #0 / #1 have the fixed genesis shape (all-zero `previous_hash`, node #0 registration and self-transfer, then the configuration); bootstrap exceptions need sequence **and** content match; self-built #0 / #1 skip the Tier 1 re-check | FR54, FR69 | T1 / pass for received genesis blocks | partial — creation and anchor checks built (1.4, 5.1); zero hash and content match 6.10 |
+| I-41 | Blocks #0 / #1 have the fixed genesis shape (block #0 exact: all-zero `previous_hash`, creator 0, node #0 registration then self-transfer, zero fees, any amount; then the configuration); bootstrap exceptions need sequence **and** content match; a node #0 registration appears only in block #0; a received block #0's creator signature is verified at intake while no anchor is held; self-built #0 / #1 skip the Tier 1 re-check | FR54, FR69, FR9 | T1 (block #0 shape, reverse binding, intake signature); pass (block #1 content) | partial — creation and anchor checks built (1.4, 5.1); exact #0 shape, reverse binding, intake signature, #0 transaction signatures 6.10 |
 
 ## 6. Derived Projections
 
