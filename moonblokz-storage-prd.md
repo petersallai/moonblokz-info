@@ -13,7 +13,7 @@ When other storage knowledge-base files (concept, algorithm, implementation) cit
 - Imported into the `moonblokz-info` knowledge base on 2026-06-18.
 - Frontmatter from the originating workflow output was stripped during import; the body below is otherwise byte-identical to the source artifact at import time.
 - The 2026-02-28 edit pass added control-plane management requirements (FR6–FR20), storage layout and capacity updates, explicit control-plane lifecycle mapping in the User Journeys, and a normalized capability-oriented phrasing style across the FR catalog.
-- **2026-10-12 update:** FR11 no longer returns the private key and FR54 adds `load_private_key()` for the node runtime → crypto path, so the blockchain module never receives the key (BC-FR68) *(Project Lead decision)*. Implementation is pending.
+- **2026-10-12 update:** FR11 no longer returns the private key and FR54 adds `load_private_key()` for the node runtime → crypto path, so the blockchain module never receives the key (BC-FR68) *(Project Lead decision)*. Built in Story 6.9: `load_private_key()` is a method of each backend struct, outside `StorageTrait` (DEC-267).
 - **2026-11-10 update:** the control-plane `max_block_size` field is `u32`, so a build block capacity above 65 535 B fits it; the control-plane version stays 1 and its layout is redefined in place, because no device holds a chain. A record in the other layout fails its CRC and loads as corrupted, and the node re-initializes destructively; no migration code (DEC-226, BC Story 6.15) *(Project Lead decision)*. Built in Story 6.15.
 
 ## Related Knowledge-Base Documents
@@ -119,7 +119,7 @@ Value proposition: MoonBlokz Storage gives constrained microcontrollers determin
 
 ### Journey 1: Primary User - Success Path (Chain Runtime)
 
-At first boot, the Chain Runtime starts in a constrained RP2040 environment where RAM cannot hold full blockchain history. Before normal operation, runtime executes `init(private_key, own_node_id, init_params)` to initialize control-plane state, clear control-plane replicas and block pages, and establish deterministic storage layout. On subsequent boots, runtime calls `load_control_data()` to load control-plane metadata (private key, node id, init params, optional chain configuration) before block reconstruction begins.
+At first boot, the Chain Runtime starts in a constrained RP2040 environment where RAM cannot hold full blockchain history. Before normal operation, runtime executes `init(private_key, own_node_id, init_params)` to initialize control-plane state, clear control-plane replicas and block pages, and establish deterministic storage layout. On subsequent boots, runtime calls `load_control_data()` to load control-plane metadata (node id, init params, optional chain configuration) before block reconstruction begins, and `load_private_key()` to hand the key to the crypto module.
 
 After control-plane load succeeds, runtime iterates indexed blocks and rebuilds in-memory chain structures needed for participation. Each retrieved block is integrity-checked (hash revalidation) before it is accepted into runtime state.
 

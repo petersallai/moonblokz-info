@@ -380,6 +380,8 @@ The README and example projects reinforce a simple pattern:
 3. save blocks by index
 4. read blocks back by index
 
+The node runtime is to call the backend's `load_private_key()` as well and hand the key to the crypto module (FR54); no node code does yet, it lands with the node runtime bridge (DEC-268). The examples do not call it, because they are written against `StorageTrait`, which has no key method (DEC-267).
+
 Engineering consequence:
 
 - this is the current intended use shape for integrators,
