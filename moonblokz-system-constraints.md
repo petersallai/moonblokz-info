@@ -157,7 +157,7 @@ The radio figure is the **source-confirmed** `memory-config-medium = ~60 KB` (ra
 
 ### 3.3 Stack frames
 
-- Chain-lib hosting task: runs on Core 1, whose stack is sized per scheme at ≥ 1.25 × the deepest root's measured peak, rounded up to a KiB (architecture §8, DEC-137 amended 2026-11-17, DEC-254). The deepest root is `process_genesis` with Schnorr (25 684 B) and `bls-min-pk` (56 552 B), because it signs, and with `bls-min-sig` the FR3 pass (`initialize_from_storage` 46 584 B), which verifies an approval evidence block's aggregate inline (Story 6.7, DEC-263), so Core 1 is **32 KiB / 57 KiB / 70 KiB**, selected by `#[cfg]` in the node's `CORE1_STACK`.
+- Chain-lib hosting task: runs on Core 1, whose stack is sized per scheme at ≥ 1.25 × the deepest root's measured peak, rounded up to a KiB (architecture §8, DEC-137 amended 2026-11-17, DEC-254). The deepest root is `process_genesis` with Schnorr (25 692 B) and `bls-min-pk` (56 552 B), because it signs, and with `bls-min-sig` the FR3 pass (`initialize_from_storage` 46 584 B), which verifies an approval evidence block's aggregate inline (Story 6.7, DEC-263), so Core 1 is **32 KiB / 57 KiB / 70 KiB**, selected by `#[cfg]` in the node's `CORE1_STACK`.
 - `bls-min-pk`'s hash-to-G2 signing is what makes its Core 1 the largest; `bls-min-sig` signs in G1.
 - Other Embassy tasks (radio, USB console): **4 KB**.
 
