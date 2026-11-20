@@ -203,7 +203,7 @@ The header has ten fields. Signature- and key-sized fields take the build's cryp
    Hash of the previous block, covering both header and payload.
 
 10. **`signature: [u8; SIGNATURE_SIZE]`**  
-    Block creator signature for the entire block.
+    Block creator signature over the header bytes before this field followed by `H(payload)` (SHA-256), so a header plus its payload hash verifies it (PRD FR70).
 
 ### Algorithmic meaning of the block header
 
