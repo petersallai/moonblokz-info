@@ -353,7 +353,7 @@ Blocks deleted before the restart can return, because storage has no delete; eve
 | 6 | Validate it (I-43) and apply FR72: exclude `c` from the creator order and `A` for `W` blocks, reset its accumulated vote and credit it nothing while excluded | FR71, FR72 | not built (6.13) |
 | 7 | A node holding the other twin admits the evidence block on its side branch; a verdict for that branch lifts the hold and FR22 switches | FR22, FR71 | not built (6.13) |
 
-**On failure:** without a quorum the evidence carries the proof only (penalty, no decision) and the hold stays; a node that adopted the losing twin first stays on it until a restart, whose FR2 acquisition normally picks the majority chain. One voting round only.
+**On failure:** without a quorum the evidence carries the proof only (penalty, no decision) and the hold stays; a node that adopted the losing twin first stays on it until a restart or a DEC-205 re-entry, whose FR2 acquisition normally picks the majority chain. One voting round only.
 
 ## Related Documents
 
