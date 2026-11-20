@@ -27,7 +27,7 @@ A compact, implementation-free restatement of the blockchain consensus and ledge
 **Block** `b = (header, payload)`, `|b| ≤ L = block_size_limit ≤ MAX_BLOCK_SIZE`, the build's block capacity (2016 B on the reference tier) [DEC-220, DEC-227].
 Header: `version u8 (=1) | sequence u32 | creator u32 | mined_amount u32 | payload_type u8 | consumed_votes u32 | first_voted_node u32 | consumed_votes_from_first_voted_node u32 | previous_hash [32] | signature`; `58 + |sig|` = 122 / 106 / 154 B (Schnorr / min-sig / min-pk) [DEC-251].
 - `hash(b) = H(bytes(b))`, signature bytes included.
-- `signature = Sig_{sk(creator)}(header with the signature field zeroed ‖ H(payload))` [FR70].
+- `signature = Sig_{sk(creator)}(header before the signature field ‖ H(payload))`, 90 bytes under every scheme [FR70].
 - `sequence(b) = sequence(parent) + 1`; `sequence = u32::MAX` is always invalid (no wrap in MVP) [FR53].
 - `payload_type ∈ {1 transaction, 2 balance, 3 chain-config, 4 approval evidence, 5 twin evidence}`.
 
@@ -227,7 +227,7 @@ Each entry is defined in the [Open Gaps Register](./moonblokz-open-gaps-register
 6. The approval threshold is `r_eff = min(r, ⌊|A'|/2⌋ + 1)`, a strict majority of the subgroup at every size, so evidence can form whenever a majority of the subgroup signs; a small voting set approves by simple majority (DEC-172). The seed depends on `p`, `x` and the money on the chain after `p − 1`; a creator moves that total only through the registrations it includes, whose price is burned, so grinding it is costly [DEC-192].
 7. `supporter_vote_sum` is a closed form of chain state, not of the signer set.
 8. Schnorr aggregate weights depend on every `(r_i, P_i)` in order, the message and `i` [DEC-194, DEC-235]. Registration requires proof of possession `new_key_sig = Pop_{sk_new}(new_pk)`: for Schnorr a BIP-340 signature over `"MoonBlokz/pop" ‖ new_pk`, separated by that message prefix (no MoonBlokz message has the form); for BLS the suite's `PopProve` [DEC-248].
-9. `hash(b)` covers the signature; the block signature covers the header with the signature field zeroed and `H(payload)` [FR70].
+9. `hash(b)` covers the signature; the block signature covers the header before the signature field and `H(payload)` [FR70].
 10. Block-level rules for T1 and balance inputs are `max(0, s − W) ≤ anchor < s` plus no duplicate within the retained candidate chain. An earlier inclusion lies above the anchor and so inside the window: the duplicate check is complete, and a transaction cannot be included again after its block leaves the window [FR6, FR9, FR14, DEC-174].
 11. UTXO references `(q, i)` are branch-relative: after a reorg the same pair may name a different output, and spends of outputs re-included at another position become invalid [ADR-016].
 12. Outside direct head extensions and blocks whose creator key is branch-independent (DEC-157), blocks are stored before signature and state validation (opportunistic signatures, Tier 3 deferred); bounded storage is reclaimed by lowest-`BV` side-branch eviction [FR16, FR57].
