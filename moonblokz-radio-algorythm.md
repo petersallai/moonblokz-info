@@ -297,9 +297,7 @@ The constructor is currently named `get_mempool_state_with`, even though the mes
 
 Carries the header (type, sender, sequence, supporter; 13 B) ‖ proposer `u32` ‖ `deviation_block_hash` 32 B ‖ signature over `"MBSUP" ‖ proposer ‖ deviation_sequence ‖ deviation_block_hash` (45 B signed content: little-endian `u32` proposer and sequence, [ADR-015](./blockchain-adrs/ADR-015-approval-subgroup-selection.md) §Encodings, DEC-218), 113 / 97 / 145 B with Schnorr / `bls-min-sig` / `bls-min-pk`, one packet each (DEC-187, built in Story 6.5; per-scheme sizes DEC-251, built in Story 6.17). The constructor `support_with` refuses a signature that would make the message exceed one packet (`MessageError::MessageSizeOverflow`). Bytes `[5..len)` (sequence, supporter, proposer, hash, signature) are the hop-invariant body, served by `support_body()`, that the bridge passes to the blockchain's `receive_support` (DEC-229).
 
-### Specified changes, not yet implemented
-
-- `TwinVote` (0x0A) carries an FR71 twin vote: the same 13 B header (type, sender, `s`, voter) ‖ `c` `u32` ‖ `hash(P)` 32 B ‖ `hash(chosen twin)` 32 B ‖ signature, 145 / 129 / 177 B with Schnorr / `bls-min-sig` / `bls-min-pk`, one packet; relayed like `Support` (DEC-202; Story 6.13).
+An FR71 twin round's supports are ordinary `Support` messages; the specified `TwinVote` (0x0A) was withdrawn (DEC-276, withdrawing DEC-202).
 
 ## C6. Message reply relationships currently implemented
 

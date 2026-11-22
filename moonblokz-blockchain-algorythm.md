@@ -189,6 +189,7 @@ The header has ten fields. Signature- and key-sized fields take the build's cryp
    - `2` = balance block
    - `3` = chain configuration block
    - `4` = evidence block
+   - `5` = twin fact block
 
 6. **`consumed_votes: u32`**  
    Number of votes consumed by the creator to create the block: its accumulated vote after the block's anti-capture interest and before the block's own vote credits ([Blockchain PRD](./moonblokz-blockchain-prd.md) FR37).
@@ -242,6 +243,10 @@ Contains configuration parameters for the chain.
 ### Payload type `4`: approval evidence block
 
 Contains proof that a non-default block was supported by the required majority.
+
+### Payload type `5`: twin fact block
+
+Records a same-parent equivocation by creator `c` at sequence `s` on parent `P` (FR70, FR71). Little-endian: the other twin's full header, signature included (its creator, sequence and `previous_hash` are `c`, `s` and `hash(P)`) ‖ that twin's payload hash (32 B) ‖ `snapshot: u32` (`c`'s accumulated vote after the block's interest step, before the reset) ‖ `m: u8` ‖ `m` member ids `u32`, the round's ranked subgroup. `m = 0` marks a penalty-only block; a block at `q ≤ s + H − 1` opens an approval round and carries its subgroup (DEC-277, DEC-278). 159 / 143 / 191 B penalty-only, 475 / 459 / 507 B for a round at `m = 79` (Schnorr / `bls-min-sig` / `bls-min-pk`).
 
 ## 3. Transaction Block Structure
 
@@ -1027,7 +1032,7 @@ When a side branch overtakes the current active branch, the node must move every
 1. A switch is triggered only when a non-active head's `branch_value` exceeds the active head's (FR21 tie-break), re-evaluated after a head extension or a Stored → Connected transition (FR22).
 2. The switch is one atomic step-wise walk: undo blocks back to the common ancestor, then apply the new branch forward. Every projection — including the mempool — is updated per block, with no separate mempool phase, and the demoted blocks become Connected (FR23; [architecture](./moonblokz-blockchain-architecture.md) §4.2 `reconciliation.rs`).
 3. Only a branch that diverges within `H` blocks of the node's own head (`D ≥ S_head − H + 1`) may become active; a deeper one is reclaimed, and ready state has no full-reconstruction path ([Blockchain PRD](./moonblokz-blockchain-prd.md) FR21–FR23, FR58).
-4. A switch never crosses a same-parent twin — the creator's two signed children of one parent — to the other twin unless that branch carries a verdict-bearing twin evidence block; the equivocating creator is then excluded from block creation for `W` blocks ([Blockchain PRD](./moonblokz-blockchain-prd.md) FR70–FR72).
+4. A switch never crosses a same-parent twin — the creator's two signed children of one parent — to the other twin unless that branch carries an approved twin fact block; the fact block resets the equivocating creator's accumulated vote and drops its credits for `H` blocks ([Blockchain PRD](./moonblokz-blockchain-prd.md) FR70–FR72).
 
 ### Interpretation
 
