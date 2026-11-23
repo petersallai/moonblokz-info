@@ -100,11 +100,11 @@ If the blockchain has more work pending (e.g., a queued parent-recovery request 
 
 ### 1.4 Bridge layer = `moonblokz-node-runtime`
 
-The radio↔blockchain integration lives in a **separate bridge crate** (`moonblokz-node-runtime`), not inside the blockchain. The bridge owns the embassy async runtime and handles:
+The radio↔blockchain integration lives in a **separate, hardware-independent bridge crate** (`moonblokz-node-runtime`), not inside the blockchain. It provides the embassy tasks (on `embassy-sync` / `embassy-time` / `embassy-futures` only), generic over the radio device, the storage backend and the crypto scheme, so the RP2040 firmware and the radio simulator run the same bridge. The board binary (`moonblokz-node-rp2040`) owns the executor, the core split, the peripherals, the Core 1 stack and the capacity profile, and spawns the runtime's tasks (DEC-288). The bridge handles:
 - Translating `RadioMessage` enum variants (from `moonblokz-radio-lib`) into blockchain semantic calls (`receive_block`, `receive_transaction`, `receive_support`).
 - Translating outcome variants back into radio outgoing messages via `MessageProcessingResult` (radio crate's existing enum, FR66).
 - Scheduling: a single `embassy::select` loop with one `Timer::at(NextCall)` arm.
-- Two-core split: Core 0 hosts real-time radio + local-UI tasks; Core 1 hosts the blockchain task **including the `moonblokz-blockchain` crate, the `moonblokz-mempool` sub-crate, the `moonblokz-vote` sub-crate, and the `moonblokz-configuration` sub-crate** — all sync, no-alloc state lives on Core 1. Embassy channels bridge cores.
+- Two-core split (placed by the board binary): Core 0 hosts real-time radio + local-UI tasks; Core 1 hosts the blockchain task **including the `moonblokz-blockchain` crate, the `moonblokz-mempool` sub-crate, the `moonblokz-vote` sub-crate, and the `moonblokz-configuration` sub-crate** — all sync, no-alloc state lives on Core 1. Embassy channels bridge cores.
 
 ### 1.5 Local clock assumption
 
@@ -159,7 +159,7 @@ graph TB
 **New crates introduced by this architecture:**
 1. `moonblokz-mempool` — extracted from blockchain per FR30 (mempool is separate module)
 2. `moonblokz-vote` — extracted as its own concern (vote engine is separate from the radio-side scoring module per PRD FR55)
-3. `moonblokz-node-runtime` — bridge layer, hosts embassy async + radio↔blockchain glue
+3. `moonblokz-node-runtime` — hardware-independent bridge layer: the embassy tasks and the radio↔blockchain glue; the board binary `moonblokz-node-rp2040` owns the executor, the cores and the peripherals (DEC-288)
 4. `moonblokz-configuration` — holds chain-config state, the shared parameter registry, the code-baked defaults, and content acceptance per FR7 / FR8 / FR17 / FR49 / FR56
 5. `moonblokz-vm` — the bytecode execution engine the configuration crate drives for computed parameters (FR56 mini-VM); a self-contained crate that depends on no MoonBlokz crate and interprets none of the identifiers it passes, so the post-MVP smart-contract runtime can build on it
 
@@ -1049,7 +1049,7 @@ Tasks to bring the empty `moonblokz-blockchain` directory and the existing depen
 | 7 | Radio-lib getter API additions | `moonblokz-radio-lib` | Expose radio-derived score input cleanly for vote sub-crate (per PRD FR55 `scoring_module` boundary). |
 | 8 | Set the Core 1 (blockchain task) stack per scheme: 32 / 49 / 70 KiB | node binary (`CORE1_STACK`, `#[cfg]` per scheme) | Per §8 measurement (DEC-137, amended 2026-11-17; DEC-254). |
 | 9 | Initial scaffold for `moonblokz-configuration` crate | filesystem (placeholder) | Trait stub per §11 only; full BMAD later. |
-| 10 | Wire all 4 new crates into `moonblokz-node/Cargo.toml` | existing | Add `moonblokz-blockchain` + `moonblokz-mempool` + `moonblokz-vote` + `moonblokz-node-runtime` path deps. |
+| 10 | Wire all 4 new crates into `moonblokz-node-rp2040/Cargo.toml` | existing | Add `moonblokz-blockchain` + `moonblokz-mempool` + `moonblokz-vote` + `moonblokz-node-runtime` path deps. |
 
 ---
 
