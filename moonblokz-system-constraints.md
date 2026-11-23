@@ -53,7 +53,7 @@ Authoritative source: [`moonblokz-blockchain-architecture.md`](./moonblokz-block
 
 | Const generic | Default | Meaning / deployment implication |
 |---|---:|---|
-| `MAX_NODES` | 1000 (Schnorr; RP2040 BLS profiles 258 `bls-min-sig`, 211 `bls-min-pk`, §3.4) | **The build's node capacity.** Sizes all node-id-indexed arrays (`NodeInfo`, `VoteEngine.accumulated_vote`); every node holds an entry for every registered node. The network cap is chain parameter ID 32 `max_node_count`, which acceptance bounds by `MAX_NODES` (DEC-228). Dominant RAM driver — see §3. |
+| `MAX_NODES` | 1000 (RP2040 profiles since Story 12.1: 800 Schnorr, 240 `bls-min-sig`, 95 `bls-min-pk`, §3.4) | **The build's node capacity.** Sizes all node-id-indexed arrays (`NodeInfo`, `VoteEngine.accumulated_vote`); every node holds an entry for every registered node. The network cap is chain parameter ID 32 `max_node_count`, which acceptance bounds by `MAX_NODES` (DEC-228). Dominant RAM driver — see §3. |
 | `SNAKE_CHAIN_LENGTH_MAX` | 500 | **Capacity** of the active-chain window, not its length. The length in force, `W`, is chain configuration ([BC-FR56](./moonblokz-blockchain-prd.md)) and acceptance requires `W ≤ SNAKE_CHAIN_LENGTH_MAX`; a build whose capacity is below the chain's `W` cannot join. See D2 in §7. |
 | `MAX_BLOCK_SIZE` | 2016 | **Build tier feature**, not a const generic: the block capacity a `moonblokz-chain-types` size-tier feature selects (`block-size-2016` default, `block-size-65536`; DEC-220). Acceptance requires the chain's `block_size_limit` to fit it; a larger block is a local refusal, never evidence (DEC-225). See §4. |
 | `MAX_BLOCKS` | 600 | In-RAM block-table slots; 1:1 with RP2040 durable flash capacity (see §4). Chain-config acceptance also requires `W + 2·H ≤ MAX_BLOCKS` ([BC-FR8](./moonblokz-blockchain-prd.md), DEC-160). With `MAX_NODES` it is bounded by the branch-value proof `MAX_BLOCKS · VALUE_CAP ≤ u64::MAX`: a build profile keeps `MAX_BLOCKS · MAX_NODES` below about 8.6 · 10⁷ (architecture §6.4, DEC-264). |
@@ -138,28 +138,26 @@ Measured (Story 6.17, footprint probe): the blockchain's static RAM, its `VoteEn
 
 ### 3.2 Full-system allocation
 
-Measured in Story 6.17 (DEC-254) and re-measured after Story 6.6's accumulator and Story 6.7's evidence check, at each scheme's RP2040 profile (§3.4), in bytes; 264 KB = 270 336 B.
+Measured in Story 12.1 on the node's own build (DEC-289, DEC-297): the blockchain task runs on Core 0's main stack, the blockchain lives in its task's `TaskStorage` with the real rp2040 storage, at each scheme's RP2040 profile (§3.4), in bytes; 264 KB = 270 336 B. (Stories 6.17–6.7 measured the probe model, with an opaque storage and the blockchain on Core 1: margins 4 373 / 101 / 21 B at 1 000 / 258 / 211 nodes.)
 
-| Consumer | Schnorr (1 000 nodes) | `bls-min-sig` (258) | `bls-min-pk` (211) | Basis |
+| Consumer | Schnorr (800 nodes) | `bls-min-sig` (240) | `bls-min-pk` (95) | Basis |
 |---|---:|---:|---:|---|
-| blockchain incl. vote (probe `SLOT`) | 108 528 | 87 200 | 73 968 | measured (footprint probe) |
-| node statics without Core 1 (USB console, executor pool, channels) | 11 720 | 11 720 | 11 720 | measured (node build) |
-| Core 1 stack (blockchain task) | 32 768 | 58 368 | 71 680 | measured peak × 1.25, §3.3 |
+| blockchain task pool (`Blockchain` incl. vote + by-value arguments) | 102 984 | 89 656 | 70 720 | measured (node ELF; `SLOT` 98 528 / 85 144 / 66 312) |
+| node statics (USB console, executor pools, channels) | 7 856 | 7 856 | 7 856 | measured (node build) |
+| Core 1 stack (USB console; later the radio) | 8 192 | 8 192 | 8 192 | reservation; AC8 painted measurement pending |
+| Core 0 main stack (blockchain task), required | 49 840 | 63 000 | 82 620 | node-ELF peak × 1.25, §3.3 |
 | mempool | 24 883 | 24 883 | 24 883 | ~24.3 KB, not linked yet |
 | radio-lib (memory-config-medium) | 61 440 | 61 440 | 61 440 | ~60 KB, source-confirmed |
 | crypto-lib scratch | 4 096 | 4 096 | 4 096 | estimate |
-| storage page buffer | 4 096 | 4 096 | 4 096 | estimate |
-| other task stacks | 18 432 | 18 432 | 18 432 | estimate |
-| **Total** | **265 963** | **270 235** | **270 315** | |
-| **Margin (270 336 − total)** | **4 373 (~4.3 KB)** ✅ | **101** ✅ | **21** ✅ | |
-
-**Story 12.1 (DEC-289) changes the stack rows.** The blockchain task moves to Core 0's main stack, `CORE1_STACK` holds the USB console (later the radio), the blockchain is measured inside its task's `TaskStorage` instead of the probe `SLOT`, and the storage page buffer is measured inside it. Story 12.1 re-measures this table on the node ELF.
+| Core 1 radio tasks | 10 240 | 10 240 | 10 240 | estimate, not linked yet |
+| **Total** | **269 531** | **269 363** | **270 047** | |
+| **Margin (270 336 − total)** | **805** ✅ | **973** ✅ | **289** ✅ | |
 
 The radio figure is the **source-confirmed** `memory-config-medium = ~60 KB` (radio module `README.md` + `lib.rs` profile consts; see §6 and §7/D1), additive to the separately-counted Embassy task stacks. The node statics replace the earlier ~4 KB "Embassy executor + statics" estimate. At 1 000 nodes no BLS variant fits, so each fixes a smaller `MAX_NODES` (§3.4), the largest count that fits; with margins of tens of bytes, any growth in a counted consumer lowers it. Schnorr keeps ~4.3 KB (~1.6%) with its 32 KiB Core 1 (DEC-137; ~7.9 KB before Story 6.6's accumulator). Authoritative: architecture §7.3/§7.4/§12.
 
 ### 3.3 Stack frames
 
-- Chain-lib hosting task: runs on Core 1 until Story 12.1 and on Core 0's main stack since (DEC-289); its stack is sized per scheme at ≥ 1.25 × the deepest root's measured peak, rounded up to a KiB (architecture §8, DEC-137 amended 2026-11-17, DEC-254). The deepest root is `process_genesis` with Schnorr (25 692 B) and `bls-min-pk` (56 552 B), because it signs, and with `bls-min-sig` the FR3 pass (`initialize_from_storage` 46 584 B), which verifies an approval evidence block's aggregate inline (Story 6.7, DEC-263), so Core 1 is **32 KiB / 57 KiB / 70 KiB**, selected by `#[cfg]` in the node's `CORE1_STACK`.
+- Chain-lib hosting task: runs on Core 1 until Story 12.1 and on Core 0's main stack since (DEC-289), measured on the node ELF from the task poll: 39 872 / 50 400 / 66 096 B (the genesis path with the real storage; §3.2). Before Story 12.1 its stack was sized per scheme at ≥ 1.25 × the deepest root's measured peak, rounded up to a KiB (architecture §8, DEC-137 amended 2026-11-17, DEC-254). The deepest root is `process_genesis` with Schnorr (25 692 B) and `bls-min-pk` (56 552 B), because it signs, and with `bls-min-sig` the FR3 pass (`initialize_from_storage` 46 584 B), which verifies an approval evidence block's aggregate inline (Story 6.7, DEC-263), so Core 1 is **32 KiB / 57 KiB / 70 KiB**, selected by `#[cfg]` in the node's `CORE1_STACK`.
 - `bls-min-pk`'s hash-to-G2 signing is what makes its Core 1 the largest; `bls-min-sig` signs in G1.
 - Other Embassy tasks (radio, USB console): **4 KB**.
 
@@ -167,11 +165,13 @@ The radio figure is the **source-confirmed** `memory-config-medium = ~60 KB` (ra
 
 Per-lever savings: [`moonblokz-blockchain-architecture.md`](./moonblokz-blockchain-architecture.md) §12.1. Each BLS variant's RP2040 profile (Story 6.17, D12, DEC-254; re-fitted after Story 6.6's accumulator, and `bls-min-sig` again after Story 6.7's evidence check) fixes `MAX_NODES` at the largest count whose static RAM, its own Core 1 and the rest of §3.2 fit 264 KB; `SNAKE_CHAIN_LENGTH_MAX` 500 and `MAX_BLOCKS` 600 stay. Measured with the footprint probe (`footprint.py --scheme S`); architecture §12.2 carries the same figures.
 
-| Profile | `MAX_NODES` | Core 1 | Static RAM (`SLOT`) | Node flash (estimated) | Margin |
+| Profile | `MAX_NODES` | Blockchain stack (Core 0, required) | Blockchain task pool | Node flash (measured) | Margin |
 |---|---:|---:|---:|---:|---:|
-| Schnorr (default) | 1 000 | 32 KiB | 108 528 B | 105 408 B | 4 373 B ✅ |
-| `bls-min-sig` | 258 | 57 KiB | 87 200 B | 141 016 B | 101 B ✅ |
-| `bls-min-pk` | 211 | 70 KiB | 73 968 B | 146 400 B | 21 B ✅ |
+| Schnorr (default) | 800 | 49 840 B | 102 984 B | 129 636 B | 805 B ✅ |
+| `bls-min-sig` | 240 | 63 000 B | 89 656 B | 195 280 B | 973 B ✅ |
+| `bls-min-pk` | 95 | 82 620 B | 70 720 B | 197 232 B | 289 B ✅ |
+
+Re-fitted by Story 12.1 (DEC-297) from 1 000 / 258 / 211, the probe-model profiles, once the node measured its own build; Story 12.2 aims to restore them. The profiles live in the board binary (`moonblokz-node-rp2040` `MAX_NODES`) and the footprint probe follows them.
 
 A BLS build joins only chains with `max_node_count` at or below its `MAX_NODES` (DEC-228). Node flash stays far inside the ~800 KB left for code beside the 600 block slots, so `MAX_BLOCKS = 600` keeps its headroom. The profiles live in the footprint probe's `Blockchain` instantiation until the node instantiates the blockchain itself (the bridge, AR12 / Epic 12).
 
