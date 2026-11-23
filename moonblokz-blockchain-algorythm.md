@@ -246,7 +246,7 @@ Contains proof that a non-default block was supported by the required majority.
 
 ### Payload type `5`: twin fact block
 
-Records a same-parent equivocation by creator `c` at sequence `s` on parent `P` (FR70, FR71). Little-endian: the other twin's full header, signature included (its creator, sequence and `previous_hash` are `c`, `s` and `hash(P)`) ‖ that twin's payload hash (32 B) ‖ `snapshot: u32` (`c`'s accumulated vote after the block's interest step, before the reset) ‖ `m: u8` ‖ `m` member ids `u32`, the round's ranked subgroup. `m = 0` marks a penalty-only block; a block at `q ≤ s + H − 1` opens an approval round and carries its subgroup (DEC-277, DEC-278). 159 / 143 / 191 B penalty-only, 475 / 459 / 507 B for a round at `m = 79` (Schnorr / `bls-min-sig` / `bls-min-pk`).
+Records a same-parent equivocation by creator `c` at sequence `s` on parent `P` (FR70, FR71). Little-endian: the other twin's full header, signature included (its creator, sequence and `previous_hash` are `c`, `s` and `hash(P)`) ‖ that twin's payload hash (32 B) ‖ `snapshot: u32` (`c`'s accumulated vote after the block's interest step, before the reset) ‖ `m: u8` ‖ for a round-opening block only, `j: u32` (the round index, its creator's rank at `q − 1`, DEC-283) ‖ `m` member ids `u32`, the round's ranked subgroup. `m = 0` marks a penalty-only block; a block at `q ≤ s + H − 1` opens an approval round and carries its subgroup (DEC-277, DEC-278). 159 / 143 / 191 B penalty-only, 479 / 463 / 511 B for a round at `m = 79` (Schnorr / `bls-min-sig` / `bls-min-pk`).
 
 ## 3. Transaction Block Structure
 
