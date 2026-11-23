@@ -153,11 +153,13 @@ Measured in Story 6.17 (DEC-254) and re-measured after Story 6.6's accumulator a
 | **Total** | **265 963** | **270 235** | **270 315** | |
 | **Margin (270 336 − total)** | **4 373 (~4.3 KB)** ✅ | **101** ✅ | **21** ✅ | |
 
+**Story 12.1 (DEC-289) changes the stack rows.** The blockchain task moves to Core 0's main stack, `CORE1_STACK` holds the USB console (later the radio), the blockchain is measured inside its task's `TaskStorage` instead of the probe `SLOT`, and the storage page buffer is measured inside it. Story 12.1 re-measures this table on the node ELF.
+
 The radio figure is the **source-confirmed** `memory-config-medium = ~60 KB` (radio module `README.md` + `lib.rs` profile consts; see §6 and §7/D1), additive to the separately-counted Embassy task stacks. The node statics replace the earlier ~4 KB "Embassy executor + statics" estimate. At 1 000 nodes no BLS variant fits, so each fixes a smaller `MAX_NODES` (§3.4), the largest count that fits; with margins of tens of bytes, any growth in a counted consumer lowers it. Schnorr keeps ~4.3 KB (~1.6%) with its 32 KiB Core 1 (DEC-137; ~7.9 KB before Story 6.6's accumulator). Authoritative: architecture §7.3/§7.4/§12.
 
 ### 3.3 Stack frames
 
-- Chain-lib hosting task: runs on Core 1, whose stack is sized per scheme at ≥ 1.25 × the deepest root's measured peak, rounded up to a KiB (architecture §8, DEC-137 amended 2026-11-17, DEC-254). The deepest root is `process_genesis` with Schnorr (25 692 B) and `bls-min-pk` (56 552 B), because it signs, and with `bls-min-sig` the FR3 pass (`initialize_from_storage` 46 584 B), which verifies an approval evidence block's aggregate inline (Story 6.7, DEC-263), so Core 1 is **32 KiB / 57 KiB / 70 KiB**, selected by `#[cfg]` in the node's `CORE1_STACK`.
+- Chain-lib hosting task: runs on Core 1 until Story 12.1 and on Core 0's main stack since (DEC-289); its stack is sized per scheme at ≥ 1.25 × the deepest root's measured peak, rounded up to a KiB (architecture §8, DEC-137 amended 2026-11-17, DEC-254). The deepest root is `process_genesis` with Schnorr (25 692 B) and `bls-min-pk` (56 552 B), because it signs, and with `bls-min-sig` the FR3 pass (`initialize_from_storage` 46 584 B), which verifies an approval evidence block's aggregate inline (Story 6.7, DEC-263), so Core 1 is **32 KiB / 57 KiB / 70 KiB**, selected by `#[cfg]` in the node's `CORE1_STACK`.
 - `bls-min-pk`'s hash-to-G2 signing is what makes its Core 1 the largest; `bls-min-sig` signs in G1.
 - Other Embassy tasks (radio, USB console): **4 KB**.
 
