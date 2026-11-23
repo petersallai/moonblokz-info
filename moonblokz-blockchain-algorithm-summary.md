@@ -29,7 +29,7 @@ Header: `version u8 (=1) | sequence u32 | creator u32 | mined_amount u32 | paylo
 - `hash(b) = H(bytes(b))`, signature bytes included.
 - `signature = Sig_{sk(creator)}(header before the signature field ‖ H(payload))`, 90 bytes under every scheme [FR70].
 - `sequence(b) = sequence(parent) + 1`; `sequence = u32::MAX` is always invalid (no wrap in MVP) [FR53].
-- `payload_type ∈ {1 transaction, 2 balance, 3 chain-config, 4 approval evidence, 5 twin evidence}`.
+- `payload_type ∈ {1 transaction, 2 balance, 3 chain-config, 4 approval evidence, 5 twin fact block}`.
 
 **Transaction block** (type 1): `count u16` (a protocol bound of 65 535 per block), then transactions, each starting `type u8 | vote u32`. A transaction block never holds both a registration (T2) and a complex transaction (T3) [FR6, FR9 Tier 1].
 
@@ -47,11 +47,10 @@ Header: `version u8 (=1) | sequence u32 | creator u32 | mined_amount u32 | paylo
 
 **Approval-evidence block** (type 4), little-endian: `supporter_vote_sum u64 ‖ deviation_sequence u32 ‖ m u8 ‖ signer bitmap (⌈m/8⌉ B over the subgroup ranks, LSB-first) ‖ aggregated signature (signers in rank order) ‖ late_count u16 ‖ late-node entries (u32 id, u32 vote)`; bound to the deviation by the signed content `"MBSUP" ‖ x ‖ p ‖ hash(d)` [FR27, DEC-195, DEC-241, DEC-242].
 
-**Twin evidence block** (type 5): `c`, `s`, `hash(P)`; the other twin's header and payload hash (the proof); `c`'s accumulated-vote snapshot; with a quorum, a verdict = signer bitmap over the subgroup positions + aggregated signature [FR71].
+**Twin fact block** (type 5): the other twin's full header and payload hash (the proof; `c`, `s`, `hash(P)` are its fields); `c`'s accumulated-vote snapshot; `m` and, for a round-opening block, the round's `m` ranked member ids (`m = 0`: penalty-only) [FR71, DEC-278].
 
 **Support message** (off-chain): `(supporter_id, proposer_id, deviation_sequence, deviation_block_hash, sig)`; signed content `"MBSUP" ‖ proposer ‖ deviation_sequence ‖ deviation_block_hash` [FR12, FR26, DEC-187].
 
-**Twin vote** (off-chain): signed content `("MBTWN", c, s, hash(P), hash(chosen twin))`, one per member and `(c, s, P)` [FR71].
 
 ## 3. Node state
 
@@ -84,7 +83,7 @@ Outcome ∈ {Accepted-new, Already-known, Invalid-evidence, Out-of-window, Defer
   - Header vote form: `first_voted_node = c` ⇒ `consumed_votes_from_first_voted_node = 0`; otherwise `consumed_votes ≤ consumed_votes_from_first_voted_node` [FR9].
   - For a ready direct head extension, also exact evidence: a carry-forward failing §10.3 (i)–(v). For any block whose parent is held: the Tier 2 run and clean-slot rules [DEC-261].
 - **Tier 2** (Connected: ancestry reaches the active chain; lookups only): locked configuration at the block's sequence (fee policy, price, custodian fee, approval threshold); `mined_amount = mining_reward`; UTXO input `q` retained, `i` in range, declared `a` equals the output amount; `new_pk` unique; structural `snake_chain` checks (the `D − W` reference is retained for every switchable branch, FR58); the deviation-run rules (§9 Evidence) and the clean slot (§10.1), judged at intake for every block whose parent is held, at connect otherwise and in every forward step [DEC-261, DEC-265].
-- **Tier 3** (Active: replay of derived state, via the processing pass, chain-switch replay or a ready head extension): `consumed_votes`, `first_voted_node`, `consumed_votes_from_first_voted_node` match the projected vote state; creator credit; NodeInfo equals the state at `s − 1`, `max_node_id = M` and `max_node_id < max_node_count` [DEC-228]; every rule of §6; `U_q[i] = 1`; carry-forward state; replay presence and order; evidence (`m`, subgroup membership, count ≥ `r_eff`, recomputed `supporter_vote_sum`, late list, the aggregate last; a block whose signature checks passed is marked and not re-checked) [DEC-259, DEC-263]; twin evidence (proof header, `s ≥ S_tail`, one per `(c, s)` in the window, verdict bitmap and aggregate) [FR71]; creator entitled — top, admitted fallback or proposer, never an FR72-excluded node [I-10].
+- **Tier 3** (Active: replay of derived state, via the processing pass, chain-switch replay or a ready head extension): `consumed_votes`, `first_voted_node`, `consumed_votes_from_first_voted_node` match the projected vote state; creator credit; NodeInfo equals the state at `s − 1`, `max_node_id = M` and `max_node_id < max_node_count` [DEC-228]; every rule of §6; `U_q[i] = 1`; carry-forward state; replay presence and order; evidence (`m`, subgroup membership, count ≥ `r_eff`, recomputed `supporter_vote_sum`, late list, the aggregate last; a block whose signature checks passed is marked and not re-checked) [DEC-259, DEC-263]; twin fact block (own twin and proof header, `s ≥ S_tail`, one per `(c, s)` in the window, kind by position, the round's members, the snapshot) [FR71, I-43]; creator entitled — top, admitted fallback or proposer [I-10].
 - **Pacing soft-fail** (ready intake, ordinary transaction blocks only): `fill(b) < θ·L` ∧ `arrival(b) − arrival(parent) < inter_block_interval` (local arrival times) ⇒ Deferred and re-evaluated after the remainder; not invalid.
 - Ready direct head extension: validated before storing; valid ⇒ Stored → Active and becomes the head; invalid ⇒ not stored. Stored children of the new head are then applied, lowest hash first ([Algorithm Model](./moonblokz-blockchain-algorythm.md) §Ready phase, FR16).
 - Invalid ⇒ the block and its descendants are deleted, only through a closed list of deletion paths [FR5, FR9, FR19].
@@ -104,12 +103,12 @@ For every accepted block `b` with creator `c`, in order [FR37]:
 1. `∀ n: av(n) += min(⌊av(n)·vi / vs⌋, vs)` — anti-capture interest, `c` included.
 2. `∀ n ∈ {tx.vote : tx ∈ b}`, carry-forward excluded: `av(n) += vs` once, however many transactions name `n` (DEC-176), unless `n` is under an FR72 or late-node exclusion at `b` (DEC-175, DEC-184).
 3. `av(c) := 0`. A deviation block additionally sets `av(first_voted_node) := 0`.
-4. Liveness credit: if `s ≥ H` and `vi > 0`, the creator `n` of block `s − H` gains `av(n) += ⌈vs/vi⌉`, unless `n = c`, `n` is FR72- or late-node-excluded, or `b` is a twin evidence block naming `n` [DEC-178, DEC-184].
+4. Liveness credit: if `s ≥ H` and `vi > 0`, the creator `n` of block `s − H` gains `av(n) += ⌈vs/vi⌉`, unless `n = c`, `n` is late-node-excluded or in its FR72 credit drop, or `b` is a twin fact block naming `n` [DEC-178, DEC-184, DEC-279].
 5. Overflow of any `av` ⇒ the block is invalid.
 
 Header snapshots: `consumed_votes(b)` is `av(c)` after step 1 and before step 2. A deviation block's `consumed_votes_from_first_voted_node` is that node's value at the same point; it is verified at Tier 3 and used to undo the penalty, but it adds no branch value. So a block's own credits never enter its value, while step 3 still wipes the credits `b` gave `c` [FR37, DEC-156].
 
-The expected creator after block `s` is the top of the creator order; zero-vote nodes are included, so node 0 leads in the all-zero state, and nodes under an FR72 exclusion are left out [FR38, FR44]. A twin evidence block also sets `av(c) := 0` for the equivocating creator, and `av(c)` stays 0 through the exclusion, the blocks `e + 1 … e + W` after the evidence block at `e`, so `c` returns at 0 [FR72, DEC-175]. The vote target is chosen outside the chain by the transaction creator (radio scoring module) and is validated only for existence and no-self-vote [FR55].
+The expected creator after block `s` is the top of the creator order; zero-vote nodes are included, so node 0 leads in the all-zero state; late-node-excluded nodes are left out [FR38, FR44]. A twin fact block also sets `av(c) := 0` for the equivocating creator, and in the `H` blocks after it, `e + 1 … e + H`, votes for `c` credit nothing [FR72, DEC-279]. The vote target is chosen outside the chain by the transaction creator (radio scoring module) and is validated only for existence and no-self-vote [FR55].
 
 ## 8. Block production
 
@@ -126,7 +125,7 @@ The expected creator after block `s` is the top of the creator order; zero-vote 
 **Late-node penalty** [FR27, FR37, FR38, DEC-184]: the evidence block of a deviation by `x` at `p` lists, in creator order at `p − 1`, the nodes ranked above `x` except `u`, each with its accumulated vote, as many as fit (69 at `r = 40` with Schnorr, DEC-242). Each listed node and `u` is reset to 0 and left out of the creator order for `W` blocks, its vote held at 0 (no credits, no liveness credit), so one approval removes a silent cluster.
 
 **Subgroup** [ADR-015, FR12], evaluated on the evaluator's local active chain:
-- `A` = nodes that, within the window of `p − 1`, created a block (any type); transaction senders and evidence or verdict signers do not count; FR72- and late-node-excluded nodes are left out [DEC-185, DEC-241].
+- `A` = nodes that, within the window of `p − 1`, created a block (any type); transaction senders and evidence signers do not count; late-node-excluded nodes are left out [DEC-185, DEC-241]; FR72 excludes no one [DEC-279].
 - `seed = H("MBSEED" ‖ p ‖ currency(p − 1) ‖ x)`, `currency` = all balances plus unspent UTXO amounts after `p − 1` [DEC-192]; `node_value(n) = (H(seed ‖ n) mod 2³²)·2³² + n`.
 - Voting set `A'` = `A` without `x` and `u`; `r_eff = min(r, ⌊|A'|/2⌋ + 1)` with `r = required_support ∈ [1, MAX_AGG]` (a cap), `m = min(2·r_eff − 1, |A'|)`; subgroup = the `m` members of `A'` with the smallest `node_value`; `A'` empty ⇒ no approval [DEC-172].
 
@@ -137,7 +136,7 @@ The expected creator after block `s` is the top of the creator order; zero-vote 
 where `s_j` is the accumulated vote at `p − 1`, after step 1 of §7, of the node at rank `j` of the creator order at `p − 1` (`s_0` of `u`, `s_k` of `x`, `k ≥ 1`), `cvf = s_0` and `cv(d) = s_k` [DEC-216],
 independent of which `r` members signed. Only `x` may create blocks above `d` on that branch, up to `e`, which must close the run and name `p`; replays end by `p + Hv − 1` and `e` by `p + Hv`; any violation is exact evidence [DEC-258, DEC-261]. Intervening replay blocks and `e` carry `consumed_votes = 0` and `first_voted_node = x`; replays are spaced by `deviation_replay_insertion_delay_ms`, and `e` is emitted without delay [FR29]; `x` emits no replay at `tip + 1 ≥ p + Hv`, complete package or not [DEC-240, DEC-258]. Insufficient support does not widen the subgroup: the next grace expiry admits the next candidate, with a fresh subgroup [ADR-015]. Contribution at `p`: `v(d) + v(e) = B_k ≥ h·(cvf + 2·vs)`, more than `h` of the largest normal blocks at `p` (none exceeds `cvf`), so within `H` it beats any normal branch; `B_{k+1} − B_k = h·(s_{k+1} + vs)`, so a late earlier evidence needs about `h` accomplice blocks to win [FR12 (a), DEC-216].
 
-**Twin conflict** [FR70–FR72]: twins = same creator `c`, sequence `s` and parent `P`, different hash (different parents are legitimate). Honest nodes never sign a second child of a parent. A ready node holds its first-adopted twin. Subgroup from the state at `P`: `seed = H("twin" ‖ s ‖ currency(P) ‖ c)`, `A` without `c` and FR72-excluded nodes, `r_eff` and `m` as for approvals; members vote once for their first-adopted twin (restarted nodes abstain at or below their ready-entry head); one round. The entitled creator of a branch emits the twin evidence block after due replays, with a verdict when it holds `r_eff` votes for its own twin; a verdict lifts the hold for that branch. Penalty: while the evidence block is in the window, `c` is out of the creator order and of `A`, and its accumulated vote is held at 0 (no credits). The block carries ordinary `consumed_votes` and no extra value.
+**Twin conflict** [FR70–FR72]: twins = same creator `c`, sequence `s` and parent `P`, different hash (different parents are legitimate). Honest nodes never sign a second child of a parent. A ready node holds its first-adopted twin. The entitled creator of a branch carrying a twin makes a fact block after due replays. At `q ≤ s + H − 1` it opens a run like a deviation block: its creator holds every replay until its support package is complete, then emits the replays and a type-4 approval by `q + H`; above it the block is penalty-only. The round's subgroup: `seed = H("twin" ‖ s ‖ currency(P) ‖ c ‖ j)` over `A` at `P` without `c`, `j` the proposer's rank at `q − 1`, shared by both sides; members support only a fact block whose parent is on their active chain, one side per `(c, s, j)`. An approved fact block lifts the hold; both approved → FR21. Without an approval, grace retries make sibling fact blocks as ordinary deviations. Penalty: `av(c) := 0`, then no credit for `H` blocks. The block carries ordinary `consumed_votes` [DEC-276..282].
 
 ## 10. `snake_chain` (bounded window)
 
@@ -150,7 +149,7 @@ Active length ≤ `W`; the tail does not advance before the chain reaches `W`. E
 | chain-config block | byte-identical chain-config block [FR49] |
 | balance block, or transaction block holding some node's only in-window seed | balance block (§10.2) |
 | transaction block with unspent UTXO outputs | zero-input carry-forward transaction (§10.3), optionally with ordinary transactions (no T2) |
-| approval or twin evidence block | nothing |
+| approval evidence or twin fact block | nothing |
 
 The creator of a replay-bearing block receives `replay_block_reward` [FR36 (c)].
 
@@ -171,7 +170,7 @@ For a dropping transaction block `t` with unspent set `O = {o : U_t[o] = 1}`: on
 - `BV(h) = Σ_{b ∈ (S_tail, h]} v(b)`, relative to the shared `S_tail` and maintained incrementally (a tail slide subtracts `v(tail)` from every head).
 - Admissible head: Connected/Active with a continuous tip-ending segment of ≥ `W` blocks, i.e. `tip.sequence ≥ S_tail + W − 1` once matured (`S_head − S_tail + 1 ≥ W`); before maturity: the whole genesis-anchored chain [FR21, DEC-154].
 - Active head = `argmax BV` over admissible heads; ties: larger tip `|b|`, then lower tip hash [DEC-155].
-- Twin hold: a ready node never switches to a branch whose first divergent block is a same-parent twin of its own block unless that branch carries a verdict-bearing twin evidence block for its twin [FR70, FR71].
+- Twin hold: a ready node never switches to a branch whose first divergent block is a same-parent twin of its own block unless that branch carries an approved twin fact block for its twin [FR70, FR71].
 - Re-evaluation only when a non-active head is extended (including a new fork) or goes Stored → Connected. Only the affected heads are compared with the active head, once per admission: the highest-ranked admissible one; if that switch fails at Tier 3, the next-ranked affected head that still outranks the active head is tried [FR22, DEC-152, DEC-193].
 - Switch at divergence point `D` [FR23, FR58, DEC-159]:
   - `D ≥ S_head − Hv + 1`, measured against the node's own head: atomic undo to `D` and forward redo with Tier 3; the mempool is reconciled per block. The walk may undo below the FR3 pass's seed points, because a seed's undo is identity and the states below it follow from the exact inverses (no completeness horizon, DEC-211); a signature pre-pass first checks fork-independent creators, and the replay's tail releases wait for the commit, so a Tier 3 failure restores the original chain in place and deletes the offending block with its descendants (no FR5); a fault during the restore re-enters collecting over the retained tree (DEC-205). No switch trusts a block it cannot see: it runs only when every block its replay or a restore drops or references is retained, and the replay evaluates the FR48 binding of every replayed block; until Story 6.14 retains the horizon a chain at least `W` long does not switch [DEC-166..170, DEC-204, DEC-205].
@@ -233,7 +232,7 @@ Each entry is defined in the [Open Gaps Register](./moonblokz-open-gaps-register
 12. Outside direct head extensions and blocks whose creator key is branch-independent (DEC-157), blocks are stored before signature and state validation (opportunistic signatures, Tier 3 deferred); bounded storage is reclaimed by lowest-`BV` side-branch eviction [FR16, FR57].
 13. Bootstrap acquisition picks the highest tip sequence, not value, among qualifying segments; the processing pass auto-accepts pre-seed state-dependent checks and trusts obligations and UTXO references preceding a window-anchored segment [FR2, FR3, FR6].
 14. Ready nodes discard blocks with `S_new ≥ S_head + W`, and forks with `D ≤ S_head − Hv` are deleted, so a partition lasting more than `W` blocks, or one whose two sides both advance more than `Hv` blocks past the divergence, becomes a permanent fork with operator-only recovery [FR58, FR60].
-15. Same-parent equivocation is held at each node's first-adopted twin, resolved by a subgroup verdict in a twin evidence block, and penalized by a `W`-block exclusion of the creator from block creation and from `A`; only the equivocating creator is provable. Same-creator blocks at one sequence on different parents are legitimate and are resolved by FR21 [FR70–FR72].
+15. Same-parent equivocation is held at each node's first-adopted twin, recorded by a twin fact block, resolved by an approval round with grace retries in which supporters back only the branch they stand on, and penalized by a vote reset and an `H`-block credit drop; a late twin rolls nothing back; only the equivocating creator is provable. Same-creator blocks at one sequence on different parents are legitimate and are resolved by FR21 [FR70–FR72].
 16. Configuration is immutable and anchored to the compiled-in `pk0`, so any change requires a new chain; unknown configuration ids cause rejection (firmware-capability gating) [FR8, config §3.4].
 17. Branch switching is local and pairwise (triggered head vs active head); `Hv` is chain configuration and bounds the switch depth identically on every node [FR22, FR58].
 18. A confirmation at least `H` deep and not disputed is reported `final` (FR40): no admissible switch reaches it, so it is irreversible on that node; finality is node-local under a permanent fork, and below `H` an approved deviation or an adjacent cluster can still overturn a confirmation [FR40, DEC-182].

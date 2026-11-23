@@ -101,6 +101,8 @@ The FR digest in [`moonblokz-blockchain-prd-fr-index.md`](./moonblokz-blockchain
 - when it replaces an earlier decision, mark that row *superseded by DEC-n* rather than deleting it;
 - record a decision that is raised but not yet made as an `O-` row, and move it to a `DEC-` row once decided.
 
+Every decision states its reasoning: what was considered, the alternatives rejected, and why each was rejected. This applies to a `DEC-` row (end it with `Rejected: … (reason)`), a story's decision options and a design proposal alike. A decision with only its outcome is incomplete. Where the full reasoning lives in a story file or proposal, the row keeps the gist and points there.
+
 The register points to where each rule lives; the owning document stays authoritative for the rule itself. Architecture-level decisions already logged in the Architecture Decision Document §14 or in an ADR are not repeated.
 
 ## Knowledge Base Entry Point
