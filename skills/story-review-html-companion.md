@@ -30,7 +30,7 @@ Drive everything from the real diff; never paraphrase code from memory.
 
 **Measure the node footprint.** Run `python3 -I tools/footprint/footprint.py --base <repo>=<BASE ref>,...` from the workspace root, naming every repository the change touches with its pre-change ref; the live workspace is the "after" side. It builds both sides and prints, before / after / change, in KiB:
 
-- **binary size** — flash of the `moonblokz-node` release firmware;
+- **binary size** — flash of the `moonblokz-node-rp2040` release firmware;
 - **RAM without stack** — the node's static RAM (`.data` + `.bss`) minus the Core 1 stack reservation;
 - **stack** — the Core 1 stack reservation (`CORE1_STACK`, which hosts the blockchain task) and the blockchain's measured worst-case stack peak, overall and per API entry point.
 
