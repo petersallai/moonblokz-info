@@ -830,21 +830,21 @@ Measured in Story 12.1 on the node's own build (DEC-289, DEC-297) at each scheme
 | Consumer | Schnorr (800 nodes) | `bls-min-sig` (240) | `bls-min-pk` (95) | Basis |
 |---|---:|---:|---:|---|
 | blockchain task pool (`Blockchain` incl. vote + by-value arguments) | 102 984 | 89 656 | 70 720 | measured (node ELF) |
-| node statics (USB console, executor pools, channels) | 7 856 | 7 856 | 7 856 | measured (node build) |
+| node statics (USB console, executor pools, channels) | 7 872 | 7 872 | 7 872 | measured (node build) |
 | Core 1 stack (USB console; later the radio) | 8 192 | 8 192 | 8 192 | reservation |
-| Core 0 main stack (blockchain task), required | 49 840 | 63 000 | 82 620 | §8, node-ELF peak × 1.25 |
+| Core 0 main stack (blockchain task), required | 49 850 | 63 130 | 82 690 | §8, node-ELF peak × 1.25 |
 | moonblokz-mempool | 24 883 | 24 883 | 24 883 | ~24.3 KB (§6.8), not linked yet |
 | moonblokz-radio-lib (memory-config-medium) | 61 440 | 61 440 | 61 440 | ~60 KB, source-confirmed |
 | moonblokz-crypto-lib scratch | 4 096 | 4 096 | 4 096 | estimate |
 | Core 1 radio tasks | 10 240 | 10 240 | 10 240 | estimate, not linked yet |
-| **Total** | **269 531** | **269 363** | **270 047** | |
-| **Margin** (270 336 − total) | **805** ✅ | **973** ✅ | **289** ✅ | |
+| **Total** | **269 557** | **269 509** | **270 133** | |
+| **Margin** (270 336 − total) | **779** ✅ | **827** ✅ | **203** ✅ | |
 
 **Radio figure:** `memory-config-medium` is counted at its source-confirmed ~60 KB (`moonblokz-radio-lib` README + `lib.rs` profile consts); an earlier ~30-40 KB estimate under-counted it and made the BLS default appear feasible.
 
 ### 7.4 Verdict
 
-- **Measured on the node (Story 12.1, DEC-297):** no profile fits its probe-model count once the real storage and the Core 0 task are measured; the profiles are re-fitted to `MAX_NODES` 800 (Schnorr), 240 (`bls-min-sig`) and 95 (`bls-min-pk`), with margins of 805 / 973 / 289 B (§12.2). Story 12.2's stack diet aims to restore 1 000 / 258 / 211.
+- **Measured on the node (Story 12.1, DEC-297):** no profile fits its probe-model count once the real storage and the Core 0 task are measured; the profiles are re-fitted to `MAX_NODES` 800 (Schnorr), 240 (`bls-min-sig`) and 95 (`bls-min-pk`), with margins of 779 / 827 / 203 B (§12.2). Story 12.2's stack diet aims to restore 1 000 / 258 / 211.
 
 ---
 
@@ -873,7 +873,7 @@ Measured in Story 12.1 on the node's own build (DEC-289, DEC-297) at each scheme
 
 `process_genesis` is the deepest root with Schnorr and `bls-min-pk` because it signs; `bls-min-pk` signs with hash-to-G2, which is why its peak is the largest. Story 6.7 verifies an incoming approval evidence block's aggregate inline, in its own frame after the cheap checks (DEC-263), under `receive_block` (a direct extension, a stored child, a switch walk) and in the FR3 pass; with `bls-min-sig` that path is the new peak (`initialize_from_storage` 46 584 B, `receive_block` 42 856 B, against 39 840 B for `process_genesis` before), while the Schnorr and `bls-min-pk` peaks move by 8 B (`bls-min-pk`'s `receive_block` and `initialize_from_storage` by another 8 B after the code review). Story 6.6's evidence builder (`build_evidence_block`, measured through a temporary probe root) needs 23 972 / 38 056 / 49 776 B; its deepest path is the DEC-238 restore-failure re-entry to collecting (the FR3 pass, as 6.3's switch) above the builder's frame. Called from `on_tick` (about 1 KB) it stays below each scheme's `process_genesis` peak, and `receive_block` never reaches it, so Core 1 is unchanged.
 
-**Decision (DEC-137, supersedes the 6 KB figure):** the blockchain task runs on Core 1 (§2), and Embassy tasks are stackless futures that share their core's stack, so its stack is the **Core 1 stack**, at least 1.25 × the measured peak rounded up to a KiB for what the measurement does not follow (indirect calls, executor and interrupt frames). Per scheme (DEC-254, Story 6.17; the node's `CORE1_STACK` selects it by `#[cfg]`): **32 KiB** Schnorr (32 768 B over 25 692 B; 24 KB over 19.2 KB before Story 6.16), **57 KiB** `bls-min-sig` (58 368 B over the FR3 pass's 46 584 B since Story 6.7; 49 KiB over `process_genesis`'s 39 840 B before), **70 KiB** `bls-min-pk` (71 680 B over 56 552 B). Re-measure when the call graph changes materially. Other embassy tasks (radio, USB console) can remain 4 KB. **Amended 2026-11-23 (Story 12.1, DEC-289):** the blockchain task moves to Core 0, so its stack is Core 0's main stack (the RAM above `.data` + `.bss` + `.uninit`, guarded by `install_core0_stack_guard()`); the gate becomes `270 336 − (.data + .bss + .uninit) − the not-yet-linked estimates ≥ 1.25 × the peak measured on the node ELF` (the board task's poll function, which includes by-value argument copies), and `CORE1_STACK` holds the USB console and later the radio. **Measured on the node (Story 12.1, DEC-297):** worst case from the blockchain task's poll on the node ELF, real rp2040 storage included: **39 872 B** Schnorr, **50 400 B** `bls-min-sig`, **66 096 B** `bls-min-pk`. The deepest path is node #0's genesis (`process_genesis` 18.6 KB frame), then, for Schnorr, the storage's chain-config read-modify-write (about 17 KB), for `bls-min-pk` the hash-to-G2 signing (a 26.3 KB `map_to_curve_simple_swu` frame). The probe's opaque storage had hidden the rp2040 control-plane repair path (about 27.5 KB before Story 12.1 cut it). The gate holds at the re-fitted profiles (§12.2); Story 12.2 targets these paths.
+**Decision (DEC-137, supersedes the 6 KB figure):** the blockchain task runs on Core 1 (§2), and Embassy tasks are stackless futures that share their core's stack, so its stack is the **Core 1 stack**, at least 1.25 × the measured peak rounded up to a KiB for what the measurement does not follow (indirect calls, executor and interrupt frames). Per scheme (DEC-254, Story 6.17; the node's `CORE1_STACK` selects it by `#[cfg]`): **32 KiB** Schnorr (32 768 B over 25 692 B; 24 KB over 19.2 KB before Story 6.16), **57 KiB** `bls-min-sig` (58 368 B over the FR3 pass's 46 584 B since Story 6.7; 49 KiB over `process_genesis`'s 39 840 B before), **70 KiB** `bls-min-pk` (71 680 B over 56 552 B). Re-measure when the call graph changes materially. Other embassy tasks (radio, USB console) can remain 4 KB (until Story 12.1; since then they run on Core 1 with an 8 KiB `CORE1_STACK`). **Amended 2026-11-23 (Story 12.1, DEC-289):** the blockchain task moves to Core 0, so its stack is Core 0's main stack (the RAM above `.data` + `.bss` + `.uninit`, guarded by `install_core0_stack_guard()`); the gate becomes `270 336 − (.data + .bss + .uninit) − the not-yet-linked estimates ≥ 1.25 × the peak measured on the node ELF` (the board task's poll function, which includes by-value argument copies), and `CORE1_STACK` holds the USB console and later the radio. **Measured on the node (Story 12.1, DEC-297):** worst case from the blockchain task's poll on the node ELF, real rp2040 storage included: **39 880 B** Schnorr, **50 504 B** `bls-min-sig`, **66 152 B** `bls-min-pk`. The deepest path is node #0's genesis (`process_genesis` 18.6 KB frame), then, for Schnorr, the storage's chain-config read-modify-write (about 17 KB), for `bls-min-pk` the hash-to-G2 signing (a 26.3 KB `map_to_curve_simple_swu` frame). The probe's opaque storage had hidden the rp2040 control-plane repair path (about 27.5 KB before Story 12.1 cut it). The gate holds at the re-fitted profiles (§12.2); Story 12.2 targets these paths.
 
 ---
 
@@ -998,7 +998,7 @@ Three items from the earlier sketch are deliberately absent. FR7 signature valid
 
 ## 12. BLS deployment-tuning recipe (Step 8 — new)
 
-When a deployment selects the BLS crypto backend, the default const-generic values (1000 nodes, 500 snake-chain window) **do not fit** the 264 KB SRAM ceiling once the radio `memory-config-medium` profile and each variant's own Core 1 stack (§8) are counted. The blockchain code does NOT need to change — tuning happens at the deployment binary's const-generic instantiation site, and for BLS it is mandatory rather than optional.
+When a deployment selects the BLS crypto backend, the default const-generic values (1000 nodes, 500 snake-chain window) **do not fit** the 264 KB SRAM ceiling once the radio `memory-config-medium` profile and each variant's own blockchain stack (§8; Core 1 until Story 12.1, Core 0's main stack since) are counted. The blockchain code does NOT need to change — tuning happens at the deployment binary's const-generic instantiation site, and for BLS it is mandatory rather than optional.
 
 ### 12.1 Tuning levers (most impactful first)
 
@@ -1015,19 +1015,19 @@ When a deployment selects the BLS crypto backend, the default const-generic valu
 
 ### 12.2 RP2040 profiles per scheme
 
-Built and measured in Story 6.17 (DEC-254) with the footprint probe (`footprint.py --scheme S`): each BLS variant fixes `MAX_NODES` at the largest count whose static RAM, its own Core 1 (§8) and the rest of the §7.3 allocation fit 264 KB; `SNAKE_CHAIN_LENGTH_MAX` 500, `MAX_BLOCKS` 600, `MAX_BRANCH_COUNT` 40 and `MAX_BLOCK_UTXO_OUTPUT` 256 stay. Re-fitted after Story 6.6's accumulator (356 → 330, 291 → 211), and `bls-min-sig` after Story 6.7's evidence check (330 → 258, Core 1 49 → 57 KiB; DEC-263). The profiles live in the probe's `Blockchain` instantiation until the node instantiates the blockchain (the bridge, AR12 / Epic 12).
+Built and measured in Story 6.17 (DEC-254) with the footprint probe (`footprint.py --scheme S`): each BLS variant fixes `MAX_NODES` at the largest count whose static RAM, its own blockchain stack (§8) and the rest of the §7.3 allocation fit 264 KB; `SNAKE_CHAIN_LENGTH_MAX` 500, `MAX_BLOCKS` 600, `MAX_BRANCH_COUNT` 40 and `MAX_BLOCK_UTXO_OUTPUT` 256 stay. Re-fitted after Story 6.6's accumulator (356 → 330, 291 → 211), and `bls-min-sig` after Story 6.7's evidence check (330 → 258, Core 1 49 → 57 KiB; DEC-263). Since Story 12.1 the profiles live in the board binary, which instantiates the blockchain, and were re-fitted on its own build (DEC-297, table below).
 
 | Profile | `MAX_NODES` | Blockchain stack (Core 0, required) | Blockchain task pool | Node flash (measured) | Margin (264 KB) |
 |---|---:|---:|---:|---:|---:|
-| Schnorr (default) | 800 | 49 840 B | 102 984 B | 129 636 B | 805 B ✅ |
-| `bls-min-sig` | 240 | 63 000 B | 89 656 B | 195 280 B | 973 B ✅ |
-| `bls-min-pk` | 95 | 82 620 B | 70 720 B | 197 232 B | 289 B ✅ |
+| Schnorr (default) | 800 | 49 850 B | 102 984 B | 131 184 B | 779 B ✅ |
+| `bls-min-sig` | 240 | 63 130 B | 89 656 B | 196 816 B | 827 B ✅ |
+| `bls-min-pk` | 95 | 82 690 B | 70 720 B | 198 752 B | 203 B ✅ |
 
 Re-fitted by Story 12.1 (DEC-297) on the node's own build; until then (probe model) 1 000 / 258 / 211 with margins 4 373 / 101 / 21 B. Story 12.2 aims to restore those counts.
 
 Node flash stays far inside the ~800 KB left for code beside the 600 block slots, so `MAX_BLOCKS = 600` keeps its headroom.
 
-**`bls-min-pk` fits fewer nodes than `bls-min-sig` on the RP2040.** The earlier estimates (about 450–500 nodes min-sig, 700–800 min-pk; min-pk about 263 KB at 1 000 nodes) assumed a 24 KB Core 1 for both. Min-pk's hash-to-G2 signing (`process_genesis` 56 552 B) forces a 70 KiB Core 1 against min-sig's 57 KiB, which outweighs its halved key array: 211 nodes against 258. Min-pk is therefore not the better RP2040 BLS variant, as was expected.
+**`bls-min-pk` fits fewer nodes than `bls-min-sig` on the RP2040.** The earlier estimates (about 450–500 nodes min-sig, 700–800 min-pk; min-pk about 263 KB at 1 000 nodes) assumed a 24 KB Core 1 for both. Min-pk's hash-to-G2 signing (`process_genesis` 56 552 B) forces the deeper blockchain stack (70 against 57 KiB of Core 1 in the probe model; 82 690 against 63 130 B required on Core 0 since Story 12.1), which outweighs its halved key array: 95 nodes against 240 (211 against 258 in the probe model). Min-pk is therefore not the better RP2040 BLS variant, as was expected.
 
 ### 12.3 Future optimization (NOT MVP)
 
@@ -1075,7 +1075,7 @@ Selected high-impact decisions from the Step 5 + Step 6 + Step 7 iterations:
 | 13 | SchedulerState conditional deadlines as `Option<u64>` (four; the FR29 replay insertion is the fifth since DEC-243) | FR46 explicit "not scheduled" states; `filter_map(min)` for NextCall |
 | 14 | Block-creation + grace-period deadlines network-wide-consistent | Critical consensus invariant; both `Some` on every node, role-differentiated triggers |
 | 15 | `moonblokz-configuration` (+ `moonblokz-vm`) as separate crates | FR56 mini-VM capability doesn't belong in core blockchain; designed in the [Configuration Module Specification](./moonblokz-configuration-specification.md) |
-| 16 | Chain-lib hosting task gets the Core 1 stack, sized per scheme: 32 KiB Schnorr (was 6 KB, then 24 KB), 57 KiB `bls-min-sig` (49 KiB until Story 6.7), 70 KiB `bls-min-pk` | §8 measured peaks: `process_genesis`, with `bls-min-sig` the FR3 pass since Story 6.7 (DEC-137, DEC-254, DEC-263) |
+| 16 | Chain-lib hosting task gets the Core 1 stack, sized per scheme: 32 KiB Schnorr (was 6 KB, then 24 KB), 57 KiB `bls-min-sig` (49 KiB until Story 6.7), 70 KiB `bls-min-pk`; since Story 12.1 it runs on Core 0's main stack, gated at 1.25 × the node-ELF peak (DEC-289) | §8 measured peaks: `process_genesis`, with `bls-min-sig` the FR3 pass since Story 6.7 (DEC-137, DEC-254, DEC-263) |
 | 17 | Feature-gated introspection getters (`#[cfg(feature = "introspection")]`) | FR65 production binary minimal; simulator/CLI enable for observability |
 | 18 | ~~Three separate `initialize_*` constructors (genesis / join / restart)~~ **Superseded:** a single in-place constructor `init` for every node + role-specific follow-ups (genesis = `process_genesis`). Distinct precondition contracts remain, now as follow-ups rather than constructors. Join and restart share `initialize_from_storage` (Story 5.10). | — |
 | 19 | ~~Genesis two-block bootstrap split across `initialize_genesis` + next `on_tick`~~ **Superseded:** `process_genesis` builds **both** Block #0 and Block #1 in one call and returns both for radio broadcast; there is no `GenesisChainConfigCreated` tick effect. New reject reason `GenesisRejectReason::StorageNotEmpty` guards re-genesis of a non-empty chain. The return is a plain `Result<GenesisBlocks, GenesisRejectReason>` — a bare `GenesisBlocks { block_zero, block_one }` struct (no `Rejected` variant; refusal is the `Err`) and **no `NextCall`/`now`**: genesis is one-per-chain with no immediately-scheduled follow-up, so it is kept out of the AR4 scheduling-pull contract. | — |
@@ -1091,9 +1091,9 @@ Selected high-impact decisions from the Step 5 + Step 6 + Step 7 iterations:
 
 | Risk | Severity | Mitigation |
 |---|---|---|
-| BLS does not fit at the 1000-node default with the ~60 KB radio medium profile and its own Core 1 stack | Medium-High | Resolved by the measured §12.2 profiles (Story 6.17, DEC-254; re-fitted after Stories 6.6 and 6.7): `MAX_NODES` 258 (`bls-min-sig`) and 211 (`bls-min-pk`), margins of 101 B and 21 B, so any growth in a counted consumer (for example the mempool, counted at its ~24.3 KB estimate until it is linked) lowers the count |
+| BLS does not fit at the 1000-node default with the ~60 KB radio medium profile and its own Core 1 stack | Medium-High | Resolved by the measured §12.2 profiles (Story 6.17, DEC-254; re-fitted after Stories 6.6 and 6.7): `MAX_NODES` 258 (`bls-min-sig`) and 211 (`bls-min-pk`), margins of 101 B and 21 B; re-fitted by Story 12.1 on the node's own build to 800 / 240 / 95 with margins 779 / 827 / 203 B (DEC-297), so any growth in a counted consumer (for example the mempool, counted at its ~24.3 KB estimate until it is linked) lowers the count |
 | Blockchain still reads the fixed-value chain-config stub, not `moonblokz-configuration` | Medium | Both crates exist and carry the §11 surface; the blockchain's path-dep migration is its own change, held to a behaviour-neutrality bar |
-| Blockchain-task stack peak grows past its scheme's Core 1 stack (32 / 49 / 70 KiB) as Epics 6–10 deepen the call graph | Medium | §8: re-measure with the probe method on material call-graph changes (DEC-137) |
+| Blockchain-task stack peak grows past its budget (Core 1 32 / 57 / 70 KiB until Story 12.1; Core 0's main stack since, DEC-289) as Epics 6–10 deepen the call graph | Medium | §8: re-measure on material call-graph changes — since Story 12.1 on the node ELF with `footprint.py` (DEC-137, DEC-297) |
 | ~~`MAX_AGGREGATED_SIGNATURES` / `MULTI_SIGNATURE_SIZE` const values not yet ratified~~ **Resolved:** `moonblokz-crypto` fixes `MAX_AGGREGATED_SIGNATURES = 50` for every backend and `MULTI_SIGNATURE_SIZE` at 64 B (Schnorr) / 48 B (`bls-min-sig`) / 96 B (`bls-min-pk`); chain-config `required_support` is refused at acceptance above the backend limit ([Configuration Module Specification](./moonblokz-configuration-specification.md) §6 check 3) | — | — |
 | Simulator blockchain integration not yet implemented | Out-of-scope (post-MVP) | §10 confirms architectural compatibility; integration is separate work |
 

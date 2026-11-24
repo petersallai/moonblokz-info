@@ -387,7 +387,7 @@ Engineering consequence:
 - this is the current intended use shape for integrators,
 - and documentation should continue to present storage as a direct chain-runtime dependency rather than an autonomous storage service.
 
-## Git dependency is still the primary integration model
+## Path dependencies inside the workspace, Git outside
 
 Inside the MoonBlokz workspace every sibling crate links storage by path (`path = "../moonblokz-storage"`); the README's Git form is for consumers outside the workspace, with crates.io as a later phase.
 

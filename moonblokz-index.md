@@ -229,7 +229,7 @@ This document explains:
 - the 264 KB SRAM RAM budget, measured per scheme on the node's own build (Story 12.1): `MAX_NODES` 800 Schnorr, 240 `bls-min-sig`, 95 `bls-min-pk`, re-fitted from the probe-model 1 000 / 258 / 211 (DEC-297),
 - the FR1–FR69 coverage matrix showing 63 hard-covered FRs, 5 delegated to the `moonblokz-configuration` crate, and 1 MVP-skip (FR52),
 - the `ChainConfigTrait` surface exposed by the `moonblokz-configuration` crate,
-- the BLS deployment-tuning levers and the measured RP2040 profiles per scheme, with the per-scheme Core 1 stack (DEC-137, DEC-254),
+- the BLS deployment-tuning levers and the measured RP2040 profiles per scheme, with the per-scheme blockchain stack (Core 1 until Story 12.1, Core 0's main stack since; DEC-137, DEC-254, DEC-289),
 - the consolidated 22-row decisions log, the risks list, and the implementation roadmap.
 
 Use this file as the canonical reference whenever any other knowledge-base document — concept, algorithm, or implementation — describes a blockchain data structure, module boundary, public API method, RAM/stack budget, const-generic value, crate dependency edge, or initialization parameter. Divergence from the Architecture Decision Document must be treated as exact evidence of a knowledge-base inconsistency.
