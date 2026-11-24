@@ -167,9 +167,9 @@ Per-lever savings: [`moonblokz-blockchain-architecture.md`](./moonblokz-blockcha
 
 | Profile | `MAX_NODES` | Blockchain stack (Core 0, required) | Blockchain task pool | Node flash (measured) | Margin |
 |---|---:|---:|---:|---:|---:|
-| Schnorr (default) | 800 | 49 850 B | 102 984 B | 131 184 B | 779 B ✅ |
-| `bls-min-sig` | 240 | 63 130 B | 89 656 B | 196 816 B | 827 B ✅ |
-| `bls-min-pk` | 95 | 82 690 B | 70 720 B | 198 752 B | 203 B ✅ |
+| Schnorr (default) | 800 | 49 850 B | 102 984 B | 131 188 B | 779 B ✅ |
+| `bls-min-sig` | 240 | 63 130 B | 89 656 B | 196 824 B | 827 B ✅ |
+| `bls-min-pk` | 95 | 82 690 B | 70 720 B | 198 760 B | 203 B ✅ |
 
 Re-fitted by Story 12.1 (DEC-297) from 1 000 / 258 / 211, the probe-model profiles, once the node measured its own build; Story 12.2 aims to restore them. The profiles live in the board binary (`moonblokz-node-rp2040` `MAX_NODES`) and the footprint probe follows them.
 

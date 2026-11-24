@@ -1019,9 +1019,9 @@ Built and measured in Story 6.17 (DEC-254) with the footprint probe (`footprint.
 
 | Profile | `MAX_NODES` | Blockchain stack (Core 0, required) | Blockchain task pool | Node flash (measured) | Margin (264 KB) |
 |---|---:|---:|---:|---:|---:|
-| Schnorr (default) | 800 | 49 850 B | 102 984 B | 131 184 B | 779 B ✅ |
-| `bls-min-sig` | 240 | 63 130 B | 89 656 B | 196 816 B | 827 B ✅ |
-| `bls-min-pk` | 95 | 82 690 B | 70 720 B | 198 752 B | 203 B ✅ |
+| Schnorr (default) | 800 | 49 850 B | 102 984 B | 131 188 B | 779 B ✅ |
+| `bls-min-sig` | 240 | 63 130 B | 89 656 B | 196 824 B | 827 B ✅ |
+| `bls-min-pk` | 95 | 82 690 B | 70 720 B | 198 760 B | 203 B ✅ |
 
 Re-fitted by Story 12.1 (DEC-297) on the node's own build; until then (probe model) 1 000 / 258 / 211 with margins 4 373 / 101 / 21 B. Story 12.2 aims to restore those counts.
 
