@@ -33,7 +33,7 @@ The subgroup is drawn from the **voting set** `A'` = `A` without the deviation's
 seed = H( "MBSEED"  ‖  proposed_sequence  ‖  circulating_currency(p − 1)  ‖  proposer_node_id )
 ```
 
-- `circulating_currency(p − 1)` is the money on the chain after block `p − 1` — every balance plus every unspent UTXO amount, a `u64` — the Story 7.6 projection, maintained per block and identical on every node holding `p − 1` (Project Lead, 2026-10-28; DEC-192).
+- `circulating_currency(p − 1)` is the money on the chain after block `p − 1` — every balance plus every available UTXO amount inside the active-chain window, a `u64` (DEC-304) — the Story 7.6 projection, maintained per block and identical on every node holding `p − 1` (Project Lead, 2026-10-28; DEC-192).
 - It replaces the tail block's hash, which its creator could vary freely (transaction order, comments) and so grind for a subgroup it controls (AR-013). Within a block the total moves only through deterministic minting and burning and through registrations, whose price is burned; a creator can vary the seed only by including or leaving out pending registrations, usually one or two variants, and each sybil registration it adds for more variants costs the full registration price.
 - The seed is known only once `p − 1` is fixed, where the tail hash was known `W` blocks ahead.
 - `proposed_sequence` keeps proposals at different positions apart; `proposer_node_id` binds the seed to the proposer; the domain tag separates it from the twin-round seed.
