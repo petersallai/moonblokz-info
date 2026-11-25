@@ -380,16 +380,16 @@ The README and example projects reinforce a simple pattern:
 3. save blocks by index
 4. read blocks back by index
 
-The node runtime is to call the backend's `load_private_key()` as well and hand the key to the crypto module (FR54); no node code does yet, it lands with the node runtime bridge (DEC-268). The examples do not call it, because they are written against `StorageTrait`, which has no key method (DEC-267).
+The node firmware calls the backend's `load_private_key()` as well and hands the key to the crypto module (FR54; built in Story 12.1, DEC-268): on the RP2040 both control-plane reads run on Core 0 before the blockchain task borrows the storage, so a replica repair writes from the only core that may program flash (DEC-289). The blockchain gets `&mut` the backend, through `impl StorageTrait for &mut T` (DEC-297). The examples do not call it, because they are written against `StorageTrait`, which has no key method (DEC-267).
 
 Engineering consequence:
 
 - this is the current intended use shape for integrators,
 - and documentation should continue to present storage as a direct chain-runtime dependency rather than an autonomous storage service.
 
-## Git dependency is still the primary integration model
+## Path dependencies inside the workspace, Git outside
 
-The README states Git dependency as the recommended current integration path, with crates.io as a later phase.
+Inside the MoonBlokz workspace every sibling crate links storage by path (`path = "../moonblokz-storage"`); the README's Git form is for consumers outside the workspace, with crates.io as a later phase.
 
 Engineering consequence:
 
