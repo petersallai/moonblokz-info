@@ -284,6 +284,8 @@ Both backends write a control-plane record with:
 4. store it as `Some(block)`,
 5. write the updated record to all replicas.
 
+On the rp2040 backend the same result is produced on bytes, with no decoded record and no block copy, to keep it off the node's deepest stack path (Story 12.2, DEC-299): classify every replica with the shared entry validator, re-read the first valid one into the page buffer, refuse AlreadySet after repairing the invalid replicas, zero the chain-config region and the page tail, copy the block's bytes, recompute the CRC, and write every replica once. The persisted bytes are identical.
+
 ## Section E — Memory Backend Formal Model
 
 ## E1. Capacity rule
