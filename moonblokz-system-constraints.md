@@ -144,7 +144,7 @@ Measured in Story 12.1 on the node's own build (DEC-289, DEC-297): the blockchai
 |---|---:|---:|---:|---|
 | blockchain task pool (`Blockchain` incl. vote + by-value arguments) | 102 984 | 89 656 | 70 720 | measured (node ELF; `SLOT` 98 528 / 85 144 / 66 312) |
 | node statics (USB console, executor pools, channels) | 7 872 | 7 872 | 7 872 | measured (node build) |
-| Core 1 stack (USB console; later the radio) | 8 192 | 8 192 | 8 192 | reservation; AC8 painted measurement pending |
+| Core 1 stack (USB console; later the radio) | 8 192 | 8 192 | 8 192 | reservation; painted high-water on hardware 2 424 B (Story 12.1) |
 | Core 0 main stack (blockchain task), required | 49 850 | 63 130 | 82 690 | node-ELF peak × 1.25, §3.3 |
 | mempool | 24 883 | 24 883 | 24 883 | ~24.3 KB, not linked yet |
 | radio-lib (memory-config-medium) | 61 440 | 61 440 | 61 440 | ~60 KB, source-confirmed |
@@ -159,7 +159,7 @@ The radio figure is the **source-confirmed** `memory-config-medium = ~60 KB` (ra
 
 - Chain-lib hosting task: runs on Core 1 until Story 12.1 and on Core 0's main stack since (DEC-289), measured on the node ELF from the task poll: 39 880 / 50 504 / 66 152 B (the genesis path with the real storage; §3.2). Before Story 12.1 its stack was sized per scheme at ≥ 1.25 × the deepest root's measured peak, rounded up to a KiB (architecture §8, DEC-137 amended 2026-11-17, DEC-254). The deepest root is `process_genesis` with Schnorr (25 692 B) and `bls-min-pk` (56 552 B), because it signs, and with `bls-min-sig` the FR3 pass (`initialize_from_storage` 46 584 B), which verifies an approval evidence block's aggregate inline (Story 6.7, DEC-263), so Core 1 is **32 KiB / 57 KiB / 70 KiB**, selected by `#[cfg]` in the node's `CORE1_STACK`.
 - `bls-min-pk`'s hash-to-G2 signing is what makes its blockchain stack the largest (a 26.3 KB frame); `bls-min-sig` signs in G1.
-- Other Embassy tasks: since Story 12.1 the USB console (later also the radio) runs on Core 1 with an 8 KiB `CORE1_STACK` (a reservation, confirmed by the Story 12.1 AC8 painted run); before, they shared a 4 KB allowance.
+- Other Embassy tasks: since Story 12.1 the USB console (later also the radio) runs on Core 1 with an 8 KiB `CORE1_STACK`; the Story 12.1 hardware run painted a 2 424 B high-water mark; before, they shared a 4 KB allowance.
 
 ### 3.4 Deployment tuning (BLS profiles)
 
