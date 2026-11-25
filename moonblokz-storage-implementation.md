@@ -329,12 +329,13 @@ Engineering consequence:
 
 ## Chain configuration storage uses canonical block round-tripping
 
-Both backends reconstruct the saved configuration as `Block::from_bytes(block.serialized_bytes())` before persisting.
+Both backends refuse a configuration that does not parse as a canonical block before persisting (`BackendIo` 213). The memory backend reconstructs it as `Block::from_bytes(block.serialized_bytes())`; the RP2040 backend, since Story 12.2 (DEC-299), checks the bytes with a borrowed `BlockView::from_bytes` and patches them into the selected control page in its page buffer, with no decoded record and no `Block` copy, writing each replica once.
 
 Engineering consequence:
 
 - this preserves canonical serialized-byte behavior,
-- and it avoids silently storing a block value that cannot round-trip through the canonical block parser.
+- it avoids silently storing a block value that cannot round-trip through the canonical block parser,
+- and the RP2040 write path stays off the node's deepest stack path; a whole-page test pins its persisted bytes to what the record-level path wrote.
 
 ## Testing and Conformance Consequences
 

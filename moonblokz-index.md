@@ -110,7 +110,7 @@ This document explains:
 - the design-decision discipline (§0.1): check a proposed implementation choice against the ratified principles, keep specified incremental mechanisms, and prefer event-time information to new stored state,
 - the blockchain capacity caps (const-generics such as `MAX_NODES`) and what they imply for deployment,
 - the crypto constants and bounded-aggregation limits for Schnorr, `bls-min-sig` and `bls-min-pk`, and the per-scheme block sizes,
-- the 264 KB RP2040 RAM/SRAM budget, per-structure costs, and the measured per-scheme profiles (re-fitted by Story 12.1 on the node's own build: `MAX_NODES` 800 / 240 / 95, the blockchain task on Core 0; on the RP2040 `bls-min-pk` fits fewer nodes than `bls-min-sig`),
+- the 264 KB RP2040 RAM/SRAM budget, per-structure costs, and the measured per-scheme profiles (fitted on the node's own build, the blockchain task on Core 0: `MAX_NODES` 1 000 / 258 / 211 since Story 12.2's stack diet; on the RP2040 `bls-min-pk` fits fewer nodes than `bls-min-sig`),
 - the flash and storage geometry constants,
 - the LoRa and airtime physical constraints and the radio memory profiles,
 - and the currently known cross-document discrepancies and gaps, with their impact.
