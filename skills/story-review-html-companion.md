@@ -6,6 +6,14 @@
 
 Produce a single navigable HTML page that makes the deep review of one implemented story tractable. Raw diffs are hard to review deeply; this page reframes a story's changes as **per-file, per-method** units, each preceded by a plain-language explanation and shown as a whole-method git-diff, with hover tooltips on changed lines and a set of orientation aids (diagrams, tables, a reviewer checklist).
 
+**What the page is for — evidence, at a glance.** The summaries, figures and tables exist to give the reviewer evidence that is as easy to check as possible on three questions, and every element on the page earns its place by answering one of them:
+
+1. **Was the task understood?** How far, if at all, did the understanding of the task go astray: does the built behaviour match what the story, its decisions and the requirements asked for, and where does it deviate, reinterpret, defer or add something nobody asked for?
+2. **Which algorithms were implemented?** The procedures the code now runs — the order of checks and steps, their inputs, outputs and bounds — stated plainly enough to compare with the specification without reading the source.
+3. **How does a function work?** The runtime path through the components, the decisions on the way and their outcomes, shown on real values.
+
+Prefer the form that makes a mismatch visible fastest — a side-by-side, a highlighted deviation, a numbered procedure — over prose that has to be read in full. An element that answers none of the three questions is noise; leave it out.
+
 **The deliverable is a file, not a link.** The page is written into the working directory and opened locally from there. Do **not** upload or publish it (no `Artifact`, no other cloud host) unless the user asks in that specific instance — a review companion is internal working material, and the reviewer already has the repository it describes.
 
 Use it after a story's code is committed (typically on its branch or merged), when the reviewer wants to understand *what changed and why* before reading the source line by line.
@@ -43,13 +51,15 @@ Left sticky sidebar (file-grouped navigation with a scrollspy active-state) + a 
 1. **Header + stat chips** — story title, `BASE`/`HEAD`, and chips: files, +/− lines, test count (before → after), clippy (new warnings), new `unsafe`, gated/API count. A short "reading order that works" callout.
 2. **Node footprint panel — mandatory on every page.** A table from the footprint measurement (Step 1) with a *before*, an *after* and a *change* column for every row: estimated binary size (flash); estimated RAM without stack; stack — the Core 1 reservation and the blockchain's worst-case peak, plus one row per entry point. Show the change signed, tint growth with the warn colour and shrinkage with the ok colour, and say in one line what the estimate is made of and which build it measured. Present even when every change is `0`: an unchanged footprint is a result the reviewer should see.
 3. **At a glance — one architecture / flow diagram, mandatory on every page.** Before any worked example, a single diagram summarises the essence of the behaviour the story implements: the components involved (crates, modules, the API entry points), the runtime path through them in order, the decisions taken on the way, and where the outcomes go. The story's new or changed parts are in the accent colour, the existing parts the path runs through are muted, and each element names its function or rule in a tooltip. A reader who looks only at this diagram should be able to say what the story does and where (see "Choosing the visualizations", Step 5).
-4. **The essence — two orientation figures** chosen so the reader grasps *what this story is* fastest (see "Choosing the visualizations", Step 5). Mechanism-detail examples go lower, in a **Worked examples** section placed just before the per-file sections. Only include figures that encode something true about the change.
-5. **API surface table** — new/changed public methods: signature, return type, kind, what this story built vs deferred, owning epic.
-6. **AC ↔ code ↔ test table** — one row per Acceptance Criterion: what it requires, where it lives, which test covers it. This is the traceability spine of the review.
-7. **Code-review findings panel** — if an adversarial/code review ran: severity, finding, resolution (fixed / accepted / deferred).
-8. **Per-file sections** — each file gets a heading with its +/- badge and a one-line role, then one **change card** per unit (Step 3).
-9. **Tests table** — every added test: name, what it asserts, which acceptance criterion it covers (its short content, the AC number as a reference).
-10. **Reviewer checklist** — the specific things this story needs a human to confirm (with tickable, strike-through checkboxes).
+4. **Intent vs. built — mandatory on every page.** The understanding check (question 1 of the Purpose): one row per thing the story was asked to do — each acceptance criterion and each ratified decision, in the specification's own words, shortened — beside what the code actually does, in one line, and a verdict pill: *as specified*, *interpreted* (the spec left room and the code chose; say what), *deviates* (say how and who agreed), *deferred* (to whom), or *added* (built but not asked for). Sort or group so every non-"as specified" row is visible without scrolling, and link each row to its change card. Read the code, not the completion notes: this panel exists to catch the gap between them.
+5. **Implemented algorithms — mandatory when the story adds or changes a procedure.** Question 2 of the Purpose: each algorithm the story implements as a short numbered procedure — the steps in the order the code runs them, each step's input, decision and outcome, bounds (reads, buffer sizes, loop limits) and failure handling — with the function names as secondary references and a link to the code card. Write it from the code; where the specification states the same algorithm, put the two side by side or mark each step that differs.
+6. **The essence — two orientation figures** chosen so the reader grasps *what this story is* fastest (see "Choosing the visualizations", Step 5). Mechanism-detail examples go lower, in a **Worked examples** section placed just before the per-file sections. Only include figures that encode something true about the change.
+7. **API surface table** — new/changed public methods: signature, return type, kind, what this story built vs deferred, owning epic.
+8. **AC ↔ code ↔ test table** — one row per Acceptance Criterion: what it requires, where it lives, which test covers it. This is the traceability spine of the review.
+9. **Code-review findings panel** — if an adversarial/code review ran: severity, finding, resolution (fixed / accepted / deferred).
+10. **Per-file sections** — each file gets a heading with its +/- badge and a one-line role, then one **change card** per unit (Step 3).
+11. **Tests table** — every added test: name, what it asserts, which acceptance criterion it covers (its short content, the AC number as a reference).
+12. **Reviewer checklist** — the specific things this story needs a human to confirm (with tickable, strike-through checkboxes).
 
 **Say what an identifier means.** An invariant, decision, risk or requirement identifier (`I-09`, `DEC-156`, `D5`, `AR-005`, `E6-8`, `O-013`, `AC6`, `FR37`) says nothing to a reader who does not hold the register in their head. Wherever the page mentions one — prose, table cells, tags, tooltips, the checklist — write its short content in a few words: "the vote-header consistency check", not "the I-09 check"; "pre-credit vote snapshots", not "D5". Keep the identifier only as a secondary reference after the content (in parentheses or a tooltip), where it is needed to find the source.
 
@@ -68,7 +78,7 @@ git diff BASE..HEAD -- src/ | awk '
   END{printf "total=%d logic=%d doc=%d tests=%d com/blank/attr=%d\n",tot,code,doc,tests,c+b+a}'
 ```
 
-Scale the section set to the story: a small story may drop the worked-example figures and the findings panel; a large one keeps all of them. The footprint panel and the at-a-glance diagram are never dropped. The sections are a menu, not a fixed template.
+Scale the section set to the story: a small story may drop the worked-example figures and the findings panel; a large one keeps all of them. The footprint panel, the at-a-glance diagram and the intent-vs-built panel are never dropped. The sections are a menu, not a fixed template.
 
 ## Step 3 — Change-card anatomy
 
@@ -177,6 +187,8 @@ While validating, also check what a browser will not tell you: tag balance, uniq
 Finish by opening the file — screenshot it headless in both themes and look at the result (Step 5). Then hand over the **path**, not a link: the page stays a local working-directory file. Do not publish it to the Artifact host or anywhere else on your own initiative; if the user does ask for a hosted copy in some specific case, note that the CSP there blocks the mermaid CDN, so that copy needs its diagrams pre-rendered.
 
 ## Quality rules
+
+- **Evidence for three questions** — every element answers at least one of: was the task understood (intent vs. built), which algorithms were implemented (numbered procedures), how does a function work (the diagram and worked examples); a deviation, interpretation, deferral or addition is never buried in prose (Purpose, Step 2).
 
 - **Accuracy over polish** — every shown line must come from the real diff/source **verbatim**; a paraphrased or `/* … */`-summarized body is a defect. Drop only doc-comments (or, in a large method, repetitive non-load-bearing branches), always behind the visible `⋯` marker; never elide a changed line and never disguise an elision as source.
 - **Match density to the story** — a mechanical change needs fewer aids than a subsystem-spanning one; do not manufacture diagrams or findings that encode nothing.
