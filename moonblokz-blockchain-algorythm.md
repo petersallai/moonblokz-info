@@ -859,7 +859,7 @@ Allow old transaction blocks to disappear without losing live address-state.
 
 1. inspect the dropped block’s transactions,
 2. discard balance outputs that no longer need preservation,
-3. read the dropping block's per-block available-UTXO bitfield (per [ADR-016](./blockchain-adrs/ADR-016-sequence-indexed-utxo-input-model.md)) to classify each UTXO output as unspent (bit `1`) or not on the current active chain; whether any output must be carried forward is decided from the bitfield alone, without a block read,
+3. read the dropping block's per-block available-UTXO bitfield (per [ADR-016](./blockchain-adrs/ADR-016-sequence-indexed-utxo-input-model.md)) to classify each UTXO output as unspent (bit `1`) or not on the current active chain; a block with no set bit carries nothing forward and needs no read; a block with a set bit is read once, and an output must be carried forward only when its amount exceeds the custodian fee — when none does, the block drops with no carry-forward transaction (DEC-330),
 4. create a special **complex transaction with zero inputs** whose outputs correspond to the still-unspent UTXOs identified in step 3,
 5. reduce each re-added UTXO by the custodian fee,
 6. discard any UTXO whose amount is at most the custodian fee (DEC-196): an output is carried only when its amount exceeds the fee, so no zero-amount output arises.
@@ -906,13 +906,13 @@ A complex transaction with at least one input is valid only if:
 
 - every referenced UTXO input resolves against the current active chain: the block at `block_sequence` lies in the consuming block's own window, `s − W + 1 ≤ block_sequence < s` (DEC-196), and the corresponding bit in that block's available-UTXO bitfield is `1` (the output exists and is unspent; this also covers `output_index` past the block's UTXO-output stream) per [ADR-016](./blockchain-adrs/ADR-016-sequence-indexed-utxo-input-model.md),
 - every balance input is valid against current balance state, with `block sequence > anchor_sequence ≥ max(0, block sequence − W)`,
-- every input signature is valid for its scope,
+- every input signature is valid over the single DEC-196 preimage — the transaction's full bytes with every input's signature field zeroed — each against its own key: a UTXO input against the referenced output's address, a balance input against its `initializer`'s key (DEC-331, DEC-332),
 - total inputs are greater than or equal to total outputs,
 - and no resulting node balance becomes negative.
 
 #### Zero-input complex transaction
 
-A zero-input complex transaction is permitted only as a `snake_chain` UTXO carry-forward, and its validity is governed exclusively by the carry-forward rules of [Algorithm 12](#algorithm-12-transaction-and-utxo-preservation-on-tail-drop). The rules of the with-input case above — in particular the `total inputs ≥ total outputs` rule — do not apply to it: by construction a carry-forward has zero inputs and one or more positive outputs. A zero-input complex transaction that does not satisfy Algorithm 12's carry-forward correctness rules — including one whose outputs do not exactly match, after custodian-fee reduction and below-fee discard, the unspent UTXOs of the single tail block that its carrying head block drops — is invalid ([Blockchain PRD](./moonblokz-blockchain-prd.md) FR51).
+A zero-input complex transaction is permitted only as a `snake_chain` UTXO carry-forward, and its validity is governed exclusively by the carry-forward rules of [Algorithm 12](#algorithm-12-transaction-and-utxo-preservation-on-tail-drop). The rules of the with-input case above — in particular the `total inputs ≥ total outputs` rule — do not apply to it: by construction a carry-forward has zero inputs and one or more positive outputs, and a complex transaction with no output is invalid in either regime (DEC-308, DEC-330). A zero-input complex transaction that does not satisfy Algorithm 12's carry-forward correctness rules — including one whose outputs do not exactly match, after custodian-fee reduction and below-fee discard, the unspent UTXOs of the single tail block that its carrying head block drops — is invalid ([Blockchain PRD](./moonblokz-blockchain-prd.md) FR51).
 
 ## Algorithm 14: Node Registration
 
