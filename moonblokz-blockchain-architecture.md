@@ -218,7 +218,7 @@ pub struct Blockchain<
     const SNAKE_CHAIN_LENGTH_MAX: u32,       // 500 — capacity; the active W is chain-config
     const MAX_BLOCKS: usize,                 // 600
     const MAX_BRANCH_COUNT: usize,           // 40
-    const MAX_BLOCK_UTXO_OUTPUT: usize,      // 256
+    const AVAILABLE_UTXO_BYTES: usize,       // 4 (DEC-318; replaces the unread MAX_BLOCK_UTXO_OUTPUT = 256 in Story 7.1)
     // ... PUBLIC_KEY_SIZE, SIGNATURE_SIZE derived from crypto feature
 > { /* see §4 for fields */ }
 
@@ -592,7 +592,7 @@ As built (Story 6.0), the Tier 2 + Tier 3 per-block step and the Ready forward-e
 | Const generic | Default | Source / rationale |
 |---|---|---|
 | `MAX_NODES` | 1000 (RP2040 profiles since Story 12.1: 800 Schnorr, 240 `bls-min-sig`, 95 `bls-min-pk`, §12.2) | user-set; **the build's node capacity** — sizes all node-id-indexed arrays (`NodeInfo.public_keys`/`balances`/`seed_source_idx`, `VoteEngine.accumulated_vote`). Every node holds an entry for every registered node. The network's cap is chain parameter ID 32 `max_node_count`; acceptance requires `max_node_count ≤ MAX_NODES` (`BuildLimits::node_count_max`), and no validity rule reads `MAX_NODES` (DEC-228); the FR21 evidence-value clamp `VALUE_CAP` does, for ranking only, so builds may rank a junk claim differently, never an honest block (§6.4, DEC-264). See §12.1 for tuning trade-offs. |
-| `SNAKE_CHAIN_LENGTH_MAX` | 500 | user-set; **capacity** of the active-chain window. The window length actually in force, `W`, is chain configuration (FR56) and must satisfy `W ≤ SNAKE_CHAIN_LENGTH_MAX`, checked at chain-config acceptance per FR8. A node whose capacity is below the chain's `W` cannot participate; above it, the node uses only the first `W` entries. Same capacity-versus-requirement pattern as `UTXO_UNSPENT_BITS` and `max_block_UTXO_output`. |
+| `SNAKE_CHAIN_LENGTH_MAX` | 500 | user-set; **capacity** of the active-chain window. The window length actually in force, `W`, is chain configuration (FR56) and must satisfy `W ≤ SNAKE_CHAIN_LENGTH_MAX`, checked at chain-config acceptance per FR8. A node whose capacity is below the chain's `W` cannot participate; above it, the node uses only the first `W` entries. Same capacity-versus-requirement pattern as `AVAILABLE_UTXO_BYTES · 8` and `max_block_utxo_output`. |
 | `H` (verification horizon) | — | **Not a const generic.** Chain configuration since DEC-160 (`verification_horizon`, ID 30, literal-only, default 50): `1 ≤ H < W` (DEC-207, so every admitted switch has its common ancestor in the window) and `H ≥ 3` dividing `W` (check 21, so the FR48 clean slots line up with every tail drop, DEC-265), and chain-config acceptance requires `W + 2·H ≤ MAX_BLOCKS` (passed as `BuildLimits::max_blocks`), so the window, the horizon and one competing branch of depth `H` fit. FR58 also makes it the maximum chain-switch depth. Read from the held configuration at its point of use, never cached (Story 6.14; it replaced Story 6.3's seam returning the default 50, DEC-166, DEC-204). |
 | `MAX_BLOCK_SIZE` | 2016 | **Build tier feature, not a const generic**: `moonblokz-chain-types` selects it by exactly one size-tier feature (`block-size-2016`, the default, or `block-size-65536`), which every dependent forwards (DEC-220, DEC-221). The build's block capacity: it sizes every block buffer and storage slot, and acceptance requires the chain's `block_size_limit ≤ MAX_BLOCK_SIZE` (`BuildLimits::block_size_max`, DEC-227); a larger block is refused locally and is never evidence (DEC-225). The ~2 KB block-buffer figures in this document are the reference tier's. |
 | `MAX_BLOCKS` | 600 | RP2040 flash storage capacity 1:1; also the capacity that bounds `W + 2·H` at chain-config acceptance (`BuildLimits::max_blocks`, DEC-160) — the defaults 500 + 2 · 50 fill it exactly; with `MAX_NODES` it is also bounded by the branch-value proof `MAX_BLOCKS · VALUE_CAP ≤ u64::MAX`, so `MAX_BLOCKS · MAX_NODES` stays below about 8.6 · 10⁷ (§6.4, DEC-264) |
@@ -600,7 +600,7 @@ As built (Story 6.0), the Tier 2 + Tier 3 per-block step and the Ready forward-e
 | `MEMPOOL_COMPACT_BYTES` | 20160 | ~10 × MAX_BLOCK_SIZE; at least `MAX_BLOCK_SIZE` (FR56, DEC-223) |
 | `MEMPOOL_MAX_ENTRIES` | 128 | conservative |
 | `MAX_TX_PER_BLOCK` | ~64 | derived; FR45 included_keys gathering |
-| `MAX_BLOCK_UTXO_OUTPUT` | 256 | FR56 chain-config-derived; per-block available-UTXO bitfield width, also the Tier 1 UTXO-output cap before the durable lock (FR9) |
+| `AVAILABLE_UTXO_BYTES` | 4 | Per-block available-UTXO bitfield size in bytes; its bit count `AVAILABLE_UTXO_BYTES · 8` (32) is the build's UTXO-output capacity stated to configuration acceptance, and the Tier 1 UTXO-output cap before the durable lock (FR9). A smaller value is chain-compatibility-relevant like `MAX_NODES` (DEC-318; replaces `MAX_BLOCK_UTXO_OUTPUT` = 256 in Story 7.1) |
 | `MAX_AGGREGATED_SIGNATURES` | 50 | ADR-015; approval subgroup sizing |
 | `PUBLIC_KEY_SIZE` | 32 / 96 / 48 (Schnorr / `bls-min-sig` / `bls-min-pk`) | crypto feature flag |
 | `SIGNATURE_SIZE` | 64 / 48 / 96 | crypto feature flag; every wire layout after a signature- or key-sized field is derived from these (DEC-251; built in Story 6.17), e.g. `HEADER_SIZE` 122 / 106 / 154 B |
@@ -638,6 +638,7 @@ pub(crate) struct BlockEntry {
     equivocator: u16,                              //  2 B   type-5 only: low 16 bits of the twin creator `c` (FR72 filter, DEC-280; Story 6.13); in the former tail padding
 }
 // 74 B of other fields + 4 B len + 2 B filter, aligned to 4 → 80 B; total 600 × 80 B = 48 000 B
+// Story 7.1 (DEC-318): `available_utxo` is [u8; AVAILABLE_UTXO_BYTES] = 4 B → 52 B; 600 × 52 B = 31 200 B (measured)
 ```
 
 **Key decisions** (Step 6):
@@ -650,6 +651,7 @@ pub(crate) struct BlockEntry {
 
 **Story 4.1 revision (2026-07-04).** Three clarifications from implementation, none changing the budget above (then 76 B / 45 600 B, with a 2-byte `len`; 80 B since DEC-224):
 - `available_utxo` is a fixed `AVAILABLE_UTXO_BYTES = 32` constant (named `spent_bits` / `SPENT_BITS_BYTES` until Story 6.11), not the generic expression `MAX_BLOCK_UTXO_OUTPUT / 8` shown in earlier drafts — sizing an array from a divided const-generic parameter requires the unstable `generic_const_exprs` feature, which this workspace does not enable (the same constraint already documented for `moonblokz-crypto-lib`'s fixed-size array API). The byte count is unchanged (256 / 8 = 32 at the architecture §5 default); Epic 7 resolves the generic-sizing question if `MAX_BLOCK_UTXO_OUTPUT` ever needs to vary per deployment.
+- **Resolved by DEC-318 (Epic 7 reconciliation, 2026-11-26; built in Story 7.1).** The byte count itself becomes the const generic `AVAILABLE_UTXO_BYTES`: a bare const parameter is a stable array length (`[u8; AVAILABLE_UTXO_BYTES]`), and only the bit count `AVAILABLE_UTXO_BYTES · 8` is computed, as a value (`BUILD_LIMITS`, the pre-lock Tier 1 cap), so no `generic_const_exprs` is needed. The reference profiles use 4 B (32 outputs), with the chain default `max_block_utxo_output` = 32: `BlockEntry` 80 → 52 B, the `BlockTable` 48 000 → 31 200 B at 600 slots (−16 800 B static RAM, measured by Story 7.1 on every scheme). The unread `MAX_BLOCK_UTXO_OUTPUT` generic goes; the parameter is renamed at every caller because its unit changes from bits to bytes.
 - `flags` bit assignment is now specified: bit 0 = `is_on_active_chain` (live in Story 4.1); bits 1-2 hold the FR9 status (`Stored`/`Connected`/`Active`, Story 4.2); bits 3-4 cache `payload_type` (below); bit 5 marks a creator signature verified against the block's own ancestry key, so the block is not verified again (RAM-only, cleared on slot reuse, not persisted; Story 6.2 D6, DEC-157); bit 6 marks every Tier-3 signature check of the block accepted — transaction signatures, the approval-evidence check, later Epic 7's UTXO input signatures — set at commit together with bit 5 by one marker, including the FR3 pass's trusted acceptance, so a restore or a later walk skips them; bit 5 stays separate because it is set at Tier 1, before any Tier-3 check can run (RAM-only, also cleared at every FR3 pass, which judges each block's signatures itself; Story 6.7 D2, DEC-259); bit 7 is the payload-type cache's high bit since Story 6.13 (type 5), so no flag bit is free.
 - The FR18 chain-head arrival timestamp is **not** a `BlockEntry` field. FR18's actual requirement is "at least for every chain head block," and `BlockEntry`'s table has 600 entries at the default profile — adding a `u64` there would widen every entry to 88 B padded (+7.2 KB total), which is immaterial against the Schnorr backend's ~67-77 KB SRAM margin (§7.3) but eats meaningfully into the BLS backend's already-tight ~7-17 KB margin. `chain_heads.rs`'s `ChainHeadEntry` (§6.3, Story 4.4) has only 40 entries — the same field there costs ~320 B. Story 4.4 adds the arrival timestamp to `ChainHeadEntry` instead.
 
@@ -778,7 +780,7 @@ pub struct VoteEngine<const MAX_NODES: usize> {
 
 ## 7. RAM budget verification (Steps 6 §4 + 7 §3)
 
-### 7.1 Chain-lib subtotal — Schnorr (default) — ~103 KB
+### 7.1 Chain-lib subtotal — Schnorr (default) — ~87 KB
 
 | Component | Calculation | Bytes |
 |---|---:|---:|
@@ -792,7 +794,7 @@ pub struct VoteEngine<const MAX_NODES: usize> {
 | Replenishment requester LRU (DEC-189) | ~32 × 12 B; sized by 10.4 | ~384 |
 | Non-conflict ring (DEC-198, DEC-219) + support floor `F` | 16 × 13 B (256 B if padded) + 4 B | 212 |
 | Support-relay dedupe FIFO (DEC-199, DEC-231, DEC-230 salt) | 128 × 12 B + 1 B cursor + 8 B salt | 1 545 |
-| BlockTable | 600 × 80 B | 48 000 |
+| BlockTable | 600 × 52 B (80 B before Story 7.1's 4-byte bitfield, DEC-318) | 31 200 |
 | ChainHeadsTable | 40 × 72 B | 2 880 |
 | snake_chain fields | 2 × 4 B | 8 |
 | ApprovalAccumulator | 486 B + 50 × 64 B serialized multi-signatures (DEC-236), padded to 4 B | 3 688 |
@@ -801,23 +803,23 @@ pub struct VoteEngine<const MAX_NODES: usize> {
 | Open deviation run (DEC-261) + re-entry flag (DEC-258) | u32 + bool | 5 |
 | SchedulerState | 5 × Option\<u64\> + u64 | 88 |
 | PRNG root | u64 | 8 |
-| **Subtotal (Schnorr)** | | **~103 351** |
+| **Subtotal (Schnorr)** | | **~86 551** |
 
 **Refreshed 2026-10-28.** Adds the DEC-185 active-set counter, the FR72 / DEC-184 exclusion markers, the circulating currency (DEC-192) and the DEC-189 requester LRU, and replaces the ApprovalAccumulator buffer with the DEC-195 per-support store: about +3.9 KB over the earlier ~95 KB. The marker and LRU sizes are estimates until Stories 6.13 and 10.4 fix them. **Refreshed 2026-10-29:** adds the DEC-198 non-conflict ring and the DEC-199 support-relay dedupe LRU, +1.7 KB. **Refreshed 2026-11-10:** `BlockEntry` 80 B (DEC-224, +2.4 KB) and the mempool's `u32` index (DEC-223, +1 KB in §7.3). Measured by Story 6.15 (`tools/footprint`, reference tier, against `main`): static RAM +2.4 KiB, flash +0.1 KiB, stack peaks unchanged; the mempool's +1 KB (32 B `Option<IndexEntry>`, measured with `size_of` on thumbv6m) shows once Epic 7 holds the mempool. **Refreshed 2026-11-11 (Story 6.4 ratification):** the active-set counter keeps the creator of the window tail for its next decrement (DEC-213) and the ring a monotone support floor `F` (DEC-219), +8 B; the ring is 208 B with 13 B entries or 256 B padded, which Story 6.4 measures. Measured by Story 6.4 (`tools/footprint`, reference tier, against `main`): static RAM +2216 B — the counter 2000 B and its tail creator 4 B, the packed ring 208 B and `F` 4 B — flash +1.7 KiB (53 248 B after the code-review fixes), `receive_block` stack 12.1 KB (+144 B; the evaluation's transient 1 KB returning-creator flags lie off the deepest path), `initialize_from_storage` 15.9 KB (+32 B), the `process_genesis` peak unchanged at 19.2 KB. **Refreshed 2026-11-13 (Story 6.5 ratification):** the support-relay dedupe is a FIFO with a 1 B cursor (DEC-231), +1 B. Measured by Story 6.5 (`tools/footprint`, reference tier, against `main`): static RAM +1 536 B (103 432 → 104 968 B; the cursor falls into padding), flash +3.3 KB with `receive_support` linked (it pulls in the multi-signature verification), `receive_support` stack 3 920 B, the `process_genesis` peak unchanged at 19 264 B. The flash growth, about ten times the story's estimate, was accepted by the Project Lead at the 6.5 code review (2026-11-13): FR26 (ii) needs the multi-signature verification, and Stories 6.6 / 6.7 use it anyway. The code review added the 8 B dedupe salt (DEC-230). **Refreshed 2026-11-17 (Story 6.6 ratification):** the `ApprovalAccumulator` keeps the ranked subgroup and the serialized supports (DEC-236), ~3 686 B instead of ~3 400 B, and `SchedulerState` gains the FR29 replay-insertion deadline (DEC-243, Story 8.4), +16 B. Measured by Story 6.6 (footprint probe, against `main`): static RAM +3 688 B (104 832 → 108 520 B), the accumulator alone; flash 66 676 → 67 844 B; every root within +24 B, the `process_genesis` peak unchanged (§8); the Schnorr margin drops to 4 381 B (§7.3) and the BLS profiles are re-fitted (§12.2). **Refreshed 2026-11-19 (Story 6.7):** `active_open_run` (4 B, DEC-261) and the `reentry_due` flag (1 B, DEC-258). Measured by Story 6.7 (footprint probe, against `main`): static RAM +8 B (108 520 → 108 528 B); flash 67 956 → 76 080 B (+8 124 B); the inline evidence check makes the FR3 pass the `bls-min-sig` stack peak, so its Core 1 grows to 57 KiB and its profile re-fits to 258 nodes (§8, §12.2, DEC-263); Schnorr margin 4 373 B.
 
-### 7.2 Chain-lib subtotal — BLS — ~167 KB
+### 7.2 Chain-lib subtotal — BLS — ~150 KB
 
 | Component | Calculation | Bytes |
 |---|---:|---:|
 | NodeInfo.public_keys | 1000 × 96 B | 96 000 |
 | NodeInfo.balances + seed_source_idx + max_known | 12 004 | 12 004 |
 | Active-set counter + exclusion markers + circulating currency + requester LRU + non-conflict ring + support-relay FIFO | 2 004 + ~125 + 8 + ~384 + 212 + 1 537 | ~4 270 |
-| BlockTable | 600 × 80 B | 48 000 |
+| BlockTable | 600 × 52 B (80 B before Story 7.1's 4-byte bitfield, DEC-318) | 31 200 |
 | ChainHeadsTable | 40 × 72 B | 2 880 |
 | snake_chain fields | 8 | 8 |
 | ApprovalAccumulator | 486 B + 50 × 48 B serialized multi-signatures (DEC-236; 5 286 B with `bls-min-pk`) | ~2 886 |
 | EmitScratch + lifecycle + scheduler + PRNG | ~2 097 | 2 097 |
-| **Subtotal (BLS)** | | **~166 544** |
+| **Subtotal (BLS)** | | **~149 744** |
 
 **Per BLS variant:** this column is `bls-min-sig` (96 B keys) at 1 000 nodes; `bls-min-pk` keys are 48 B. Measured in Story 6.17 (footprint probe): the blockchain's static RAM, its `VoteEngine` included, is about 54 800 B plus 50 / 114 / 66 B per node (Schnorr / `bls-min-sig` / `bls-min-pk`); Story 6.6's accumulator raises the fixed part to about 58 500 / 57 800 / 60 000 B. No BLS variant fits 264 KB at 1 000 nodes; the RP2040 profiles are in §12.2 (DEC-254).
 
@@ -825,20 +827,20 @@ pub struct VoteEngine<const MAX_NODES: usize> {
 
 ### 7.3 264 KB SRAM full allocation
 
-Measured on the node's own build since Story 12.1 (DEC-289, DEC-297), here after Story 12.2's stack diet (DEC-299..302), at each scheme's RP2040 profile (§12.2), in bytes; 264 KB = 270 336 B. The blockchain task runs on Core 0's main stack and the blockchain lives in its task's `TaskStorage`, with the real rp2040 storage. (Stories 6.17–6.7 measured the probe model, with an opaque storage and the blockchain task on Core 1: margins 4 373 / 101 / 21 B at 1 000 / 258 / 211 nodes.)
+Measured on the node's own build since Story 12.1 (DEC-289, DEC-297), here after Story 7.1's 4-byte available-UTXO bitfield (DEC-318, −16 800 B static RAM; after Story 12.2's stack diet the margins were 3 649 / 4 499 / 2 857 B), at each scheme's RP2040 profile (§12.2), in bytes; 264 KB = 270 336 B. The blockchain task runs on Core 0's main stack and the blockchain lives in its task's `TaskStorage`, with the real rp2040 storage. (Stories 6.17–6.7 measured the probe model, with an opaque storage and the blockchain task on Core 1: margins 4 373 / 101 / 21 B at 1 000 / 258 / 211 nodes.)
 
 | Consumer | Schnorr (1 000 nodes) | `bls-min-sig` (258) | `bls-min-pk` (211) | Basis |
 |---|---:|---:|---:|---|
-| blockchain task pool (`Blockchain` incl. vote + by-value arguments) | 112 984 | 91 704 | 78 376 | measured (node ELF) |
+| blockchain task pool (`Blockchain` incl. vote + by-value arguments) | 96 184 | 74 904 | 61 576 | measured (node ELF) |
 | node statics (USB console, executor pools, channels) | 7 872 | 7 872 | 7 872 | measured (node build) |
 | Core 1 stack (USB console; later the radio) | 8 192 | 8 192 | 8 192 | reservation |
-| Core 0 main stack (blockchain task), required | 36 980 | 57 410 | 72 380 | §8, node-ELF peak × 1.25 |
+| Core 0 main stack (blockchain task), required | 36 960 | 57 400 | 72 360 | §8, node-ELF peak × 1.25 |
 | moonblokz-mempool | 24 883 | 24 883 | 24 883 | ~24.3 KB (§6.8), not linked yet |
 | moonblokz-radio-lib (memory-config-medium) | 61 440 | 61 440 | 61 440 | ~60 KB, source-confirmed |
 | moonblokz-crypto-lib scratch | 4 096 | 4 096 | 4 096 | estimate |
 | Core 1 radio tasks | 10 240 | 10 240 | 10 240 | estimate, not linked yet |
-| **Total** | **266 687** | **265 837** | **267 479** | |
-| **Margin** (270 336 − total) | **3 649** ✅ | **4 499** ✅ | **2 857** ✅ | |
+| **Total** | **249 867** | **249 027** | **250 659** | |
+| **Margin** (270 336 − total) | **20 469** ✅ | **21 309** ✅ | **19 677** ✅ | |
 
 **Radio figure:** `memory-config-medium` is counted at its source-confirmed ~60 KB (`moonblokz-radio-lib` README + `lib.rs` profile consts); an earlier ~30-40 KB estimate under-counted it and made the BLS default appear feasible.
 
@@ -903,7 +905,7 @@ The full FR1-FR69 coverage matrix (per-FR row with primary + support modules) is
 
 ### 9.3 FR52 — explicit MVP-skip rationale
 
-FR52 ("no explicit UTXO saturation detection") is itself a "doing nothing" requirement: MVP has no admission control / backpressure on the UTXO space. The snake_chain bounded retention (FR48) + available-UTXO bitfield (ADR-016) + `MAX_BLOCK_UTXO_OUTPUT = 256` per-block limit already cap memory growth. Direct admission control is post-MVP.
+FR52 ("no explicit UTXO saturation detection") is itself a "doing nothing" requirement: MVP has no admission control / backpressure on the UTXO space. The snake_chain bounded retention (FR48) + available-UTXO bitfield (ADR-016) + the per-block UTXO-output capacity `AVAILABLE_UTXO_BYTES · 8` (32 in the reference profiles, DEC-318) already cap memory growth. Direct admission control is post-MVP.
 
 ---
 
@@ -1019,9 +1021,9 @@ Built and measured in Story 6.17 (DEC-254) with the footprint probe (`footprint.
 
 | Profile | `MAX_NODES` | Blockchain stack (Core 0, required) | Blockchain task pool | Node flash (measured) | Margin (264 KB) |
 |---|---:|---:|---:|---:|---:|
-| Schnorr (default) | 1 000 | 36 980 B | 112 984 B | 131 496 B | 3 649 B ✅ |
-| `bls-min-sig` | 258 | 57 410 B | 91 704 B | 197 676 B | 4 499 B ✅ |
-| `bls-min-pk` | 211 | 72 380 B | 78 376 B | 199 176 B | 2 857 B ✅ |
+| Schnorr (default) | 1 000 | 36 960 B | 96 184 B | 132 804 B | 20 469 B ✅ |
+| `bls-min-sig` | 258 | 57 400 B | 74 904 B | 198 668 B | 21 309 B ✅ |
+| `bls-min-pk` | 211 | 72 360 B | 61 576 B | 200 500 B | 19 677 B ✅ |
 
 The probe model fitted 1 000 / 258 / 211 with margins 4 373 / 101 / 21 B. Story 12.1 re-fitted the node's own build to 800 / 240 / 95 (margins 779 / 827 / 203 B, DEC-297); Story 12.2's stack diet restored 1 000 / 258 / 211 exactly (DEC-300), the margins kept as headroom for the mempool link and the radio roots (largest fits 1 072 / 297 / 254).
 

@@ -195,7 +195,7 @@ Block #0 (by node 0, `previous_hash = 0³²`): registration of node 0 (`new_node
 | 1 | `inter_block_interval_ms` | 900 000 | | 20 | `block_fill_threshold_percent` (θ) | 80 |
 | 2 | `grace_period_window_ms` (g) | 240 000 | | 21 | `active_chain_length` (W) | 500 |
 | 3 | `block_size_limit` (L) | 2016 | | 22 | `mempool_replenishment_interval_ms` | 500 000 |
-| 4 | `max_block_utxo_output` | 255 | | 23 | `custodian_fee` (c) | 1 |
+| 4 | `max_block_utxo_output` | 32 | | 23 | `custodian_fee` (c) | 1 |
 | 5 | `mining_reward` | 0 | | 24 | `registration_price` | 100 |
 | 6 | `vote_scale` (vs) | 1000 | | 25 | `tx_fee_per_byte_min` | 1 |
 | 7 | `vote_interest` (vi) | 50 | | 26 | `tx_fee_per_byte_max` | 1000 |

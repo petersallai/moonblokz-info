@@ -61,7 +61,7 @@ Authoritative source: [`moonblokz-blockchain-architecture.md`](./moonblokz-block
 | `MEMPOOL_COMPACT_BYTES` | 20160 | Mempool compact buffer (~10 × `MAX_BLOCK_SIZE`; at least `MAX_BLOCK_SIZE`, [BC-FR56](./moonblokz-blockchain-prd.md), DEC-223). |
 | `MEMPOOL_MAX_ENTRIES` | 128 | Mempool index capacity. |
 | `MAX_TX_PER_BLOCK` | ~64 | Derived; [BC-FR45](./moonblokz-blockchain-prd.md) included-keys gathering. |
-| `MAX_BLOCK_UTXO_OUTPUT` | 256 | Per-block available-UTXO bitfield width (ADR-016); also the Tier 1 UTXO-output cap before the durable lock ([BC-FR9](./moonblokz-blockchain-prd.md)). |
+| `AVAILABLE_UTXO_BYTES` | 4 | Per-block available-UTXO bitfield size in bytes (ADR-016); `AVAILABLE_UTXO_BYTES · 8` (32) is the build's UTXO-output capacity and the Tier 1 UTXO-output cap before the durable lock ([BC-FR9](./moonblokz-blockchain-prd.md)); a chain declaring more `max_block_utxo_output` is refused (DEC-318; `MAX_BLOCK_UTXO_OUTPUT` = 256 with a fixed 32 B field until Story 7.1). |
 | `MAX_AGGREGATED_SIGNATURES` | 50 | Approval subgroup cap (ADR-015). Matches Schnorr per-block supporter capacity (§2). |
 | `PUBLIC_KEY_SIZE` | 32 / 96 / 48 | Schnorr / `bls-min-sig` / `bls-min-pk`; crypto-feature-dependent, see §2. |
 
@@ -124,12 +124,12 @@ Authoritative source: [`moonblokz-blockchain-architecture.md`](./moonblokz-block
 | Structure | Schnorr | `bls-min-sig` | `bls-min-pk` | Driver |
 |---|---:|---:|---:|---|
 | `NodeInfo` (SoA) | ~44 KB | ~108 KB | ~60 KB | `MAX_NODES` × (`PUBLIC_KEY_SIZE` + 8 + 4) |
-| `BlockTable` | 48 KB | 48 KB | 48 KB | `MAX_BLOCKS` × 80 B (`u32` block length, DEC-224) |
+| `BlockTable` | 31.2 KB | 31.2 KB | 31.2 KB | `MAX_BLOCKS` × 52 B: the 4-byte available-UTXO bitfield (`AVAILABLE_UTXO_BYTES` = 4, DEC-318; 80 B with the former fixed 32 B, `u32` block length DEC-224); measured by Story 7.1 at −16 800 B static RAM |
 | `ChainHeadsTable` | 2.88 KB | 2.88 KB | 2.88 KB | `MAX_BRANCH_COUNT` × 72 B (architecture §7.1; was listed here as 32 B) |
 | `ApprovalAccumulator` | ~3.7 KB | ~2.9 KB | ~5.3 KB | the ranked subgroup and every held support's serialized multi-signature until the evidence block is built (DEC-236) |
 | Active-set counter, late-node exclusion markers, circulating currency, requester LRU, non-conflict ring, support-relay FIFO | ~4.3 KB | ~4.3 KB | ~4.3 KB | DEC-185 / DEC-213 (`MAX_NODES` × 2 B + 4 B tail creator), DEC-184 (1 bit per node, sized by 7.2; FR72 needs none, DEC-279, DEC-280), DEC-192 (u64), DEC-189 (~384 B, sized by 10.4), DEC-198 / DEC-219 (16 × 13 B + 4 B support floor), DEC-199 / DEC-231 (128 × 12 B + 1 B cursor) |
 | `EmitScratch` + scheduler + lifecycle + PRNG | ~2.1 KB | ~2.1 KB | ~2.1 KB | `MAX_BLOCK_SIZE` buffer + small fields |
-| **`moonblokz-blockchain` subtotal** | **~103 KB** | **~167 KB** | **~122 KB** | matches architecture §7.1 / §7.2 (refreshed 2026-11-17); min-pk derived from the rows (estimate) |
+| **`moonblokz-blockchain` subtotal** | **~87 KB** | **~150 KB** | **~105 KB** | matches architecture §7.1 / §7.2 (refreshed 2026-11-26: Story 7.1's 4-byte bitfield, −16.8 KB); min-pk derived from the rows (estimate) |
 | `Mempool` (sibling `moonblokz-mempool`) | ~24.3 KB | ~24.3 KB | ~24.3 KB | `MEMPOOL_COMPACT_BYTES` + compact index (128 × 32 B, `u32` offsets, DEC-223) including stored `transaction_fee` + small fields; authoritative layout in blockchain architecture §6.8 |
 | `VoteEngine.accumulated_vote` (sibling `moonblokz-vote`) | ~4 KB | ~4 KB | ~4 KB | `MAX_NODES` × 4 B |
 | **blockchain + mempool + vote** | **~131 KB** | **~194 KB** | **~148 KB** | estimates at 1 000 nodes; §3.2 counts the measured profiles |
@@ -138,26 +138,26 @@ Measured (Story 6.17, footprint probe): the blockchain's static RAM, its `VoteEn
 
 ### 3.2 Full-system allocation
 
-Measured on the node's own build since Story 12.1 (DEC-289, DEC-297), here after Story 12.2's stack diet (DEC-299..302): the blockchain task runs on Core 0's main stack, the blockchain lives in its task's `TaskStorage` with the real rp2040 storage, at each scheme's RP2040 profile (§3.4), in bytes; 264 KB = 270 336 B. (Stories 6.17–6.7 measured the probe model, with an opaque storage and the blockchain on Core 1: margins 4 373 / 101 / 21 B at 1 000 / 258 / 211 nodes.)
+Measured on the node's own build since Story 12.1 (DEC-289, DEC-297), here after Story 7.1's 4-byte available-UTXO bitfield (DEC-318: −16 800 B static RAM on every scheme; before, after Story 12.2's stack diet, DEC-299..302, the margins were 3 649 / 4 499 / 2 857 B): the blockchain task runs on Core 0's main stack, the blockchain lives in its task's `TaskStorage` with the real rp2040 storage, at each scheme's RP2040 profile (§3.4), in bytes; 264 KB = 270 336 B. (Stories 6.17–6.7 measured the probe model, with an opaque storage and the blockchain on Core 1: margins 4 373 / 101 / 21 B at 1 000 / 258 / 211 nodes.)
 
 | Consumer | Schnorr (1 000 nodes) | `bls-min-sig` (258) | `bls-min-pk` (211) | Basis |
 |---|---:|---:|---:|---|
-| blockchain task pool (`Blockchain` incl. vote + by-value arguments) | 112 984 | 91 704 | 78 376 | measured (node ELF; `SLOT` 108 528 / 87 200 / 73 968) |
+| blockchain task pool (`Blockchain` incl. vote + by-value arguments) | 96 184 | 74 904 | 61 576 | measured (node ELF; `SLOT` 91 728 / 70 400 / 57 168) |
 | node statics (USB console, executor pools, channels) | 7 872 | 7 872 | 7 872 | measured (node build) |
 | Core 1 stack (USB console; later the radio) | 8 192 | 8 192 | 8 192 | reservation; painted high-water on hardware 2 424 B (Story 12.1) |
-| Core 0 main stack (blockchain task), required | 36 980 | 57 410 | 72 380 | node-ELF peak × 1.25, §3.3 |
+| Core 0 main stack (blockchain task), required | 36 960 | 57 400 | 72 360 | node-ELF peak × 1.25, §3.3 |
 | mempool | 24 883 | 24 883 | 24 883 | ~24.3 KB, not linked yet |
 | radio-lib (memory-config-medium) | 61 440 | 61 440 | 61 440 | ~60 KB, source-confirmed |
 | crypto-lib scratch | 4 096 | 4 096 | 4 096 | estimate |
 | Core 1 radio tasks | 10 240 | 10 240 | 10 240 | estimate, not linked yet |
-| **Total** | **266 687** | **265 837** | **267 479** | |
-| **Margin (270 336 − total)** | **3 649** ✅ | **4 499** ✅ | **2 857** ✅ | |
+| **Total** | **249 867** | **249 027** | **250 659** | |
+| **Margin (270 336 − total)** | **20 469** ✅ | **21 309** ✅ | **19 677** ✅ | |
 
 The radio figure is the **source-confirmed** `memory-config-medium = ~60 KB` (radio module `README.md` + `lib.rs` profile consts; see §6 and §7/D1), additive to the separately-counted Embassy task stacks. The node statics replace the earlier ~4 KB "Embassy executor + statics" estimate. At 1 000 nodes no BLS variant fits, so each fixes a smaller `MAX_NODES` (§3.4). Story 12.1 re-fitted the profiles to 800 / 240 / 95 (margins 779 / 827 / 203 B), with the blockchain task on Core 0's main stack (DEC-289, DEC-297); Story 12.2's stack diet restored exactly 1 000 / 258 / 211 (DEC-300), and the margins of 3 649 / 4 499 / 2 857 B stay as headroom for the mempool link and the radio roots (largest fits 1 072 / 297 / 254). Authoritative: architecture §7.3/§7.4/§12.
 
 ### 3.3 Stack frames
 
-- Chain-lib hosting task: runs on Core 1 until Story 12.1 and on Core 0's main stack since (DEC-289), measured on the node ELF from the task poll: 29 584 / 45 928 / 57 904 B since Story 12.2 (12.1: 39 880 / 50 504 / 66 152 B). The deepest path is genesis for Schnorr (the storage probe under `process_genesis`) and `bls-min-pk` (its signing), and the FR3 restore pass for `bls-min-sig` (the evidence aggregate check); §3.2. On hardware (Story 12.2 run, painted) genesis reached 27 596 / 36 464 / 57 952 B and the restart 25 856 / 37 552 / 48 168 B. Before Story 12.1 its stack was sized per scheme at ≥ 1.25 × the deepest root's measured peak, rounded up to a KiB (architecture §8, DEC-137 amended 2026-11-17, DEC-254). The deepest root is `process_genesis` with Schnorr (25 692 B) and `bls-min-pk` (56 552 B), because it signs, and with `bls-min-sig` the FR3 pass (`initialize_from_storage` 46 584 B), which verifies an approval evidence block's aggregate inline (Story 6.7, DEC-263), so Core 1 is **32 KiB / 57 KiB / 70 KiB**, selected by `#[cfg]` in the node's `CORE1_STACK`.
+- Chain-lib hosting task: runs on Core 1 until Story 12.1 and on Core 0's main stack since (DEC-289), measured on the node ELF from the task poll: 29 568 / 45 920 / 57 888 B since Story 7.1 (12.2: 29 584 / 45 928 / 57 904 B; 12.1: 39 880 / 50 504 / 66 152 B) — Story 7.1's input-signature frame sits beside the deepest paths, not under them. The deepest path is genesis for Schnorr (the storage probe under `process_genesis`) and `bls-min-pk` (its signing), and the FR3 restore pass for `bls-min-sig` (the evidence aggregate check); §3.2. On hardware (Story 12.2 run, painted) genesis reached 27 596 / 36 464 / 57 952 B and the restart 25 856 / 37 552 / 48 168 B. Before Story 12.1 its stack was sized per scheme at ≥ 1.25 × the deepest root's measured peak, rounded up to a KiB (architecture §8, DEC-137 amended 2026-11-17, DEC-254). The deepest root is `process_genesis` with Schnorr (25 692 B) and `bls-min-pk` (56 552 B), because it signs, and with `bls-min-sig` the FR3 pass (`initialize_from_storage` 46 584 B), which verifies an approval evidence block's aggregate inline (Story 6.7, DEC-263), so Core 1 is **32 KiB / 57 KiB / 70 KiB**, selected by `#[cfg]` in the node's `CORE1_STACK`.
 - `bls-min-pk`'s hash-to-G2 signing is what makes its blockchain stack the largest (a 26.3 KB frame); `bls-min-sig` signs in G1.
 - Other Embassy tasks: since Story 12.1 the USB console (later also the radio) runs on Core 1 with an 8 KiB `CORE1_STACK`; the Story 12.1 hardware run painted a 2 424 B high-water mark; before, they shared a 4 KB allowance.
 
@@ -167,9 +167,9 @@ Per-lever savings: [`moonblokz-blockchain-architecture.md`](./moonblokz-blockcha
 
 | Profile | `MAX_NODES` | Blockchain stack (Core 0, required) | Blockchain task pool | Node flash (measured) | Margin |
 |---|---:|---:|---:|---:|---:|
-| Schnorr (default) | 1 000 | 36 980 B | 112 984 B | 131 496 B | 3 649 B ✅ |
-| `bls-min-sig` | 258 | 57 410 B | 91 704 B | 197 676 B | 4 499 B ✅ |
-| `bls-min-pk` | 211 | 72 380 B | 78 376 B | 199 176 B | 2 857 B ✅ |
+| Schnorr (default) | 1 000 | 36 960 B | 96 184 B | 132 804 B | 20 469 B ✅ |
+| `bls-min-sig` | 258 | 57 400 B | 74 904 B | 198 668 B | 21 309 B ✅ |
+| `bls-min-pk` | 211 | 72 360 B | 61 576 B | 200 500 B | 19 677 B ✅ |
 
 Re-fitted by Story 12.1 (DEC-297) to 800 / 240 / 95 once the node measured its own build, and restored to exactly 1 000 / 258 / 211, the probe-model profiles, by Story 12.2's stack diet (DEC-300): the rp2040 chain-config write works on bytes (DEC-299), genesis builds its blocks in place (DEC-301), and the evidence check builds its key array in place (DEC-302). The profiles live in the board binary (`moonblokz-node-rp2040` `MAX_NODES`) and the footprint probe follows them.
 
