@@ -61,7 +61,7 @@ Authoritative source: [`moonblokz-blockchain-architecture.md`](./moonblokz-block
 | `MEMPOOL_COMPACT_BYTES` | 20160 | Mempool compact buffer (~10 × `MAX_BLOCK_SIZE`; at least `MAX_BLOCK_SIZE`, [BC-FR56](./moonblokz-blockchain-prd.md), DEC-223). |
 | `MEMPOOL_MAX_ENTRIES` | 128 | Mempool index capacity. |
 | `MAX_TX_PER_BLOCK` | ~64 | Derived; [BC-FR45](./moonblokz-blockchain-prd.md) included-keys gathering. |
-| `MAX_BLOCK_UTXO_OUTPUT` | 256 | Per-block available-UTXO bitfield width (ADR-016); also the Tier 1 UTXO-output cap before the durable lock ([BC-FR9](./moonblokz-blockchain-prd.md)). |
+| `AVAILABLE_UTXO_BYTES` | 4 | Per-block available-UTXO bitfield size in bytes (ADR-016); `AVAILABLE_UTXO_BYTES · 8` (32) is the build's UTXO-output capacity and the Tier 1 UTXO-output cap before the durable lock ([BC-FR9](./moonblokz-blockchain-prd.md)); a chain declaring more `max_block_utxo_output` is refused (DEC-318; `MAX_BLOCK_UTXO_OUTPUT` = 256 with a fixed 32 B field until Story 7.1). |
 | `MAX_AGGREGATED_SIGNATURES` | 50 | Approval subgroup cap (ADR-015). Matches Schnorr per-block supporter capacity (§2). |
 | `PUBLIC_KEY_SIZE` | 32 / 96 / 48 | Schnorr / `bls-min-sig` / `bls-min-pk`; crypto-feature-dependent, see §2. |
 
@@ -124,7 +124,7 @@ Authoritative source: [`moonblokz-blockchain-architecture.md`](./moonblokz-block
 | Structure | Schnorr | `bls-min-sig` | `bls-min-pk` | Driver |
 |---|---:|---:|---:|---|
 | `NodeInfo` (SoA) | ~44 KB | ~108 KB | ~60 KB | `MAX_NODES` × (`PUBLIC_KEY_SIZE` + 8 + 4) |
-| `BlockTable` | 48 KB | 48 KB | 48 KB | `MAX_BLOCKS` × 80 B (`u32` block length, DEC-224) |
+| `BlockTable` | 48 KB | 48 KB | 48 KB | `MAX_BLOCKS` × 80 B (`u32` block length, DEC-224); × 52 B (31.2 KB) once Story 7.1 sizes the bitfield at `AVAILABLE_UTXO_BYTES` = 4 (DEC-318), measured then |
 | `ChainHeadsTable` | 2.88 KB | 2.88 KB | 2.88 KB | `MAX_BRANCH_COUNT` × 72 B (architecture §7.1; was listed here as 32 B) |
 | `ApprovalAccumulator` | ~3.7 KB | ~2.9 KB | ~5.3 KB | the ranked subgroup and every held support's serialized multi-signature until the evidence block is built (DEC-236) |
 | Active-set counter, late-node exclusion markers, circulating currency, requester LRU, non-conflict ring, support-relay FIFO | ~4.3 KB | ~4.3 KB | ~4.3 KB | DEC-185 / DEC-213 (`MAX_NODES` × 2 B + 4 B tail creator), DEC-184 (1 bit per node, sized by 7.2; FR72 needs none, DEC-279, DEC-280), DEC-192 (u64), DEC-189 (~384 B, sized by 10.4), DEC-198 / DEC-219 (16 × 13 B + 4 B support floor), DEC-199 / DEC-231 (128 × 12 B + 1 B cursor) |
