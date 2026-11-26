@@ -232,7 +232,7 @@ Each flow lists its trigger, its steps, and what happens on failure. Step tables
 | 5 | Traverse forward: FR6 state checks interleaved with derivation (roster, keys, balances, votes, available-UTXO bits, seed sources), including the `snake_chain` preservation checks inside the candidate; pre-seed acceptance only for window-anchored candidates | FR3, FR6, FR9, FR37, FR38, FR50 | partial — built (5.3, 5.4); per-block step shared with Ready and genesis, balance-entry equality built (6.0); missing checks see §5; the FR48 binding where the dropped block lies in the segment and the vote seeding at the earliest block + `H` built (6.14; DEC-204, DEC-210); `snake_chain` checks 9.2, 9.3, 9.5; the FR29 replay order before an evidence block built (9.1's binding, pinned at Ready by 6.6, DEC-243); approval evidence exact or trusted (DEC-262) and the run and clean-slot rules (DEC-261, DEC-265) built (6.7) |
 | 6 | Durably lock the configuration (storage first), promote the candidate Stored → Active, clean up mismatching or oversized blocks, enter Ready | FR4, FR8, FR9 | built (5.4, 5.9); `S_tail` built (9.1); `branch_value` seeding built (6.1) |
 
-**On failure:** an FR6 violation runs FR5 (T4); the code retries once, plus one adopt retry. A local failure (storage read, missing vote parameter, mark overflow, missing block) deletes nothing: the node stays in Collecting and retries later; after a missing block, dangling parent references are unlinked so FR19 recovers the parent (FR5, DEC-134; built in 6.0). A durable-commit failure resets the projections and leaves the node in Collecting with its blocks intact. **Writes:** only the lock and deletions; everything else is RAM.
+**On failure:** an FR6 violation runs FR5 (T4); the code retries once, plus one adopt retry. A local failure (storage read, missing vote parameter, mark overflow, missing block) deletes nothing — except a slot that fails its integrity check (`IntegrityFailure`), which is released and re-fetched (DEC-320; not built, Epic 9): the node stays in Collecting and retries later; after a missing block, dangling parent references are unlinked so FR19 recovers the parent (FR5, DEC-134; built in 6.0). A durable-commit failure resets the projections and leaves the node in Collecting with its blocks intact. **Writes:** only the lock and deletions; everything else is RAM.
 
 ### 7.2 Forward Extension of the Active Head (Ready)
 
@@ -337,6 +337,9 @@ The mempool is empty after a restart (FR30, FR59). Radio outcomes carry no cause
 | 4 | Without a durable lock, re-establish the tentative configuration from a stored chain-config block | FR8 | built (5.10) |
 | 5 | Run the FR2 → FR3 → FR4 spine (7.1), then re-run the lock-time cleanups | FR2–FR4, FR8, FR9 | built (5.10) |
 | 6 | Return `ResumedReady` or `ResumedCollecting`; release blocks more than `H` below `S_tail` | FR48, FR59 | built (5.10, 9.1); keeping the horizon built (6.14) |
+| 7 | A partial genesis on node #0 (block #0 only, no durable lock) admits `/G_` again over it (DEC-323) | FR54, FR59 | not built (Epic 12) |
+
+Step 5 re-verifies every retained block's signatures; on a full store that takes hours with BLS (O-048, DEC-319: counted first, mitigation ruled before the Epic 12 radio story).
 
 Blocks deleted before the restart can return, because storage has no delete; every deletion driver re-fires, so the node converges ([architecture](./moonblokz-blockchain-architecture.md) §3.6). The control-plane load returns no private key (storage ST-FR11, built in 6.9); the node runtime loads it separately for the crypto module (built 12.1).
 

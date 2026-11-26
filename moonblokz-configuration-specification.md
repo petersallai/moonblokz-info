@@ -61,7 +61,7 @@ config_values      : config_value_count × {
                          value_length : u8      (1 B)
                          value        : value_length bytes
                      }
-content_signature  : [u8; SIGNATURE_SIZE]       (node #0, over the content region)
+content_signature  : [u8; SIGNATURE_SIZE]       (node #0, over "MBCFG" ‖ the content region — DEC-321, from the domain-tag chore; the content region alone until then)
 ```
 
 The **content region** is the count field plus every entry — `payload[..content_end]`. `content_end` is derived by walking the entries, never read from a fixed offset; that is what makes truncation and trailing padding detectable. The signature width is `moonblokz_crypto::SIGNATURE_SIZE`, never a literal.
