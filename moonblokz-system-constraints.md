@@ -129,7 +129,7 @@ Authoritative source: [`moonblokz-blockchain-architecture.md`](./moonblokz-block
 | `ApprovalAccumulator` | ~3.7 KB | ~2.9 KB | ~5.3 KB | the ranked subgroup and every held support's serialized multi-signature until the evidence block is built (DEC-236) |
 | Active-set counter, late-node exclusion markers, circulating currency, requester LRU, non-conflict ring, support-relay FIFO | ~4.3 KB | ~4.3 KB | ~4.3 KB | DEC-185 / DEC-213 (`MAX_NODES` × 2 B + 4 B tail creator), DEC-184 (1 bit per node, sized by 7.2; FR72 needs none, DEC-279, DEC-280), DEC-192 (u64), DEC-189 (~384 B, sized by 10.4), DEC-198 / DEC-219 (16 × 13 B + 4 B support floor), DEC-199 / DEC-231 (128 × 12 B + 1 B cursor) |
 | `EmitScratch` + scheduler + lifecycle + PRNG | ~2.1 KB | ~2.1 KB | ~2.1 KB | `MAX_BLOCK_SIZE` buffer + small fields |
-| **`moonblokz-blockchain` subtotal** | **~103 KB** | **~167 KB** | **~122 KB** | matches architecture §7.1 / §7.2 (refreshed 2026-11-17); min-pk derived from the rows (estimate) |
+| **`moonblokz-blockchain` subtotal** | **~87 KB** | **~150 KB** | **~105 KB** | matches architecture §7.1 / §7.2 (refreshed 2026-11-26: Story 7.1's 4-byte bitfield, −16.8 KB); min-pk derived from the rows (estimate) |
 | `Mempool` (sibling `moonblokz-mempool`) | ~24.3 KB | ~24.3 KB | ~24.3 KB | `MEMPOOL_COMPACT_BYTES` + compact index (128 × 32 B, `u32` offsets, DEC-223) including stored `transaction_fee` + small fields; authoritative layout in blockchain architecture §6.8 |
 | `VoteEngine.accumulated_vote` (sibling `moonblokz-vote`) | ~4 KB | ~4 KB | ~4 KB | `MAX_NODES` × 4 B |
 | **blockchain + mempool + vote** | **~131 KB** | **~194 KB** | **~148 KB** | estimates at 1 000 nodes; §3.2 counts the measured profiles |
