@@ -398,19 +398,26 @@ pub enum VoteEngineError {
     AccumulatedVoteOverflow,
     AccumulatedVoteUnderflow,
     UnreachableInterestState,
+    NotParameterized,       // no FR37 parameters yet (local)
+    HoldCountOutOfRange,    // a late-node hold count left 0..=255 (local, DEC-348)
 }
 
 pub struct VoteEngine<const MAX_NODES: usize> {
     accumulated_vote: [u32; MAX_NODES],      // 4 KB on 1000-node default
-    vote_scale: NonZeroU16,                  // one vote credit and interest cap
-    vote_interest: u8,                       // anti-capture growth numerator
-    cap_threshold: u32,                      // derived, not serialized
+    late_held: [u8; MAX_NODES],              // late-node hold counts (DEC-338)
+    params: Option<VoteParams>,              // vote_scale, vote_interest, derived cap threshold
 }
 
 impl<const MAX_NODES: usize> VoteEngine<MAX_NODES> {
-    pub fn new(vote_scale: NonZeroU16, vote_interest: u8) -> Self;
-    pub fn apply_block(&mut self, block: BlockView<'_>) -> Result<(), VoteEngineError>; // FR37 forward
-    pub fn undo_block(&mut self, block: BlockView<'_>) -> Result<(), VoteEngineError>;  // FR23 backward
+    pub fn init(slot: &mut MaybeUninit<Self>) -> &mut Self;              // in place, unparameterized
+    pub fn reset(&mut self, vote_scale: NonZeroU16, vote_interest: u8);  // parameterize + clear
+    // FR37 forward / FR23 backward; `credit_excluded` = the FR72 credit drop,
+    // `liveness` = the creator of `s − H` (DEC-178), `exit` = block `s − L`
+    // when an evidence block's hold ends with this block (DEC-346).
+    pub fn apply_block(&mut self, block: BlockView<'_>, credit_excluded: impl Fn(u32) -> bool,
+                       liveness: Option<u32>, exit: Option<BlockView<'_>>) -> Result<(), VoteEngineError>;
+    pub fn undo_block(&mut self, block: BlockView<'_>, credit_excluded: impl Fn(u32) -> bool,
+                      liveness: Option<u32>, exit: Option<BlockView<'_>>) -> Result<(), VoteEngineError>;
     pub fn seed_from_balance_block(&mut self, block: BlockView<'_>);      // FR50 seed source
     pub fn top_creator(&self) -> Option<u32>;                             // FR38 top of creator order
     pub fn creator_at_rank(&self, rank: usize) -> Option<u32>;            // FR38 / FR44 fallback order
@@ -769,11 +776,10 @@ pub struct Mempool<const COMPACT_BYTES: usize, const MAX_ENTRIES: usize> {
 ```rust
 pub struct VoteEngine<const MAX_NODES: usize> {
     accumulated_vote: [u32; MAX_NODES],     // 4 KB
-    vote_scale: NonZeroU16,                 // 2 B
-    vote_interest: u8,                      // 1 B
-    cap_threshold: u32,                     // 4 B derived threshold
+    late_held: [u8; MAX_NODES],             // 1 KB, late-node hold counts (DEC-338)
+    params: Option<VoteParams>,             // vote_scale 2 B, vote_interest 1 B, cap_threshold 4 B
 }
-// total ~4 KB plus a few scalar config fields
+// total ~5 KB plus a few scalar config fields
 ```
 
 ---
