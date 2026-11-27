@@ -827,7 +827,7 @@ pub struct VoteEngine<const MAX_NODES: usize> {
 
 ### 7.3 264 KB SRAM full allocation
 
-Measured on the node's own build since Story 12.1 (DEC-289, DEC-297), here after Story 7.7 (Story 7.1's 4-byte available-UTXO bitfield, DEC-318, −16 800 B static RAM; after Story 12.2's stack diet the margins were 3 649 / 4 499 / 2 857 B; Story 7.2 adds no static RAM, +692…732 B flash and +8 B to the `bls-min-sig` peak; Story 7.7's late-node hold count adds +1 000 / 264 / 216 B static RAM, +228…308 B flash and −8 / +32 / 0 B to the peaks), at each scheme's RP2040 profile (§12.2), in bytes; 264 KB = 270 336 B. The blockchain task runs on Core 0's main stack and the blockchain lives in its task's `TaskStorage`, with the real rp2040 storage. (Stories 6.17–6.7 measured the probe model, with an opaque storage and the blockchain task on Core 1: margins 4 373 / 101 / 21 B at 1 000 / 258 / 211 nodes.)
+Measured on the node's own build since Story 12.1 (DEC-289, DEC-297), here after Story 7.7 (Story 7.1's 4-byte available-UTXO bitfield, DEC-318, −16 800 B static RAM; after Story 12.2's stack diet the margins were 3 649 / 4 499 / 2 857 B; Story 7.2 adds no static RAM, +692…732 B flash and +8 B to the `bls-min-sig` peak; Story 7.7's late-node hold count adds +1 000 / 264 / 216 B static RAM, +224…304 B flash and −8 / +32 / 0 B to the peaks), at each scheme's RP2040 profile (§12.2), in bytes; 264 KB = 270 336 B. The blockchain task runs on Core 0's main stack and the blockchain lives in its task's `TaskStorage`, with the real rp2040 storage. (Stories 6.17–6.7 measured the probe model, with an opaque storage and the blockchain task on Core 1: margins 4 373 / 101 / 21 B at 1 000 / 258 / 211 nodes.)
 
 | Consumer | Schnorr (1 000 nodes) | `bls-min-sig` (258) | `bls-min-pk` (211) | Basis |
 |---|---:|---:|---:|---|
@@ -1021,9 +1021,9 @@ Built and measured in Story 6.17 (DEC-254) with the footprint probe (`footprint.
 
 | Profile | `MAX_NODES` | Blockchain stack (Core 0, required) | Blockchain task pool | Node flash (measured) | Margin (264 KB) |
 |---|---:|---:|---:|---:|---:|
-| Schnorr (default) | 1 000 | 36 950 B | 97 184 B | 133 760 B | 19 479 B ✅ |
-| `bls-min-sig` | 258 | 57 450 B | 75 168 B | 199 692 B | 20 995 B ✅ |
-| `bls-min-pk` | 211 | 72 360 B | 61 792 B | 201 488 B | 19 461 B ✅ |
+| Schnorr (default) | 1 000 | 36 950 B | 97 184 B | 133 756 B | 19 479 B ✅ |
+| `bls-min-sig` | 258 | 57 450 B | 75 168 B | 199 688 B | 20 995 B ✅ |
+| `bls-min-pk` | 211 | 72 360 B | 61 792 B | 201 484 B | 19 461 B ✅ |
 
 The probe model fitted 1 000 / 258 / 211 with margins 4 373 / 101 / 21 B. Story 12.1 re-fitted the node's own build to 800 / 240 / 95 (margins 779 / 827 / 203 B, DEC-297); Story 12.2's stack diet restored 1 000 / 258 / 211 exactly (DEC-300), the margins kept as headroom for the mempool link and the radio roots (largest fits 1 072 / 297 / 254).
 

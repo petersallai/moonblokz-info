@@ -167,9 +167,9 @@ Per-lever savings: [`moonblokz-blockchain-architecture.md`](./moonblokz-blockcha
 
 | Profile | `MAX_NODES` | Blockchain stack (Core 0, required) | Blockchain task pool | Node flash (measured) | Margin |
 |---|---:|---:|---:|---:|---:|
-| Schnorr (default) | 1 000 | 36 950 B | 97 184 B | 133 760 B | 19 479 B ✅ |
-| `bls-min-sig` | 258 | 57 450 B | 75 168 B | 199 692 B | 20 995 B ✅ |
-| `bls-min-pk` | 211 | 72 360 B | 61 792 B | 201 488 B | 19 461 B ✅ |
+| Schnorr (default) | 1 000 | 36 950 B | 97 184 B | 133 756 B | 19 479 B ✅ |
+| `bls-min-sig` | 258 | 57 450 B | 75 168 B | 199 688 B | 20 995 B ✅ |
+| `bls-min-pk` | 211 | 72 360 B | 61 792 B | 201 484 B | 19 461 B ✅ |
 
 Re-fitted by Story 12.1 (DEC-297) to 800 / 240 / 95 once the node measured its own build, and restored to exactly 1 000 / 258 / 211, the probe-model profiles, by Story 12.2's stack diet (DEC-300): the rp2040 chain-config write works on bytes (DEC-299), genesis builds its blocks in place (DEC-301), and the evidence check builds its key array in place (DEC-302). The profiles live in the board binary (`moonblokz-node-rp2040` `MAX_NODES`) and the footprint probe follows them.
 
