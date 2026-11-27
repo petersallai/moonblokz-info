@@ -101,14 +101,14 @@ Common: every referenced id (initializer, receiver, balance-input initializer, b
 
 For every accepted block `b` with creator `c`, in order [FR37]:
 1. `∀ n: av(n) += min(⌊av(n)·vi / vs⌋, vs)` — anti-capture interest, `c` included.
-2. `∀ n ∈ {tx.vote : tx ∈ b}`, carry-forward excluded: `av(n) += vs` once, however many transactions name `n` (DEC-176), unless `n` is under an FR72 or late-node exclusion at `b` (DEC-175, DEC-184).
+2. `∀ n ∈ {tx.vote : tx ∈ b}`, carry-forward excluded: `av(n) += vs` once, however many transactions name `n` (DEC-176), unless `n` is in an FR72 credit drop or a late-node hold at `b` (DEC-279, DEC-337).
 3. `av(c) := 0`. A deviation block additionally sets `av(first_voted_node) := 0`.
-4. Liveness credit: if `s ≥ H` and `vi > 0`, the creator `n` of block `s − H` gains `av(n) += ⌈vs/vi⌉`, unless `n = c`, `n` is late-node-excluded or in its FR72 credit drop, or `b` is a twin fact block naming `n` [DEC-178, DEC-184, DEC-279].
+4. Liveness credit: if `s ≥ H` and `vi > 0`, the creator `n` of block `s − H` gains `av(n) += ⌈vs/vi⌉`, unless `n = c`, `n` is in a late-node hold or its FR72 credit drop, `b` is a twin fact block naming `n`, or `b` is a deviation block whose `first_voted_node` is `n` [DEC-178, DEC-279, DEC-337, DEC-342]; `n` is read from block `s − H`'s header [DEC-339].
 5. Overflow of any `av` ⇒ the block is invalid.
 
 Header snapshots: `consumed_votes(b)` is `av(c)` after step 1 and before step 2. A deviation block's `consumed_votes_from_first_voted_node` is that node's value at the same point; it is verified at Tier 3 and used to undo the penalty, but it adds no branch value. So a block's own credits never enter its value, while step 3 still wipes the credits `b` gave `c` [FR37, DEC-156].
 
-The expected creator after block `s` is the top of the creator order; zero-vote nodes are included, so node 0 leads in the all-zero state; late-node-excluded nodes are left out [FR38, FR44]. A twin fact block also sets `av(c) := 0` for the equivocating creator, and in the `H` blocks after it, `e + 1 … e + H`, votes for `c` credit nothing [FR72, DEC-279]. The vote target is chosen outside the chain by the transaction creator (radio scoring module) and is validated only for existence and no-self-vote [FR55].
+The expected creator after block `s` is the top of the creator order; zero-vote nodes are included, so node 0 leads in the all-zero state; no node is left out [FR38, FR44, DEC-337]. An approval evidence block `e` resets its late-node list to 0, and those nodes and `u` stay at 0 (no step-2 or step-4 credit) for `e + 1 … e + min(H, 255)` [DEC-184, DEC-337]. A twin fact block also sets `av(c) := 0` for the equivocating creator, and in the `H` blocks after it, `e + 1 … e + H`, votes for `c` credit nothing [FR72, DEC-279]. The vote target is chosen outside the chain by the transaction creator (radio scoring module) and is validated only for existence and no-self-vote [FR55].
 
 ## 8. Block production
 
@@ -122,10 +122,10 @@ The expected creator after block `s` is the top of the creator order; zero-vote 
 
 **Deviation block** `d` at sequence `p` by an admitted `x ≠ u` (`u` = top at `p − 1`): `first_voted_node = u`, `consumed_votes` = `x`'s value after step 1 of §7; on acceptance `av(x) := 0` and `av(u) := 0` [FR28, FR37]. It is accepted immediately as an active extension. `u` is the top, so `av(x) ≤ av(u)`, and `v(d)` never exceeds the normal block `n` that `u` could create at `p`. An approval-less deviation branch therefore cannot overtake the normal branch, and equal votes tie [FR21, FR28, DEC-156].
 
-**Late-node penalty** [FR27, FR37, FR38, DEC-184]: the evidence block of a deviation by `x` at `p` lists, in creator order at `p − 1`, the nodes ranked above `x` except `u`, each with its accumulated vote, as many as fit (69 at `r = 40` with Schnorr, DEC-242). Each listed node and `u` is reset to 0 and left out of the creator order for `W` blocks, its vote held at 0 (no credits, no liveness credit), so one approval removes a silent cluster.
+**Late-node penalty** [FR27, FR37, DEC-184, DEC-337]: the evidence block of a deviation by `x` at `p` lists, in creator order at `p − 1`, the nodes ranked above `x` except `u`, each with its accumulated vote, as many as fit (69 at `r = 40` with Schnorr, DEC-242). Each listed node is reset to 0, and each listed node and `u` is held at 0 (no credits, no liveness credit) for the `min(H, 255)` blocks after the evidence block, without leaving the creator order or `A`, so one approval clears a silent cluster, which cannot climb back on its own votes during the hold [DEC-337, DEC-338].
 
 **Subgroup** [ADR-015, FR12], evaluated on the evaluator's local active chain:
-- `A` = nodes that, within the window of `p − 1`, created a block (any type); transaction senders and evidence signers do not count; late-node-excluded nodes are left out [DEC-185, DEC-241]; FR72 excludes no one [DEC-279].
+- `A` = nodes that, within the window of `p − 1`, created a block (any type); transaction senders and evidence signers do not count [DEC-185, DEC-241]; neither FR72 nor the late-node hold excludes anyone [DEC-279, DEC-337].
 - `seed = H("MBSEED" ‖ p ‖ currency(p − 1) ‖ x)`, `currency` = all balances plus unspent UTXO amounts after `p − 1` [DEC-192]; `node_value(n) = (H(seed ‖ n) mod 2³²)·2³² + n`.
 - Voting set `A'` = `A` without `x` and `u`; `r_eff = min(r, ⌊|A'|/2⌋ + 1)` with `r = required_support ∈ [1, MAX_AGG]` (a cap), `m = min(2·r_eff − 1, |A'|)`; subgroup = the `m` members of `A'` with the smallest `node_value`; `A'` empty ⇒ no approval [DEC-172].
 
@@ -198,7 +198,7 @@ Block #0 (by node 0, `previous_hash = 0³²`): registration of node 0 (`new_node
 | 4 | `max_block_utxo_output` | 32 | | 23 | `custodian_fee` (c) | 1 |
 | 5 | `mining_reward` | 0 | | 24 | `registration_price` | 100 |
 | 6 | `vote_scale` (vs) | 1000 | | 25 | `tx_fee_per_byte_min` | 1 |
-| 7 | `vote_interest` (vi) | 50 | | 26 | `tx_fee_per_byte_max` | 1000 |
+| 7 | `vote_interest` (vi) | 100 | | 26 | `tx_fee_per_byte_max` | 1000 |
 | 8 | `parent_recovery_per_head_retry_interval_ms` | 120 000 | | 27 | `deviation_replay_insertion_delay_ms` | 300 000 |
 | 9 | `parent_recovery_min_emit_interval_ms` | 10 000 | | 28 | `replay_block_reward` | 100 |
 | 10 | `required_support` (r, cap of `r_eff`) | 40 (⇒ m = 79 once `\|A'\| ≥ 79`) | | 29 | VM fuel limit | its ceiling |

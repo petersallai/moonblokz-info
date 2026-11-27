@@ -789,7 +789,7 @@ pub struct VoteEngine<const MAX_NODES: usize> {
 | NodeInfo.seed_source_idx | 1000 × 4 B | 4 000 |
 | NodeInfo.max_known_node_id | 4 B | 4 |
 | Active-set membership counter (DEC-185, DEC-213) + tail creator | 1000 × 2 B + 4 B | 2 004 |
-| Exclusion markers (DEC-184; FR72 needs none, DEC-279, DEC-280) | 1000 bits; sized by 7.2 | ~125 |
+| Exclusion markers: none — the late-node hold is a per-node `u8` count in `VoteEngine`, counted with it (DEC-337, DEC-338); FR72 needs none (DEC-279, DEC-280) | — | 0 |
 | Circulating currency (7.6, DEC-192) | u64 | 8 |
 | Replenishment requester LRU (DEC-189) | ~32 × 12 B; sized by 10.4 | ~384 |
 | Non-conflict ring (DEC-198, DEC-219) + support floor `F` | 16 × 13 B (256 B if padded) + 4 B | 212 |
@@ -803,9 +803,9 @@ pub struct VoteEngine<const MAX_NODES: usize> {
 | Open deviation run (DEC-261) + re-entry flag (DEC-258) | u32 + bool | 5 |
 | SchedulerState | 5 × Option\<u64\> + u64 | 88 |
 | PRNG root | u64 | 8 |
-| **Subtotal (Schnorr)** | | **~86 551** |
+| **Subtotal (Schnorr)** | | **~86 426** |
 
-**Refreshed 2026-10-28.** Adds the DEC-185 active-set counter, the FR72 / DEC-184 exclusion markers, the circulating currency (DEC-192) and the DEC-189 requester LRU, and replaces the ApprovalAccumulator buffer with the DEC-195 per-support store: about +3.9 KB over the earlier ~95 KB. The marker and LRU sizes are estimates until Stories 6.13 and 10.4 fix them. **Refreshed 2026-10-29:** adds the DEC-198 non-conflict ring and the DEC-199 support-relay dedupe LRU, +1.7 KB. **Refreshed 2026-11-10:** `BlockEntry` 80 B (DEC-224, +2.4 KB) and the mempool's `u32` index (DEC-223, +1 KB in §7.3). Measured by Story 6.15 (`tools/footprint`, reference tier, against `main`): static RAM +2.4 KiB, flash +0.1 KiB, stack peaks unchanged; the mempool's +1 KB (32 B `Option<IndexEntry>`, measured with `size_of` on thumbv6m) shows once Epic 7 holds the mempool. **Refreshed 2026-11-11 (Story 6.4 ratification):** the active-set counter keeps the creator of the window tail for its next decrement (DEC-213) and the ring a monotone support floor `F` (DEC-219), +8 B; the ring is 208 B with 13 B entries or 256 B padded, which Story 6.4 measures. Measured by Story 6.4 (`tools/footprint`, reference tier, against `main`): static RAM +2216 B — the counter 2000 B and its tail creator 4 B, the packed ring 208 B and `F` 4 B — flash +1.7 KiB (53 248 B after the code-review fixes), `receive_block` stack 12.1 KB (+144 B; the evaluation's transient 1 KB returning-creator flags lie off the deepest path), `initialize_from_storage` 15.9 KB (+32 B), the `process_genesis` peak unchanged at 19.2 KB. **Refreshed 2026-11-13 (Story 6.5 ratification):** the support-relay dedupe is a FIFO with a 1 B cursor (DEC-231), +1 B. Measured by Story 6.5 (`tools/footprint`, reference tier, against `main`): static RAM +1 536 B (103 432 → 104 968 B; the cursor falls into padding), flash +3.3 KB with `receive_support` linked (it pulls in the multi-signature verification), `receive_support` stack 3 920 B, the `process_genesis` peak unchanged at 19 264 B. The flash growth, about ten times the story's estimate, was accepted by the Project Lead at the 6.5 code review (2026-11-13): FR26 (ii) needs the multi-signature verification, and Stories 6.6 / 6.7 use it anyway. The code review added the 8 B dedupe salt (DEC-230). **Refreshed 2026-11-17 (Story 6.6 ratification):** the `ApprovalAccumulator` keeps the ranked subgroup and the serialized supports (DEC-236), ~3 686 B instead of ~3 400 B, and `SchedulerState` gains the FR29 replay-insertion deadline (DEC-243, Story 8.4), +16 B. Measured by Story 6.6 (footprint probe, against `main`): static RAM +3 688 B (104 832 → 108 520 B), the accumulator alone; flash 66 676 → 67 844 B; every root within +24 B, the `process_genesis` peak unchanged (§8); the Schnorr margin drops to 4 381 B (§7.3) and the BLS profiles are re-fitted (§12.2). **Refreshed 2026-11-19 (Story 6.7):** `active_open_run` (4 B, DEC-261) and the `reentry_due` flag (1 B, DEC-258). Measured by Story 6.7 (footprint probe, against `main`): static RAM +8 B (108 520 → 108 528 B); flash 67 956 → 76 080 B (+8 124 B); the inline evidence check makes the FR3 pass the `bls-min-sig` stack peak, so its Core 1 grows to 57 KiB and its profile re-fits to 258 nodes (§8, §12.2, DEC-263); Schnorr margin 4 373 B.
+**Refreshed 2026-10-28.** Adds the DEC-185 active-set counter, the FR72 / DEC-184 exclusion markers, the circulating currency (DEC-192) and the DEC-189 requester LRU, and replaces the ApprovalAccumulator buffer with the DEC-195 per-support store: about +3.9 KB over the earlier ~95 KB. The marker and LRU sizes are estimates until Stories 6.13 and 10.4 fix them. **Refreshed 2026-10-29:** adds the DEC-198 non-conflict ring and the DEC-199 support-relay dedupe LRU, +1.7 KB. **Refreshed 2026-11-10:** `BlockEntry` 80 B (DEC-224, +2.4 KB) and the mempool's `u32` index (DEC-223, +1 KB in §7.3). Measured by Story 6.15 (`tools/footprint`, reference tier, against `main`): static RAM +2.4 KiB, flash +0.1 KiB, stack peaks unchanged; the mempool's +1 KB (32 B `Option<IndexEntry>`, measured with `size_of` on thumbv6m) shows once Epic 7 holds the mempool. **Refreshed 2026-11-11 (Story 6.4 ratification):** the active-set counter keeps the creator of the window tail for its next decrement (DEC-213) and the ring a monotone support floor `F` (DEC-219), +8 B; the ring is 208 B with 13 B entries or 256 B padded, which Story 6.4 measures. Measured by Story 6.4 (`tools/footprint`, reference tier, against `main`): static RAM +2216 B — the counter 2000 B and its tail creator 4 B, the packed ring 208 B and `F` 4 B — flash +1.7 KiB (53 248 B after the code-review fixes), `receive_block` stack 12.1 KB (+144 B; the evaluation's transient 1 KB returning-creator flags lie off the deepest path), `initialize_from_storage` 15.9 KB (+32 B), the `process_genesis` peak unchanged at 19.2 KB. **Refreshed 2026-11-13 (Story 6.5 ratification):** the support-relay dedupe is a FIFO with a 1 B cursor (DEC-231), +1 B. Measured by Story 6.5 (`tools/footprint`, reference tier, against `main`): static RAM +1 536 B (103 432 → 104 968 B; the cursor falls into padding), flash +3.3 KB with `receive_support` linked (it pulls in the multi-signature verification), `receive_support` stack 3 920 B, the `process_genesis` peak unchanged at 19 264 B. The flash growth, about ten times the story's estimate, was accepted by the Project Lead at the 6.5 code review (2026-11-13): FR26 (ii) needs the multi-signature verification, and Stories 6.6 / 6.7 use it anyway. The code review added the 8 B dedupe salt (DEC-230). **Refreshed 2026-11-17 (Story 6.6 ratification):** the `ApprovalAccumulator` keeps the ranked subgroup and the serialized supports (DEC-236), ~3 686 B instead of ~3 400 B, and `SchedulerState` gains the FR29 replay-insertion deadline (DEC-243, Story 8.4), +16 B. Measured by Story 6.6 (footprint probe, against `main`): static RAM +3 688 B (104 832 → 108 520 B), the accumulator alone; flash 66 676 → 67 844 B; every root within +24 B, the `process_genesis` peak unchanged (§8); the Schnorr margin drops to 4 381 B (§7.3) and the BLS profiles are re-fitted (§12.2). **Refreshed 2026-11-19 (Story 6.7):** `active_open_run` (4 B, DEC-261) and the `reentry_due` flag (1 B, DEC-258). Measured by Story 6.7 (footprint probe, against `main`): static RAM +8 B (108 520 → 108 528 B); flash 67 956 → 76 080 B (+8 124 B); the inline evidence check makes the FR3 pass the `bls-min-sig` stack peak, so its Core 1 grows to 57 KiB and its profile re-fits to 258 nodes (§8, §12.2, DEC-263); Schnorr margin 4 373 B. **Refreshed 2026-11-27 (Story 7.2 ratification):** the DEC-184 exclusion markers (~125 B here) become the DEC-337 late-node hold, a per-node `u8` count in `VoteEngine` beside `accumulated_vote` (DEC-338): `MAX_NODES` B (1 000 / 258 / 211 B on the reference profiles), built and measured by Story 7.7.
 
 ### 7.2 Chain-lib subtotal — BLS — ~150 KB
 
@@ -813,13 +813,13 @@ pub struct VoteEngine<const MAX_NODES: usize> {
 |---|---:|---:|
 | NodeInfo.public_keys | 1000 × 96 B | 96 000 |
 | NodeInfo.balances + seed_source_idx + max_known | 12 004 | 12 004 |
-| Active-set counter + exclusion markers + circulating currency + requester LRU + non-conflict ring + support-relay FIFO | 2 004 + ~125 + 8 + ~384 + 212 + 1 537 | ~4 270 |
+| Active-set counter + circulating currency + requester LRU + non-conflict ring + support-relay FIFO | 2 004 + 8 + ~384 + 212 + 1 537 | ~4 145 |
 | BlockTable | 600 × 52 B (80 B before Story 7.1's 4-byte bitfield, DEC-318) | 31 200 |
 | ChainHeadsTable | 40 × 72 B | 2 880 |
 | snake_chain fields | 8 | 8 |
 | ApprovalAccumulator | 486 B + 50 × 48 B serialized multi-signatures (DEC-236; 5 286 B with `bls-min-pk`) | ~2 886 |
 | EmitScratch + lifecycle + scheduler + PRNG | ~2 097 | 2 097 |
-| **Subtotal (BLS)** | | **~149 744** |
+| **Subtotal (BLS)** | | **~149 619** |
 
 **Per BLS variant:** this column is `bls-min-sig` (96 B keys) at 1 000 nodes; `bls-min-pk` keys are 48 B. Measured in Story 6.17 (footprint probe): the blockchain's static RAM, its `VoteEngine` included, is about 54 800 B plus 50 / 114 / 66 B per node (Schnorr / `bls-min-sig` / `bls-min-pk`); Story 6.6's accumulator raises the fixed part to about 58 500 / 57 800 / 60 000 B. No BLS variant fits 264 KB at 1 000 nodes; the RP2040 profiles are in §12.2 (DEC-254).
 
@@ -827,20 +827,20 @@ pub struct VoteEngine<const MAX_NODES: usize> {
 
 ### 7.3 264 KB SRAM full allocation
 
-Measured on the node's own build since Story 12.1 (DEC-289, DEC-297), here after Story 7.1's 4-byte available-UTXO bitfield (DEC-318, −16 800 B static RAM; after Story 12.2's stack diet the margins were 3 649 / 4 499 / 2 857 B), at each scheme's RP2040 profile (§12.2), in bytes; 264 KB = 270 336 B. The blockchain task runs on Core 0's main stack and the blockchain lives in its task's `TaskStorage`, with the real rp2040 storage. (Stories 6.17–6.7 measured the probe model, with an opaque storage and the blockchain task on Core 1: margins 4 373 / 101 / 21 B at 1 000 / 258 / 211 nodes.)
+Measured on the node's own build since Story 12.1 (DEC-289, DEC-297), here after Story 7.2 (Story 7.1's 4-byte available-UTXO bitfield, DEC-318, −16 800 B static RAM; after Story 12.2's stack diet the margins were 3 649 / 4 499 / 2 857 B; Story 7.2 adds no static RAM, +692…732 B flash and +8 B to the `bls-min-sig` peak), at each scheme's RP2040 profile (§12.2), in bytes; 264 KB = 270 336 B. The blockchain task runs on Core 0's main stack and the blockchain lives in its task's `TaskStorage`, with the real rp2040 storage. (Stories 6.17–6.7 measured the probe model, with an opaque storage and the blockchain task on Core 1: margins 4 373 / 101 / 21 B at 1 000 / 258 / 211 nodes.)
 
 | Consumer | Schnorr (1 000 nodes) | `bls-min-sig` (258) | `bls-min-pk` (211) | Basis |
 |---|---:|---:|---:|---|
 | blockchain task pool (`Blockchain` incl. vote + by-value arguments) | 96 184 | 74 904 | 61 576 | measured (node ELF) |
 | node statics (USB console, executor pools, channels) | 7 872 | 7 872 | 7 872 | measured (node build) |
 | Core 1 stack (USB console; later the radio) | 8 192 | 8 192 | 8 192 | reservation |
-| Core 0 main stack (blockchain task), required | 36 960 | 57 400 | 72 360 | §8, node-ELF peak × 1.25 |
+| Core 0 main stack (blockchain task), required | 36 960 | 57 410 | 72 360 | §8, node-ELF peak × 1.25 |
 | moonblokz-mempool | 24 883 | 24 883 | 24 883 | ~24.3 KB (§6.8), not linked yet |
 | moonblokz-radio-lib (memory-config-medium) | 61 440 | 61 440 | 61 440 | ~60 KB, source-confirmed |
 | moonblokz-crypto-lib scratch | 4 096 | 4 096 | 4 096 | estimate |
 | Core 1 radio tasks | 10 240 | 10 240 | 10 240 | estimate, not linked yet |
-| **Total** | **249 867** | **249 027** | **250 659** | |
-| **Margin** (270 336 − total) | **20 469** ✅ | **21 309** ✅ | **19 677** ✅ | |
+| **Total** | **249 867** | **249 037** | **250 659** | |
+| **Margin** (270 336 − total) | **20 469** ✅ | **21 299** ✅ | **19 677** ✅ | |
 
 **Radio figure:** `memory-config-medium` is counted at its source-confirmed ~60 KB (`moonblokz-radio-lib` README + `lib.rs` profile consts); an earlier ~30-40 KB estimate under-counted it and made the BLS default appear feasible.
 
@@ -1021,9 +1021,9 @@ Built and measured in Story 6.17 (DEC-254) with the footprint probe (`footprint.
 
 | Profile | `MAX_NODES` | Blockchain stack (Core 0, required) | Blockchain task pool | Node flash (measured) | Margin (264 KB) |
 |---|---:|---:|---:|---:|---:|
-| Schnorr (default) | 1 000 | 36 960 B | 96 184 B | 132 804 B | 20 469 B ✅ |
-| `bls-min-sig` | 258 | 57 400 B | 74 904 B | 198 668 B | 21 309 B ✅ |
-| `bls-min-pk` | 211 | 72 360 B | 61 576 B | 200 500 B | 19 677 B ✅ |
+| Schnorr (default) | 1 000 | 36 960 B | 96 184 B | 133 532 B | 20 469 B ✅ |
+| `bls-min-sig` | 258 | 57 410 B | 74 904 B | 199 384 B | 21 299 B ✅ |
+| `bls-min-pk` | 211 | 72 360 B | 61 576 B | 201 188 B | 19 677 B ✅ |
 
 The probe model fitted 1 000 / 258 / 211 with margins 4 373 / 101 / 21 B. Story 12.1 re-fitted the node's own build to 800 / 240 / 95 (margins 779 / 827 / 203 B, DEC-297); Story 12.2's stack diet restored 1 000 / 258 / 211 exactly (DEC-300), the margins kept as headroom for the mempool link and the radio roots (largest fits 1 072 / 297 / 254).
 
