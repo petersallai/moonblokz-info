@@ -80,7 +80,7 @@ The pair votes only inside its own blocks. If it also buys space in honest block
 | 100 | 71% / 68% | 70% / 64% | 55% / 35% |
 | 300 | 63% / 55% | 63% / 53% | 52% / 28% |
 
-The cap alone fixes the pair at any `vi`; `vi = 50` is the price of AR-020. Higher `vi` costs little more steering (255: 52% / 31% at `N = 100`).
+The cap alone fixes the pair at any `vi`; `vi = 50` is the price of AR-020 — since DEC-343 the default is 100, which a later sweep under the 7.2 rules measured at 53 / 37 / 25 % steering (`N` = 30 / 100 / 300, 3 tx/block). Higher `vi` costs little more steering (255: 52% / 31% at `N = 100`).
 
 **Larger coalitions (accepted residual, DEC-186).** A coalition's blocks credit its own members (up to 18) while an honest block credits its `T` senders' targets, so at low traffic a coalition creates more than its share (vote model, cap, `vi = 50`, liveness credit; coalition block share at 1 / 3 / 18 honest transactions per block):
 
@@ -246,10 +246,11 @@ Blocks cost nothing to make (no work, no timestamp, §16.1), so the length a pri
 |---|---|---|---|---|
 | 5 | 51 | 51 | 51 | 5 |
 | 20 | 46 | 51 | 5 | 4 |
-| 50 (adopted) | 14 | 6 | 5 | 4 |
+| 50 (DEC-176) | 14 | 6 | 5 | 4 |
+| 100 (default since DEC-343; 2026-11-27 sweep) | 7 | 5 | 9 | 8 |
 | 255 | 6 | 4 | 5 | — |
 
-Coalition of 20 % of the nodes; a pair stays at 2 blocks with the cap at every `vi`. The protection threshold is about `N·vi/vs ≳ 5`, and the vote steering at the threshold is the same at every `N` (about 55 % / 34 %, AR-003), so a network-size-adaptive `vi` would gain only a few points of steering at large `N` and the stronger bound below `N = 100`. It was not adopted: its only chain-info input, the registered-node count, can be inflated with dead sybil registrations to lower `vi` for everyone (at `N = 100`, 100 sybils halve it and reopen 51-block runs), and it needs a bound per-block call site and a window-anchored pass that can evaluate it (O-031). A network below about 100 nodes may declare a higher literal. The adjacent-cluster route is untouched.
+Coalition of 20 % of the nodes (the 2026-11-27 sweep under the 7.2 rules reproduces the 50 row within a block and spreads 5–9 above `vi = 50` at large `N`); a pair stays at 2 blocks with the cap at every `vi`. The protection threshold is about `N·vi/vs ≳ 5`, and the vote steering at the threshold is the same at every `N` (about 55 % / 34 %, AR-003), so a network-size-adaptive `vi` would gain only a few points of steering at large `N` and the stronger bound below `N = 100`. It was not adopted: its only chain-info input, the registered-node count, can be inflated with dead sybil registrations to lower `vi` for everyone (at `N = 100`, 100 sybils halve it and reopen 51-block runs), and it needs a bound per-block call site and a window-anchored pass that can evaluate it (O-031). A network below about 100 nodes may declare a higher literal. The adjacent-cluster route is untouched.
 
 Arranging members next to each other was feasible under the earlier rules: members parked at zero accumulated vote, then restarted together on their own zero-fee votes (50 adjacent members in 0.3–1.6 days at `N = 100` with `vi ≈ 5·vs/N`). Re-run on 2026-10-28 under the current rules (per-target cap and `vi = 50`, DEC-176; liveness credit, DEC-178) with the same heuristic, the free route — the coalition's own blocks only — reached its target in no setting within 40 000 blocks, except once without the liveness credit. The only route that still worked buys votes in the free slots of honest blocks at low traffic (3 honest transactions per block): 10 adjacent members in 0.1–0.6 days with about 0.4–2.6 thousand bought transactions (`N` = 100 / 300), and 50 in 1.1–1.4 days with 12–15 thousand at `N = 300` and in 3.2 days with 39 thousand at `N = 1000`. With full blocks there is no free slot, and no setting succeeded. Those votes pay real fees to honest creators, so `tx_fee_per_byte_min = 1` prices this route at about 101 units per bought vote: roughly 37–265 thousand units for 10 members and 1.2–4 million for 50, plus the sybil registrations (O-033) (DEC-181). A heuristic that found no route does not prove that none exists. Since DEC-186 (15-minute `inter_block_interval_ms`) honest blocks fill from about one transaction per minute, so the free slots this route buys exist only in quieter traffic. Paths to a reorg and what stops them today:
 

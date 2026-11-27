@@ -198,7 +198,7 @@ Block #0 (by node 0, `previous_hash = 0³²`): registration of node 0 (`new_node
 | 4 | `max_block_utxo_output` | 32 | | 23 | `custodian_fee` (c) | 1 |
 | 5 | `mining_reward` | 0 | | 24 | `registration_price` | 100 |
 | 6 | `vote_scale` (vs) | 1000 | | 25 | `tx_fee_per_byte_min` | 1 |
-| 7 | `vote_interest` (vi) | 50 | | 26 | `tx_fee_per_byte_max` | 1000 |
+| 7 | `vote_interest` (vi) | 100 | | 26 | `tx_fee_per_byte_max` | 1000 |
 | 8 | `parent_recovery_per_head_retry_interval_ms` | 120 000 | | 27 | `deviation_replay_insertion_delay_ms` | 300 000 |
 | 9 | `parent_recovery_min_emit_interval_ms` | 10 000 | | 28 | `replay_block_reward` | 100 |
 | 10 | `required_support` (r, cap of `r_eff`) | 40 (⇒ m = 79 once `\|A'\| ≥ 79`) | | 29 | VM fuel limit | its ceiling |
