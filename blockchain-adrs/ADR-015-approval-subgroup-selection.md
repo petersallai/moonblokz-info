@@ -77,7 +77,7 @@ The twin-round seed follows the same rules.
 
 #### Chain-config invariant
 
-Only the supporters that actually sign are written into the approval evidence (the proposer writes exactly `r_eff`, one per subgroup rank; DEC-236; a validator accepts any population `n ≥ r_eff`, up to `MAX_AGGREGATED_SIGNATURES`, BC-FR27), so the crypto aggregation ceiling constrains `required_support`, not `m`:
+Only the supporters that actually sign are written into the approval evidence (exactly `r_eff`, one per subgroup rank: the proposer writes it and a validator requires it; DEC-236, DEC-347, BC-FR27), so the crypto aggregation ceiling constrains `required_support`, not `m`:
 
 ```
 required_support ≤ MAX_AGGREGATED_SIGNATURES(backend)
