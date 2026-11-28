@@ -374,22 +374,21 @@ pub struct Mempool<
 > { /* compact_buffer + index + sub-seed PRNG */ }
 
 impl<...> Mempool<...> {
-    pub fn new(sub_seed: u64, own_node_id: u32) -> Self;
+    pub fn init(slot: &mut MaybeUninit<Self>, sub_seed: u64, own_node_id: u32) -> &mut Self; // in place only (DEC-351)
     pub fn try_add(&mut self, tx: TransactionView<'_>, transaction_fee: u64, is_deferred: bool) -> AddResult;
     pub fn get_by_hash(&self, hash: &[u8; 32]) -> Option<TransactionView<'_>>;
     pub fn contains(&self, hash: &[u8; 32]) -> bool;
     pub fn confirm_by_block_acceptance(&mut self, accepted: &BlockView<'_>);
     pub fn recheck_eligibility(&mut self, balance_check: impl Fn(u32) -> u64);
     pub fn eligible_iter(&self) -> impl Iterator<Item = TransactionView<'_>> + '_;
+    pub fn entries_iter(&self) -> impl Iterator<Item = TransactionView<'_>> + '_; // Deferred included: FR14 key search (DEC-351)
     pub fn top_n_for_exchange(&self, n: usize) -> impl Iterator<Item = (TransactionView<'_>, u64)> + '_;
-    pub fn entry_count(&self) -> u8;
-    pub fn capacity_pressure(&self) -> CapacityPressure;
+    pub fn entry_count(&self) -> u16;
+    pub fn byte_usage(&self) -> u32;
 
     // Feature-gated introspection (FR65 #[cfg(feature = "introspection")])
     #[cfg(feature = "introspection")]
-    pub fn current_capacity_bytes(&self) -> u16;
-    #[cfg(feature = "introspection")]
-    pub fn max_capacity_bytes(&self) -> u16;
+    pub fn capacity_pressure(&self) -> CapacityPressure;
 }
 ```
 
