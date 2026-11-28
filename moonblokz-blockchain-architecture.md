@@ -765,13 +765,13 @@ pub struct Mempool<const COMPACT_BYTES: usize, const MAX_ENTRIES: usize> {
     index: [Option<IndexEntry>; MAX_ENTRIES],           // 128 × 32 B = 4 KB (u32 start/length, DEC-223)
     prng: Xoshiro256PlusPlus,                            // 32 B inner state (seeded from 8 B u64 sub-seed)
     byte_usage: u32,
-    entry_count: u8,
+    entry_count: u16,
     own_node_id: u32,                                    // local owner classification input for FR33
 }
-// total ~24.3 KB at the default profile before any later index bit-packing
+// 24 304 B at the default profile, measured inside the blockchain task pool (Story 7.3)
 ```
 
-`IndexEntry` is private mempool storage metadata, not public API. It carries the FR30 storage fields (`start`, `length`, `hash_crc32`, `transaction_fee`) plus support fields for deferred eligibility, local own/non-own classification, and byte-local window-expiry metadata. `hash_crc32` is IEEE CRC32 over the canonical transaction hash; lookup uses it only as a prefilter before full-hash verification, while FR43 replenishment uses it as the compact exclusion identifier. FR14's Duplicate-in-mempool is by uniqueness key, not by hash: the blockchain scans every entry, Deferred ones included, through the crate's read-only all-entries iteration and applies its own key predicate; the crate holds no key logic (DEC-351, Story 7.3). `Blockchain` owns the `Mempool` as a field, initialised in place inside `Blockchain::init` with the `mempool` sub-seed, and passes it its two capacity const generics (DEC-351). `transaction_fee` is the already-resolved fee supplied by the blockchain validation path at mempool admission, avoiding repeated UTXO block lookups during priority iteration and block assembly. There is no getter/accessor surface for this internal struct; module-local code and unit tests use direct field access to keep the embedded API surface small. `expiry_sequence` is `NodeTransfer.anchor_sequence`, the registration's `anchor_sequence` (DEC-356, Story 7.3; before it registrations had none), the minimum complex balance-input `anchor_sequence`, or `u32::MAX` when no byte-local sequence dependency is available (UTXO-only complex, zero-input complex). Under ADR-016 a UTXO input's `block_sequence` is byte-local too, so it can feed `expiry_sequence` (FR14 freshness `block_sequence > S_tail`, DEC-196); that expiry encoding is Story 7.4's (DEC-351), after which every entry lives at most `W` blocks. The FR33 ownership class is local: node-transfer and registration transactions are own when their initializer equals `own_node_id`; complex transactions are own when they have at least one input and either a balance input initializer or a balance output receiver equals `own_node_id`; UTXO-only and zero-input complex transactions are non-own. Offsets and lengths are `u32` (DEC-223, Story 6.15), so `COMPACT_BYTES` must be at least `MAX_BLOCK_SIZE` (FR56) and fit `u32`; `MAX_ENTRIES` is bounded by the `u8` entry count. `MAX_NODES` is intentionally not a mempool const generic: node-roster capacity belongs to `Blockchain` / `NodeInfo` and `VoteEngine`, while the mempool only needs the local `own_node_id` value to classify incoming transactions.
+`IndexEntry` is private mempool storage metadata, not public API. It carries the FR30 storage fields (`start`, `length`, `hash_crc32`, `transaction_fee`) plus support fields for deferred eligibility, local own/non-own classification, and byte-local window-expiry metadata. `hash_crc32` is IEEE CRC32 over the canonical transaction hash; lookup uses it only as a prefilter before full-hash verification, while FR43 replenishment uses it as the compact exclusion identifier. FR14's Duplicate-in-mempool is by uniqueness key, not by hash: the blockchain scans every entry, Deferred ones included, through the crate's read-only all-entries iteration and applies its own key predicate; the crate holds no key logic (DEC-351, Story 7.3). `Blockchain` owns the `Mempool` as a field, initialised in place inside `Blockchain::init` with the `mempool` sub-seed, and passes it its two capacity const generics (DEC-351). `transaction_fee` is the already-resolved fee supplied by the blockchain validation path at mempool admission, avoiding repeated UTXO block lookups during priority iteration and block assembly. There is no getter/accessor surface for this internal struct; module-local code and unit tests use direct field access to keep the embedded API surface small. `expiry_sequence` is `NodeTransfer.anchor_sequence`, the registration's `anchor_sequence` (DEC-356, Story 7.3; before it registrations had none), the minimum complex balance-input `anchor_sequence`, or `u32::MAX` when no byte-local sequence dependency is available (UTXO-only complex, zero-input complex). Under ADR-016 a UTXO input's `block_sequence` is byte-local too, so it can feed `expiry_sequence` (FR14 freshness `block_sequence > S_tail`, DEC-196); that expiry encoding is Story 7.4's (DEC-351), after which every entry lives at most `W` blocks. The FR33 ownership class is local: node-transfer and registration transactions are own when their initializer equals `own_node_id`; complex transactions are own when they have at least one input and either a balance input initializer or a balance output receiver equals `own_node_id`; UTXO-only and zero-input complex transactions are non-own. Offsets and lengths are `u32` (DEC-223, Story 6.15), so `COMPACT_BYTES` must be at least `MAX_BLOCK_SIZE` (FR56) and fit `u32`; `MAX_ENTRIES` is bounded by the `u16` entry count. `MAX_NODES` is intentionally not a mempool const generic: node-roster capacity belongs to `Blockchain` / `NodeInfo` and `VoteEngine`, while the mempool only needs the local `own_node_id` value to classify incoming transactions.
 
 ### 6.9 Vote engine internals (recap)
 
@@ -835,20 +835,19 @@ pub struct VoteEngine<const MAX_NODES: usize> {
 
 ### 7.3 264 KB SRAM full allocation
 
-Measured on the node's own build since Story 12.1 (DEC-289, DEC-297), here after Story 7.7 (Story 7.1's 4-byte available-UTXO bitfield, DEC-318, −16 800 B static RAM; after Story 12.2's stack diet the margins were 3 649 / 4 499 / 2 857 B; Story 7.2 adds no static RAM, +692…732 B flash and +8 B to the `bls-min-sig` peak; Story 7.7's late-node hold count adds +1 000 / 264 / 216 B static RAM, +224…304 B flash and −8 / +32 / 0 B to the peaks), at each scheme's RP2040 profile (§12.2), in bytes; 264 KB = 270 336 B. The blockchain task runs on Core 0's main stack and the blockchain lives in its task's `TaskStorage`, with the real rp2040 storage. (Stories 6.17–6.7 measured the probe model, with an opaque storage and the blockchain task on Core 1: margins 4 373 / 101 / 21 B at 1 000 / 258 / 211 nodes.)
+Measured on the node's own build since Story 12.1 (DEC-289, DEC-297), here after Story 7.3 (Story 7.1's 4-byte available-UTXO bitfield, DEC-318, −16 800 B static RAM; after Story 12.2's stack diet the margins were 3 649 / 4 499 / 2 857 B; Story 7.2 adds no static RAM, +692…732 B flash and +8 B to the `bls-min-sig` peak; Story 7.7's late-node hold count adds +1 000 / 264 / 216 B static RAM, +224…304 B flash and −8 / +32 / 0 B to the peaks; Story 7.3's mempool link, DEC-351, counts the measured 24 304 B mempool in the blockchain task pool in place of the 24 883 B reservation line, and adds +3 596 / 11 884 / 3 944 B flash and +40 / +264 / +40 B to the peaks), at each scheme's RP2040 profile (§12.2), in bytes; 264 KB = 270 336 B. The blockchain task runs on Core 0's main stack and the blockchain lives in its task's `TaskStorage`, with the real rp2040 storage. (Stories 6.17–6.7 measured the probe model, with an opaque storage and the blockchain task on Core 1: margins 4 373 / 101 / 21 B at 1 000 / 258 / 211 nodes.)
 
 | Consumer | Schnorr (1 000 nodes) | `bls-min-sig` (258) | `bls-min-pk` (211) | Basis |
 |---|---:|---:|---:|---|
-| blockchain task pool (`Blockchain` incl. vote + by-value arguments) | 97 184 | 75 168 | 61 792 | measured (node ELF) |
+| blockchain task pool (`Blockchain` incl. vote and mempool + by-value arguments) | 121 488 | 99 472 | 86 096 | measured (node ELF; the mempool 24 304 B, §6.8) |
 | node statics (USB console, executor pools, channels) | 7 872 | 7 872 | 7 872 | measured (node build) |
 | Core 1 stack (USB console; later the radio) | 8 192 | 8 192 | 8 192 | reservation |
-| Core 0 main stack (blockchain task), required | 36 950 | 57 450 | 72 360 | §8, node-ELF peak × 1.25 |
-| moonblokz-mempool | 24 883 | 24 883 | 24 883 | ~24.3 KB (§6.8), not linked yet |
+| Core 0 main stack (blockchain task), required | 37 000 | 57 780 | 72 410 | §8, node-ELF peak × 1.25 |
 | moonblokz-radio-lib (memory-config-medium) | 61 440 | 61 440 | 61 440 | ~60 KB, source-confirmed |
 | moonblokz-crypto-lib scratch | 4 096 | 4 096 | 4 096 | estimate |
 | Core 1 radio tasks | 10 240 | 10 240 | 10 240 | estimate, not linked yet |
-| **Total** | **250 857** | **249 341** | **250 875** | |
-| **Margin** (270 336 − total) | **19 479** ✅ | **20 995** ✅ | **19 461** ✅ | |
+| **Total** | **250 328** | **249 092** | **250 346** | |
+| **Margin** (270 336 − total) | **20 008** ✅ | **21 244** ✅ | **19 990** ✅ | |
 
 **Radio figure:** `memory-config-medium` is counted at its source-confirmed ~60 KB (`moonblokz-radio-lib` README + `lib.rs` profile consts); an earlier ~30-40 KB estimate under-counted it and made the BLS default appear feasible.
 
@@ -1029,11 +1028,11 @@ Built and measured in Story 6.17 (DEC-254) with the footprint probe (`footprint.
 
 | Profile | `MAX_NODES` | Blockchain stack (Core 0, required) | Blockchain task pool | Node flash (measured) | Margin (264 KB) |
 |---|---:|---:|---:|---:|---:|
-| Schnorr (default) | 1 000 | 36 950 B | 97 184 B | 133 756 B | 19 479 B ✅ |
-| `bls-min-sig` | 258 | 57 450 B | 75 168 B | 199 688 B | 20 995 B ✅ |
-| `bls-min-pk` | 211 | 72 360 B | 61 792 B | 201 484 B | 19 461 B ✅ |
+| Schnorr (default) | 1 000 | 37 000 B | 121 488 B | 137 352 B | 20 008 B ✅ |
+| `bls-min-sig` | 258 | 57 780 B | 99 472 B | 211 572 B | 21 244 B ✅ |
+| `bls-min-pk` | 211 | 72 410 B | 86 096 B | 205 428 B | 19 990 B ✅ |
 
-The probe model fitted 1 000 / 258 / 211 with margins 4 373 / 101 / 21 B. Story 12.1 re-fitted the node's own build to 800 / 240 / 95 (margins 779 / 827 / 203 B, DEC-297); Story 12.2's stack diet restored 1 000 / 258 / 211 exactly (DEC-300), the margins kept as headroom for the mempool link and the radio roots (largest fits 1 072 / 297 / 254).
+The probe model fitted 1 000 / 258 / 211 with margins 4 373 / 101 / 21 B. Story 12.1 re-fitted the node's own build to 800 / 240 / 95 (margins 779 / 827 / 203 B, DEC-297); Story 12.2's stack diet restored 1 000 / 258 / 211 exactly (DEC-300), the margins kept as headroom for the mempool link and the radio roots (largest fits 1 072 / 297 / 254). Since Story 7.3 the mempool is measured inside the pool (24 304 B, DEC-351), and the largest fits are 1 416 / 442 / 509.
 
 Node flash stays far inside the ~800 KB left for code beside the 600 block slots, so `MAX_BLOCKS = 600` keeps its headroom.
 
@@ -1060,7 +1059,7 @@ Tasks to bring the empty `moonblokz-blockchain` directory and the existing depen
 | 7 | Radio-lib getter API additions | `moonblokz-radio-lib` | Expose radio-derived score input cleanly for vote sub-crate (per PRD FR55 `scoring_module` boundary). |
 | 8 | Size the blockchain task stack per scheme (Core 1: 32 / 57 / 70 KiB until Story 12.1; Core 0's main stack since, DEC-289) | node binary | Per §8 measurement (DEC-137, amended 2026-11-17 and 2026-11-23; DEC-254). |
 | 9 | Initial scaffold for `moonblokz-configuration` crate | filesystem (placeholder) | Trait stub per §11 only; full BMAD later. |
-| 10 | Wire all 4 new crates into `moonblokz-node-rp2040/Cargo.toml` | existing | Add `moonblokz-blockchain` + `moonblokz-mempool` + `moonblokz-vote` + `moonblokz-node-runtime` path deps. Built (12.1) for the runtime (which brings blockchain and vote) and crypto; the mempool joins with Story 7.4. |
+| 10 | Wire all 4 new crates into `moonblokz-node-rp2040/Cargo.toml` | existing | Add `moonblokz-blockchain` + `moonblokz-mempool` + `moonblokz-vote` + `moonblokz-node-runtime` path deps. Built (12.1) for the runtime (which brings blockchain and vote) and crypto; the mempool joins through `moonblokz-blockchain`, a `Blockchain` field, built (7.3, DEC-351). |
 
 ---
 
