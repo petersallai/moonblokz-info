@@ -346,7 +346,7 @@ Registration adds a new node identifier and public key to the network.
 ### Fields
 
 1. **`anchor_sequence: u32`**  
-   As in the node transfer, with the same window rules: in a block of sequence `s`, `max(0, s − W) ≤ anchor_sequence < s`; at mempool intake `anchor_sequence ≥ S_tail`. It bounds the registration's mempool lifetime to `W` blocks and adds no anti-replay, which the key's uniqueness provides; block `#0`'s node-`#0` registration carries `0` (DEC-356; not in Part V).
+   As in the node transfer, with the same window rules: in a block of sequence `s`, `max(0, s − W) ≤ anchor_sequence < s`; at mempool intake `anchor_sequence ≥ S_tail`. It bounds the registration's mempool lifetime (about `2W` blocks under intake's `h + W` horizon, DEC-357) and adds no anti-replay, which the key's uniqueness provides; block `#0`'s node-`#0` registration carries `0` (DEC-356; not in Part V).
 
 2. **`initializer: u32`**  
    Existing node that initiates the registration and pays the costs.
