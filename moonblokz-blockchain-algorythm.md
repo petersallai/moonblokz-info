@@ -330,12 +330,12 @@ A node transfer is the minimal balance-to-balance transaction between nodes. Par
 
 - it provides a sequence-based time surrogate without requiring clocks,
 - it bars inclusion in any block with `sequence ≤ anchor_sequence` or `anchor_sequence < max(0, sequence − W)` (the window tail of the block's parent; DEC-174), and limits mempool acceptance to `anchor_sequence ≥ S_tail`, with no upper bound ([Blockchain PRD](./moonblokz-blockchain-prd.md) FR6 / FR9 / FR14),
-- it bounds the duplicate-check search to the including block's window: an earlier inclusion lies above the anchor, so a duplicate check over the retained window is complete,
+- it bounds the duplicate-check search to the including block's window: an earlier inclusion lies above the anchor, so a duplicate check over the retained window is complete; the check scans the block's own ancestry from its parent down to its lowest anchor + 1, reading only transaction blocks, at most `W − 1` reads per block (DEC-349),
 - and together with `comment` it supports uniqueness for repeated balance-style transfers.
 
 ### Transaction uniqueness rule for node transfers
 
-The network rejects fully identical transactions. If an initializer wants to send multiple otherwise-identical transactions while the anchor is unchanged, the `comment` field must differ.
+The network rejects fully identical transactions. The key is `(initializer, receiver, amount, anchor_sequence, comment)`: `fee`, `vote` and the signature are left out, so a fee-bumped or re-voted re-signing of the same payment is a duplicate and the payer is debited once. If an initializer wants to send multiple otherwise-identical transactions while the anchor is unchanged, the `comment` field must differ. A complex transaction without a UTXO input is keyed the same way by its ordered balance inputs `(initializer, anchor_sequence, amount, comment)`, outputs excluded, so two distinct such spends of the same balance inputs need a different `comment` even to different receivers; one with a UTXO input is keyed by its exact bytes, because the spent UTXO bit already allows only one inclusion (DEC-354).
 
 This is an important algorithmic alternative to classical nonce-based account transactions.
 
@@ -345,28 +345,31 @@ Registration adds a new node identifier and public key to the network.
 
 ### Fields
 
-1. **`initializer: u32`**  
+1. **`anchor_sequence: u32`**  
+   As in the node transfer, with the same window rules: in a block of sequence `s`, `max(0, s − W) ≤ anchor_sequence < s`; at mempool intake `anchor_sequence ≥ S_tail`. It bounds the registration's mempool lifetime to `W` blocks and adds no anti-replay, which the key's uniqueness provides; block `#0`'s node-`#0` registration carries `0` (DEC-356; not in Part V).
+
+2. **`initializer: u32`**  
    Existing node that initiates the registration and pays the costs.
 
-2. **`new_node_id: u32`**  
+3. **`new_node_id: u32`**  
    Identifier of the newly registered node. Part V says it is generated when the transaction is added to a block as `max node_id + 1`. The article also notes that this value is derivable from the active chain and is stored mainly so that key-to-node binding appears explicitly in one block. Genesis exception: the registration in block `#0` carries `new_node_id == 0`, replacing the `max + 1` rule for that single registration; the post-genesis `max_known_node_id` watermark equals `0`, and the `max + 1` rule resumes from block `#2` onward (so the first post-genesis registration carries `new_node_id == 1`). See Algorithm 17 for the broader genesis bootstrap handling.
 
-3. **`registration_price: u64`**  
+4. **`registration_price: u64`**  
    Configurable registration cost. Stored even though it is derivable from chain rules, because it simplifies later balance calculations when earlier history may have been pruned.
 
-4. **`fee: u64`**  
+5. **`fee: u64`**  
    Regular transaction fee.
 
-5. **`new_public_key: [u8; PUBLIC_KEY_SIZE]`**  
+6. **`new_public_key: [u8; PUBLIC_KEY_SIZE]`**  
    Public key of the new node. It must be globally unique.
 
-6. **`new_key_signature: [u8; SIGNATURE_SIZE]`**  
+7. **`new_key_signature: [u8; SIGNATURE_SIZE]`**  
    Proof that the registering party possesses the corresponding private key: the crypto library's `prove_possession` by the new key (DEC-248; built in Story 6.16). For Schnorr it is a BIP-340 signature over `"MoonBlokz/pop" ‖ new_public_key`, so it is not an ordinary signature of the key itself as in Part V; see [Crypto Algorithm Model](./moonblokz-crypto-algorythm.md) §Proof of Possession.
 
-7. **`signature: [u8; SIGNATURE_SIZE]`**  
+8. **`signature: [u8; SIGNATURE_SIZE]`**  
    Signature over the full transaction content by the initializer.
 
-The registration is `29 + PUBLIC_KEY_SIZE + 2 · SIGNATURE_SIZE` = 189 / 221 / 269 B, so under BLS it takes two radio packets (DEC-255).
+The registration is `33 + PUBLIC_KEY_SIZE + 2 · SIGNATURE_SIZE` = 193 / 225 / 273 B (189 / 221 / 269 B before DEC-356), so under BLS it takes two radio packets (DEC-255).
 
 ### Algorithmic meaning
 
@@ -890,6 +893,7 @@ A node transfer is valid only if:
 A registration transaction is valid only if:
 
 - the initializer is an existing node,
+- the block sequence is strictly greater than `anchor_sequence`, and `anchor_sequence ≥ max(0, block sequence − W)` (DEC-356),
 - the initializer can pay registration price plus fee,
 - `new_node_id` equals `max_known_node_id + 1` at its intra-block position ([Blockchain PRD](./moonblokz-blockchain-prd.md) FR6),
 - the public key is unique,
@@ -908,7 +912,8 @@ A complex transaction with at least one input is valid only if:
 - every balance input is valid against current balance state, with `block sequence > anchor_sequence ≥ max(0, block sequence − W)`,
 - every input signature is valid over the single DEC-196 preimage — the transaction's full bytes with every input's signature field zeroed — each against its own key: a UTXO input against the referenced output's address, a balance input against its `initializer`'s key (DEC-331, DEC-332),
 - total inputs are greater than or equal to total outputs,
-- and no resulting node balance becomes negative.
+- no resulting node balance becomes negative,
+- and, with no UTXO input, its ordered balance inputs do not repeat an already accepted transaction's (DEC-354).
 
 #### Zero-input complex transaction
 
