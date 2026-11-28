@@ -329,8 +329,8 @@ A node transfer is the minimal balance-to-balance transaction between nodes. Par
 `anchor_sequence` does several jobs at once:
 
 - it provides a sequence-based time surrogate without requiring clocks,
-- it bars inclusion in any block with `sequence ≤ anchor_sequence` or `anchor_sequence < max(0, sequence − W)` (the window tail of the block's parent; DEC-174), and limits mempool acceptance to `anchor_sequence ≥ S_tail`, with no upper bound ([Blockchain PRD](./moonblokz-blockchain-prd.md) FR6 / FR9 / FR14),
-- it bounds the duplicate-check search to the including block's window: an earlier inclusion lies above the anchor, so a duplicate check over the retained window is complete; the check scans the block's own ancestry from its parent down to its lowest anchor + 1, reading only transaction blocks, at most `W − 1` reads per block (DEC-349),
+- it bars inclusion in any block with `sequence ≤ anchor_sequence` or `anchor_sequence < max(0, sequence − W)` (the window tail of the block's parent; DEC-174), and limits mempool acceptance to `anchor_sequence ≥ S_tail`, with no upper bound at block validation and an intake horizon of `h + W` (DEC-357; [Blockchain PRD](./moonblokz-blockchain-prd.md) FR6 / FR9 / FR14),
+- it bounds the duplicate-check search to the including block's window: an earlier inclusion lies above the anchor (block #0's genesis self-transfer at it), so a duplicate check over the retained window is complete; the check scans the block's own ancestry from its parent down to one above each transaction's highest reference, never below the window, block #0 included while `s − W ≤ 0`, reading only transaction blocks, at most `W − 1` reads per block (DEC-349),
 - and together with `comment` it supports uniqueness for repeated balance-style transfers.
 
 ### Transaction uniqueness rule for node transfers
