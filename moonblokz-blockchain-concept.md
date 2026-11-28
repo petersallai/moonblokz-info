@@ -272,7 +272,7 @@ Part V adds a major conceptual principle: MoonBlokz avoids timestamp-based ident
 Instead:
 
 - block order is represented by chain sequence,
-- balance-style transactions are identified by their full content including `anchor_sequence` and comment, and accepted only while `anchor_sequence` lies within the active window; registrations are unique by `new_public_key`, complex transactions by their full input set ([Blockchain PRD](./moonblokz-blockchain-prd.md) FR14),
+- balance-style transactions are identified by their content without fee, vote and signature — including `anchor_sequence` and comment — and accepted only while `anchor_sequence` lies within the active window; registrations are unique by `new_public_key` and carry an anchor too, complex transactions without a UTXO input by their ordered balance inputs, and complex transactions with one by their exact bytes, since spending a UTXO already allows only one inclusion ([Blockchain PRD](./moonblokz-blockchain-prd.md) FR14; DEC-354, DEC-356),
 - and UTXO spending uses one-time consumption semantics rather than global-time ordering.
 
 Conceptually, this reflects the same anti-centralization choice seen elsewhere in the series: MoonBlokz avoids relying on globally synchronized clocks because that would introduce external infrastructure dependency and security risk.

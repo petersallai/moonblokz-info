@@ -21,6 +21,8 @@ Spent-state for UTXO outputs shall be represented as a **per-block available-UTX
 
 *Amendment (2026-10-18, DEC-132):* the bit originally marked a *spent* output (`0` = unspent). Marking *available* outputs lets a missing or spent output be rejected, and the tail-drop UTXO obligation be decided, from RAM without a block read; deriving a block sets its output bits and a spend clears one.
 
+*Amendment (2026-11-27, DEC-353):* a bit-0 input is still rejected, but when its referenced output exists the block is read and the input signature verified first, so a forged input is reported as a bad signature rather than an unavailable output; the verdict on a block is unchanged (Story 7.3).
+
 *Note (2026-10-12):* "co-located with the block" means kept with the block's in-memory cache entry, not written to flash: the bitfield is derived, not durable, and is rebuilt by forward replay ([PRD](../moonblokz-blockchain-prd.md) FR34; [architecture](../moonblokz-blockchain-architecture.md) §6.2).
 
 The available-UTXO bitfield is a **derived projection** of the current active chain, not durable blockchain truth. The authoritative record of spend events remains the transactions contained in accepted blocks. On chain switch, the bitfields covering blocks inside the rollback scope shall be recomputed by forward-replaying the new active chain from the common ancestor, consistent with the chain-switch reconciliation workflow defined in PRD FR23 and realized in `moonblokz-blockchain-architecture.md` §4.2 (`reconciliation.rs`).
